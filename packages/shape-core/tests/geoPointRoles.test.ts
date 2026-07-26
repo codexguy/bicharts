@@ -97,12 +97,17 @@ describe("the \"CA\" trap — a country column in the state slot", () => {
         }
     });
 
-    it("still refuses when Canada is the only value present", () => {
-        // The narrow, catastrophic case: a single-value country column resolves to a real
-        // admin1 at 100%, so a match-rate test alone would wave it through.
+    it("decides NOTHING when every value is the ambiguous \"CA\" token", () => {
+        // A single-value column of "CA" is equally Canada and California, so both readings
+        // are unsafe: as a STATE it puts Burnaby in California, as a COUNTRY it puts Irvine
+        // in Canada. Refuse both and fall back to city-only, which still resolves — the one
+        // outcome that cannot be badly wrong.
         const only = [{ City: "Burnaby", Country: "CA" }];
         const r = resolvePointRoles(["City", "Country"], only, { city: "City", state: "Country" });
         expect(r.bind?.state).toBeUndefined();
+        expect(r.bind?.country).toBeUndefined();
+        expect(r.refused.join()).toMatch(/both Canada and California/);
+        expect(r.bind?.city).toBe("City");
     });
 
     it("does NOT refuse a real state column that contains California", () => {
@@ -117,13 +122,21 @@ describe("the \"CA\" trap — a country column in the state slot", () => {
 });
 
 describe("classifiers", () => {
-    it("looksLikeCountryColumn wants EVERY value to be a country", () => {
+    it("looksLikeCountryColumn needs every value to be a country AND one to be unambiguous", () => {
         expect(looksLikeCountryColumn(["US", "CA", "MX"])).toBe(true);
         expect(looksLikeCountryColumn(["Canada", "Mexico", "United States"])).toBe(true);
-        expect(looksLikeCountryColumn(["CA"])).toBe(true);
         expect(looksLikeCountryColumn(["CA", "TX"])).toBe(false);   // a US state column
         expect(looksLikeCountryColumn([])).toBe(false);
         expect(looksLikeCountryColumn([null, "", "  "])).toBe(false);
+
+        // CHANGED 2026-07-26, and the change is the bug fix. This asserted `true`, which is
+        // what emptied a real point map: cross-filtering a US table to one Californian row
+        // leaves StateCode = {"CA"}, this returned true, the column was adopted as COUNTRY,
+        // every city was narrowed to Canada and nothing matched. "CA" alone is equally
+        // Canada and California, so it is not evidence of anything.
+        expect(looksLikeCountryColumn(["CA"])).toBe(false);
+        expect(looksLikeCountryColumn(["ca", "CA"])).toBe(false);   // still one distinct token
+        expect(looksLikeCountryColumn(["CA", "US"])).toBe(true);    // US disambiguates it
     });
 
     it("admin1MatchPct separates a state column from a country column", () => {

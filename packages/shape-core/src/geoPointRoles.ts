@@ -104,15 +104,33 @@ function distinctNormalized(values: Array<unknown>): string[] {
 /**
  * Is this column a list of COUNTRIES?
  *
- * True only when EVERY distinct value is a country identifier. That is the precise
- * shape of the trap: {US, CA, MX} and {CA} are countries, while {CA, TX} is a US state
- * column that happens to contain California. Being strict here matters — a loose test
- * would start refusing legitimate state columns.
+ * Every distinct value must be a country identifier, AND at least one of them must be
+ * UNAMBIGUOUS — a country identifier that is not also a state/province code.
+ *
+ * That second condition is not fussiness, it is the whole correctness of this function
+ * under CROSS-FILTERING. Roles are re-resolved against whatever rows survive a filter, and
+ * "CA" is the one token that is both a country (Canada) and an admin1 (California). Filter
+ * a US table down to a single Californian row and its StateCode column becomes exactly
+ * {"CA"} — trivially "all country identifiers". Without this condition that column is
+ * adopted as the COUNTRY role, every city is then narrowed to Canada, nothing matches, and
+ * the map goes BLANK on a single click. Observed on the real point map, 2026-07-26.
+ *
+ * So: {US, CA, MX} is a country column (US and MX are unambiguous), {Canada, Mexico} is a
+ * country column, {CA, TX} is a US state column containing California, and {CA} ALONE is
+ * not enough evidence for anything — which is the honest answer, because it genuinely is
+ * not enough evidence.
  */
 export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     const d = distinctNormalized(values);
     if (d.length === 0) return false;
-    return d.every(v => COUNTRY_IDS.has(v));
+    if (!d.every(v => COUNTRY_IDS.has(v))) return false;
+    return d.some(v => !resolveAdmin1(v));
+}
+
+/** A token that is BOTH a country identifier and a state/province code — today only "CA"
+ *  (Canada vs California). Such a value can never, on its own, decide a column's role. */
+function isAmbiguousCountryState(normalized: string): boolean {
+    return COUNTRY_IDS.has(normalized) && !!resolveAdmin1(normalized);
 }
 
 /** Share of DISTINCT values that resolve to a state/province, 0..100 (one decimal). */
@@ -207,7 +225,15 @@ export function resolvePointRoles(
     const hintedState = hint?.state;
     if (hintedState && colSet.has(hintedState)) {
         const vals = valuesOf(hintedState);
-        if (looksLikeCountryColumn(vals)) {
+        const dvals = distinctNormalized(vals);
+        if (dvals.length > 0 && dvals.every(isAmbiguousCountryState)) {
+            // Everything in this column is the Canada/California token and nothing else.
+            // It is genuinely undecidable, so decide nothing: refuse it as a state (using it
+            // would place Canadian cities in California) and do NOT promote it to country
+            // (that would place Californian cities in Canada). Falling back to city-only
+            // still resolves, which is the one outcome that cannot be badly wrong.
+            refused.push(`state=${hintedState} (every value is "CA", which is both Canada and California)`);
+        } else if (looksLikeCountryColumn(vals)) {
             // The "CA" trap. Every value is a country, so this is a country column that
             // landed in the state slot. Using it would resolve "CA" to California and
             // drag a whole country's cities into one US state.
@@ -236,7 +262,13 @@ export function resolvePointRoles(
             if (looksLikeCountryColumn(vals)) continue;      // never a state
             const pct = admin1MatchPct(vals);
             if (pct < THRESHOLD_PCT) continue;
-            if (distinctMatches(vals, v => !!resolveAdmin1(v)) < MIN_DISTINCT_BACKFILL) continue;
+            // The roster guard, relaxed for UNAMBIGUOUS evidence. A cross-filter can shrink
+            // any column to one distinct value, and demanding two flatly would drop the
+            // state role on every single-row subset — degrading precision for no reason. One
+            // "TX" is proof enough; one "CA" is not, because it is equally Canada.
+            const hits = distinctMatches(vals, v => !!resolveAdmin1(v));
+            const unambiguous = distinctMatches(vals, v => !!resolveAdmin1(v) && !isAmbiguousCountryState(v));
+            if (hits < MIN_DISTINCT_BACKFILL && unambiguous < 1) continue;
             if (!best || pct > best.pct) best = { name: c, pct };
         }
         if (best) {
