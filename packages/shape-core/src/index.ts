@@ -49,7 +49,7 @@ export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
 // as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
 export {
     resolveGeoPoint, buildGeoPointColumns, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
-    normalizePlaceName, cityMatchPct,
+    normalizePlaceName, cityMatchPct, normalizeCountry,
 } from "./geoPoint";
 export type { GeoPointPrecision, GeoPointResult, GeoPointColumns } from "./geoPoint";
 // Which COLUMN plays which place role. The codegen response names them, but that answer

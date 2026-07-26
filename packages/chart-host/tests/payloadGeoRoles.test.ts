@@ -54,7 +54,8 @@ describe("point role resolution inside buildRenderPayload", () => {
         const explicit = buildRenderPayload(COLS, ROWS, null, { city: "City", state: "StateCode" });
         const implicit = buildRenderPayload(COLS, ROWS, null, { city: "City" });
         expect(latLon(implicit, 3)).toEqual(latLon(explicit, 3));
-        expect(explicit.geoPoint!.rolesBackfilled).toBeUndefined();  // nothing to backfill
+        // The state needed no backfill here; Country is still adopted for narrowing.
+        expect(explicit.geoPoint!.rolesBackfilled).toEqual(["country=Country"]);
     });
 
     it("refuses a country column named as the state, and reports why", () => {
@@ -77,7 +78,10 @@ describe("point role resolution inside buildRenderPayload", () => {
     });
 
     it("omits both role fields entirely when nothing was adjusted", () => {
-        const p = buildRenderPayload(COLS, ROWS, null, { city: "City", state: "StateCode" });
+        // Every role the data supports is named, so there is nothing to backfill and
+        // nothing to refuse — the common case, which must add no bytes to the payload.
+        const p = buildRenderPayload(COLS, ROWS, null,
+            { city: "City", state: "StateCode", country: "Country" });
         expect(p.geoPoint!.rolesBackfilled).toBeUndefined();
         expect(p.geoPoint!.rolesRefused).toBeUndefined();
     });

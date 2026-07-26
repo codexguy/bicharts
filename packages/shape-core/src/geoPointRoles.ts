@@ -44,6 +44,9 @@ export type PointBind = {
     zip?: string;
     lat?: string;
     lon?: string;
+    /** Narrows a city name to the row's own country. Never inferred from a value in
+     *  another slot — see the "CA" note above. */
+    country?: string;
 };
 
 export type PointRoleResolution = {
@@ -197,7 +200,7 @@ export function resolvePointRoles(
     // ---- 1. Carry over the hint, VERIFYING the two roles that can be catastrophically
     // wrong. city/lat/lon are carried as given: a mis-hinted city degrades to "no match"
     // (a visible off-map count), whereas a mis-hinted STATE actively relocates points.
-    for (const role of ["city", "zip", "lat", "lon"] as const) {
+    for (const role of ["city", "zip", "lat", "lon", "country"] as const) {
         const name = hint?.[role];
         if (name && colSet.has(name)) out[role] = name;
     }
@@ -208,7 +211,12 @@ export function resolvePointRoles(
             // The "CA" trap. Every value is a country, so this is a country column that
             // landed in the state slot. Using it would resolve "CA" to California and
             // drag a whole country's cities into one US state.
+            //
+            // Having identified what the column actually IS, put it to work rather than
+            // discarding it: as the COUNTRY role it narrows city matching to the right
+            // country, which is most of the value the state would have provided.
             refused.push(`state=${hintedState} (every value is a country, not a state)`);
+            if (!out.country) out.country = hintedState;
         } else if (admin1MatchPct(vals) < THRESHOLD_PCT) {
             refused.push(`state=${hintedState} (only ${admin1MatchPct(vals)}% of values are states/provinces)`);
         } else {
@@ -252,6 +260,21 @@ export function resolvePointRoles(
         }
     }
 
+    // COUNTRY narrows city matching to the row's own country, which is what keeps a bare
+    // "Burlington" on a US row out of Ontario. Backfilled last among the narrowing roles
+    // and only from an unambiguous all-country column, because a wrong country is worse
+    // than none: it would filter every candidate away and drop the row to a coarser tier.
+    if (!out.country) {
+        for (const c of candidates) {
+            if (taken.has(c)) continue;
+            if (!looksLikeCountryColumn(valuesOf(c))) continue;
+            out.country = c;
+            taken.add(c);
+            backfilled.push(`country=${c}`);
+            break;
+        }
+    }
+
     if (!out.city) {
         let best: { name: string; pct: number } | null = null;
         for (const c of candidates) {
@@ -268,6 +291,8 @@ export function resolvePointRoles(
         }
     }
 
+    // country ALONE is not a placeable binding — it only narrows the other tiers — so it
+    // deliberately does not count toward "we can geocode something".
     const any = !!(out.city || out.state || out.zip || (out.lat && out.lon));
     return { bind: any ? out : null, backfilled, refused };
 }

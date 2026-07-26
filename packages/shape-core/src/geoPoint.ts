@@ -134,6 +134,36 @@ export function resolveAdmin1(value: string | null | undefined): string | null {
     return adminIndex().get(k)?.key ?? null;
 }
 
+// Country identifiers -> the 2-letter code the tables are keyed by. Scope is US/CA/MX
+// because that is what the CITY/ADMIN1 tables cover; anything else resolves to null and
+// the country tier simply does not engage, which is the correct no-op.
+//
+// NOTE the asymmetry this exists to survive: "CA" is BOTH Canada and California, and it
+// is the only such collision across every identifier here. Country is therefore never
+// inferred from a lone value — it must arrive in the COUNTRY role, and geoPointRoles
+// refuses to let a country column occupy the state role in the first place.
+const COUNTRY_CODE_BY_NAME: Record<string, string> = {
+    "us": "US", "usa": "US", "u s": "US", "u s a": "US", "america": "US",
+    "united states": "US", "united states of america": "US",
+    "ca": "CA", "can": "CA", "canada": "CA",
+    "mx": "MX", "mex": "MX", "mexico": "MX", "estados unidos mexicanos": "MX",
+};
+
+/** "Canada"/"CAN"/"CA" -> "CA". Null when it is not a country this data covers. */
+export function normalizeCountry(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) return null;
+    const k = normalizePlaceName(String(value));
+    if (!k) return null;
+    return COUNTRY_CODE_BY_NAME[k] ?? null;
+}
+
+/** Which country an admin1 key belongs to ("ON" -> "CA", "TX" -> "US"). The CITY table
+ *  stores only the admin1, so this is how a city row's country is recovered without
+ *  adding a byte to the bundled tables. */
+function countryOfAdmin1(a1: string): string | null {
+    return adminIndex().get(normalizePlaceName(a1))?.cc ?? null;
+}
+
 /**
  * Normalize a ZIP to its 3-digit prefix.
  *
@@ -184,6 +214,11 @@ export function resolveGeoPoint(args: {
     city?: string | null;
     state?: string | null;
     zip?: string | null;
+    /** Optional COUNTRY narrowing. When supplied and recognized, a city name is only
+     *  matched against cities in that country, and a state that belongs to a different
+     *  country is not trusted. Absent/unrecognized = the cascade behaves exactly as it
+     *  did before, so this can never make a currently-correct map worse. */
+    country?: string | null;
 }): GeoPointResult | null {
     // 1. Explicit coordinates — trust the data over any table. TRIMMED first: a
     // whitespace-only string is "no value", but `+" "` coerces to 0, and an untrimmed
@@ -207,12 +242,24 @@ export function resolveGeoPoint(args: {
         }
     }
 
-    const a1 = resolveAdmin1(args.state);
+    const cc = normalizeCountry(args.country);
+    let a1 = resolveAdmin1(args.state);
+    // A state belonging to a DIFFERENT country than the row claims is not a state we can
+    // trust. The common cause is a country value sitting in the state slot: "CA" resolves
+    // to California, so a Canadian row would otherwise be dragged into the US. Dropping
+    // the state here leaves the country narrowing below to do the work.
+    if (a1 && cc && countryOfAdmin1(a1) !== cc) a1 = null;
 
-    // 2. City (+ state when present to disambiguate).
+    // 2. City (+ state when present to disambiguate, + country to narrow).
     if (args.city !== undefined && args.city !== null) {
         const key = normalizePlaceName(String(args.city));
-        const rows = key ? cityIndex().get(key) : undefined;
+        let rows = key ? cityIndex().get(key) : undefined;
+        // COUNTRY NARROWING. Restricting the candidates to the row's own country is what
+        // stops a bare "Burlington" on a US row landing in Ontario because the Canadian
+        // one is larger. An empty result is INFORMATION, not a miss to be papered over:
+        // the city does not exist in the country the row claims, so fall through to the
+        // coarser tiers rather than place it in a country the data contradicts.
+        if (rows && cc) rows = rows.filter(r => countryOfAdmin1(r.a1) === cc);
         if (rows && rows.length > 0) {
             if (a1) {
                 const exact = rows.find(r => r.a1 === a1);
@@ -271,7 +318,7 @@ const PRECISION_RANK: Record<GeoPointPrecision, number> = { latlon: 0, city: 1, 
  * means the map is not uniformly city-accurate.
  */
 export function buildGeoPointColumns(
-    rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any }>,
+    rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any; country?: any }>,
 ): GeoPointColumns {
     const lat: (number | null)[] = new Array(rows.length);
     const lon: (number | null)[] = new Array(rows.length);

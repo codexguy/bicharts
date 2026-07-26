@@ -29,6 +29,10 @@ export interface GeoPointBinding {
     zip?: string;
     lat?: string;
     lon?: string;
+    // Narrows city matching to the row's own country, so a bare "Burlington" on a US row
+    // cannot land on the larger Canadian one. Optional: absent = the cascade behaves
+    // exactly as it did before.
+    country?: string;
 }
 
 export interface RenderPayload {
@@ -100,6 +104,7 @@ export function buildRenderPayload(
             city: p.city ? r[p.city] : null,
             state: p.state ? r[p.state] : null,
             zip: p.zip ? r[p.zip] : null,
+            country: p.country ? r[p.country] : null,
         })));
         pLat = built.lat; pLon = built.lon;
         geoPoint = {
