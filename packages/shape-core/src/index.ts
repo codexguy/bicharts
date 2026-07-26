@@ -1,0 +1,58 @@
+// @bicharts/shape-core — public API.
+//
+// A host-agnostic data-shape PROFILER. Ingest a dataset's rows through the
+// IValueCollection.addRow seam, then read the measured shape back as a
+// LLMColumnWithValue[] payload. The Power BI visual and the (future) MCP client
+// both feed the SAME engine through their own adapters, so the server receives an
+// identical shape payload regardless of which front-end produced it.
+//
+// This package is MEASUREMENT only. The POLICY that decides what a measured shape
+// means for chart selection (eligibility gates, weighting, prompt assembly) lives
+// server-side and is deliberately NOT here.
+
+// The engine + its row-ingest interface.
+export { IndexedText } from "./indexedText";
+export type { IValueCollection } from "./indexedText";
+
+// Pure classifiers (usable standalone, e.g. by an adapter that wants to tag
+// columns before ingest).
+export {
+    classifyTemporal,
+    classifyAdditivity,
+    classifyNumericValueNature,
+    hostAggHint,
+    isIdentifierName,
+} from "./indexedText";
+
+// The wire contract + column value shape.
+export type { LLMColumnWithValue } from "./models";
+export type {
+    LLMRequestModifier,
+    SimpleColumn,
+    VegaRendererPayload,
+    LLMClientHints,
+    LLMRequestCode,
+    LLMQualifyResult,
+    LLMRequestCodeResult,
+    GetLicenseStatusResult,
+} from "./models";
+
+// Column-detail helpers.
+export { detectOrdinalDomain, safeDistinctValuesToShip, isOrdinalFriendlyName } from "./ordinalDetector";
+export { detectFormatSignature } from "./formatDetector";
+// isJoinGeoKind is PUBLIC because a host must distinguish a region-JOIN kind from a
+// coordinate-feeding one: "city-name" is a GeoKind but not a join key, and building
+// __geoIso__ from it nulls every row, so the map draws empty.
+export { detectGeo, toGeoIso, buildGeoIsoColumn, isJoinGeoKind } from "./geoDetector";
+export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
+// Point geocoding — a COORDINATE for a row that has none (City+State / ZIP / State),
+// as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
+export {
+    resolveGeoPoint, buildGeoPointColumns, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
+    normalizePlaceName, cityMatchPct,
+} from "./geoPoint";
+export type { GeoPointPrecision, GeoPointResult, GeoPointColumns } from "./geoPoint";
+export { monthLookupFor, normalizeMonthKey } from "./monthNames";
+
+// Pure utilities (shared so adapters can hash/stringify identically to the engine).
+export { STR, SIMPLE_STRING_HASH, GET_RANDOM } from "./util";

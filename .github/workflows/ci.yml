@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # build FIRST: chart-host's typecheck resolves @bicharts/shape-core through the
+      # workspace symlink, which reaches package.json `main` -> dist. No build, no types.
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+
+  # The suite cannot see this class of bug: in-repo tests import SOURCE, so they stay
+  # green while the published tarball is broken. Two real bugs shipped that way — a
+  # tarball with no shape-core in it at all, and one whose .d.ts imported a package the
+  # consumer never installs. Pack it, install it somewhere else, import it.
+  packaged:
+    name: the tarball is actually installable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: pack both packages
+        run: |
+          mkdir -p /tmp/tarballs
+          npm pack -w @bicharts/shape-core --pack-destination /tmp/tarballs
+          npm pack -w @bicharts/chart-host --pack-destination /tmp/tarballs
+          ls -la /tmp/tarballs
+
+      - name: install chart-host into a clean project and import it
+        run: |
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y >/dev/null
+          npm pkg set type=module
+          # No workspace, no alias, no link — chart-host must be self-contained. If it
+          # still needed shape-core at run time this install would resolve nothing.
+          npm install /tmp/tarballs/bicharts-chart-host-*.tgz
+          # react/react-dom are OPTIONAL peers, installed here only so the ./react
+          # subpath can be imported. The classic-vs-automatic JSX transform broke that
+          # subpath once with "React is not defined", and nothing in the repo suite saw it.
+          npm install react react-dom
+          cat > smoke.mjs <<'EOF'
+          import {
+            createChartHost, compileRenderFn, buildRenderPayload, resolveOptions,
+            HOST_CONTRACT_VERSION, MARK_CLASS, ROW_IDX_ATTR,
+          } from "@bicharts/chart-host";
+
+          for (const [name, v] of Object.entries({ createChartHost, compileRenderFn, buildRenderPayload, resolveOptions })) {
+            if (typeof v !== "function") throw new Error(name + " is not exported as a function");
+          }
+          for (const [name, v] of Object.entries({ HOST_CONTRACT_VERSION, MARK_CLASS, ROW_IDX_ATTR })) {
+            if (!v) throw new Error(name + " is not exported");
+          }
+
+          const p = buildRenderPayload([{ name: "a" }], [{ a: 1 }, { a: 2 }]);
+          const cols = p.columns.map(c => c.name);
+          if (cols[cols.length - 1] !== "__rowIdx__") throw new Error("payload lost its __rowIdx__ column");
+          if (p.rows[1][p.rows[1].length - 1] !== 1) throw new Error("__rowIdx__ is not the row's position");
+
+          // compileRenderFn is the new Function path — the one thing that cannot be
+          // proven by static analysis, and the reason this package exists.
+          const fn = compileRenderFn("function render(el, data, opts) { return 'ok'; }");
+          if (typeof fn !== "function") throw new Error("compileRenderFn did not return a function");
+
+          const { BicChart, BicChartGroup } = await import("@bicharts/chart-host/react");
+          if (!BicChart || !BicChartGroup) throw new Error("the ./react subpath does not export the components");
+
+          const geo = await import("@bicharts/chart-host/geo");
+          if (typeof geo.geoForKind !== "function") throw new Error("the ./geo subpath does not export geoForKind");
+
+          console.log("chart-host imports clean; contract " + HOST_CONTRACT_VERSION);
+          EOF
+          node smoke.mjs
+
+      - name: the published types must typecheck with skipLibCheck OFF
+        run: |
+          cd /tmp/consumer
+          npm install -D typescript
+          # skipLibCheck:true is the Vite template default and it skips .d.ts checking
+          # ENTIRELY — which is exactly how a dangling import in a shipped declaration
+          # passed a green test once already. Check them for real.
+          cat > tsconfig.json <<'EOF'
+          { "compilerOptions": { "module": "esnext", "moduleResolution": "bundler",
+            "target": "es2022", "strict": true, "noEmit": true, "skipLibCheck": false,
+            "types": [] }, "files": ["use.ts"] }
+          EOF
+          cat > use.ts <<'EOF'
+          import { buildRenderPayload, HOST_CONTRACT_VERSION } from "@bicharts/chart-host";
+          export const v: string = HOST_CONTRACT_VERSION;
+          export const p = buildRenderPayload([{ name: "a" }], [{ a: 1 }]);
+          EOF
+          npx tsc -p tsconfig.json
+
+      # Measured on the INSTALLED package, not the repo build — same reason as the rest
+      # of this job. Checking dist/index.mjs's own size would prove nothing: it is a
+      # 1.8 KB re-export shim in front of the chunks. This walks the static-import
+      # closure and stops at dynamic import(), which is what geoLazy.ts relies on.
+      - name: geometry must stay out of the eager load path
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 400

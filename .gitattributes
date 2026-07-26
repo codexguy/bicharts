@@ -1,0 +1,11 @@
+# Normalize to LF in the repository. Without this, a contributor on Windows with
+# core.autocrlf=true produces diffs that are entirely line endings, and the shell
+# heredocs inside .github/workflows break outright when they reach a Linux runner
+# with CRLF attached.
+* text=auto eol=lf
+
+# Generated geo tables are large and machine-written; a diff of them is noise.
+*.generated.ts linguist-generated=true
+
+# So GitHub's language stats describe the project rather than the reference data.
+packages/*/src/*.generated.ts linguist-vendored=true

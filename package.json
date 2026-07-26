@@ -1,0 +1,25 @@
+{
+  "name": "bicharts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo root for the BIC Charts open-source packages. Not published — see packages/*.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @bicharts/shape-core && npm run build -w @bicharts/chart-host",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "verify": "npm run build && npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.2.17",
+    "esbuild": "^0.28.1",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

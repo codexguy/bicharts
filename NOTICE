@@ -1,0 +1,50 @@
+BIC Charts — @bicharts/chart-host, @bicharts/shape-core
+Copyright 2026 CodeX Framework / Business Intelligence Champions
+
+This product includes software developed by CodeX Framework.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+BUNDLED REFERENCE DATA — third-party, attribution required
+================================================================================
+
+This package embeds pre-processed geographic reference data. The data is
+compiled into the distributed JavaScript bundles, so the attributions below
+travel with any copy of this package and with any application that bundles it.
+
+--------------------------------------------------------------------------------
+1. City and administrative-region coordinates  ***ATTRIBUTION REQUIRED***
+--------------------------------------------------------------------------------
+Source:  GeoNames (https://www.geonames.org/) — cities15000 and admin1 datasets,
+         filtered to US/CA/MX places with population >= 25,000, reduced to
+         name/coordinate/population tuples.
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+         https://creativecommons.org/licenses/by/4.0/
+Changes: Subset by country and population; fields dropped; coordinates rounded;
+         administrative centroids re-derived as population-weighted means.
+
+    "This work includes data from GeoNames (https://www.geonames.org/),
+     licensed under CC BY 4.0."
+
+CC BY 4.0 requires that this attribution be preserved. If you redistribute this
+package, or an application that bundles it, keep this NOTICE file (or reproduce
+the attribution above somewhere a recipient can reasonably find it).
+
+--------------------------------------------------------------------------------
+2. World country polygons
+--------------------------------------------------------------------------------
+Source:  Natural Earth (https://www.naturalearthdata.com/) 110m cultural vectors,
+         via the world-atlas TopoJSON distribution.
+License: Public domain. Natural Earth asks — but does not require — that it be
+         credited. We are happy to: "Made with Natural Earth."
+
+--------------------------------------------------------------------------------
+3. United States state and ZIP-prefix boundaries
+--------------------------------------------------------------------------------
+Source:  US Census Bureau / TIGER cartographic boundary files (states, DC and
+         territories; 3-digit ZCTA prefixes), via the us-atlas distribution.
+License: Public domain (a work of the US federal government).
+
+================================================================================
+Nothing in this section limits the Apache 2.0 grant covering the SOURCE CODE of
+this package. It applies only to the embedded reference data described above.

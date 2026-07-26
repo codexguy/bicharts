@@ -1,0 +1,16 @@
+{
+  "//": "Standalone typecheck/test config for @bicharts/shape-core. The Power BI visual does NOT use this file — it compiles the package sources in-place via the root tsconfig (reached through the src/ compatibility shims). This config exists so the package can be typechecked and consumed independently by the MCP client. moduleResolution 'bundler' allows the extensionless relative imports the sources already use.",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom"],
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

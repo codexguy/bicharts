@@ -1,0 +1,18 @@
+{
+  "//": "Declaration-only emit for the PUBLISHED package. Separate from tsconfig.json, which is noEmit (typecheck/test). rootDir is `src`. Before the repo split it had to be `..`, because tsc followed payload.ts into the SIBLING shape-core sources — that emitted dist/types/{chart-host,shape-core}/src/**, which made every `types` path in the exports map wrong and left a consumer's `tsc -b` unable to find the ./react subpath's declarations. shape-core is now a real dependency, so tsc reads its .d.ts from node_modules and this tree is flat: dist/types/{index,react,geo}.d.ts. The JS half is bundled by build.mjs; this emits only .d.ts.",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom"],
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist/types"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

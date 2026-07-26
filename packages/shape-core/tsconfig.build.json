@@ -1,0 +1,17 @@
+{
+  "//": "Declaration-only emit for the published package. Separate from tsconfig.json, which is noEmit for typecheck/test. Everything this package needs lives under src/, so rootDir is src and the emitted tree is dist/types/**.",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom"],
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist/types"
+  },
+  "include": ["src/**/*.ts"]
+}

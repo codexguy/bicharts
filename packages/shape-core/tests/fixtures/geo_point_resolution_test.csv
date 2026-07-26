@@ -1,0 +1,42 @@
+Scenario,City,StateCode,StateName,Country,Zip5,Zip3,Latitude,Longitude,Revenue,Units
+city unambiguous,Plano,TX,Texas,US,75023,750,,,184200,412
+city unambiguous,Irvine,CA,California,US,92618,926,,,226700,508
+city unambiguous,Scottsdale,AZ,Arizona,US,85251,852,,,97400,219
+city unambiguous,Naperville,IL,Illinois,US,60540,605,,,88300,197
+city unambiguous,Bellevue,WA,Washington,US,98004,980,,,152900,344
+city unambiguous,Alpharetta,GA,Georgia,US,30009,300,,,76500,171
+city unambiguous,Sugar Land,TX,Texas,US,77478,774,,,64100,143
+city unambiguous,Overland Park,KS,Kansas,US,66210,662,,,71800,160
+ambiguous city + state,Springfield,MO,Missouri,US,65806,658,,,54300,121
+ambiguous city + state,Springfield,IL,Illinois,US,62701,627,,,48900,109
+ambiguous city + state,Springfield,MA,Massachusetts,US,01103,011,,,51200,114
+ambiguous city + state,Springfield,OR,Oregon,US,97477,974,,,33700,75
+ambiguous city NO state,Springfield,,,US,,,,,40000,89
+ambiguous city NO state,Burlington,,,US,,,,,37500,84
+ambiguous city NO state,Lakewood,,,US,,,,,29800,66
+canada city + code,Mississauga,ON,Ontario,CA,,,,,143600,322
+canada city + name,Laval,,Quebec,CA,,,,,88700,198
+canada city + code,Burnaby,BC,British Columbia,CA,,,,,76200,170
+canada diacritics,Montréal,QC,Quebec,CA,,,,,211400,474
+mexico city + state name,Guadalajara,,Jalisco,MX,,,,,129300,290
+mexico city no state,Monterrey,,,MX,,,,,118800,266
+mexico diacritics,Mérida,,Yucatán,MX,,,,,64900,145
+city CONTRADICTS state,Plano,ON,Ontario,CA,,,,,22100,49
+zip5 only,,,,US,90210,,,,168300,377
+zip5 only,,,,US,10001,,,,194500,436
+zip5 leading zero (kept),,,,US,01001,,,,41700,93
+zip5 Excel-stripped,,,,US,1001,,,,41700,93
+zip+4,,,,US,90210-1234,,,,55600,124
+zip3 only,,,,US,,606,,,83200,186
+zip3 only,,,,US,,331,,,72400,162
+state code only,,TX,,US,,,,,312000,699
+state name only,,,California,US,,,,,402500,902
+province name only,,,Ontario,CA,,,,,187300,420
+mexican state only,,,Nuevo León,MX,,,,,99100,222
+latlon wins over city,Miami,FL,Florida,US,33101,331,47.61,-122.33,61000,136
+latlon only,,,,,,,39.74,-104.99,87400,195
+unresolvable city,Nowherecityville,,,US,,,,,12000,27
+unresolvable everything,,,,,,,,,9000,20
+bad zip,,,,US,ABCDE,,,,8000,18
+lowercase city,seattle,wa,,US,,,,,133800,300
+padded whitespace,  Boulder  , CO ,,US,,,,,57200,128

@@ -1,0 +1,84 @@
+{
+  "name": "@bicharts/shape-core",
+  "version": "0.1.4",
+  "description": "Host-agnostic data-shape profiler: ingest a dataset's rows through IValueCollection.addRow and read back the measured shape as an LLMColumnWithValue[] payload — types, cardinality, temporal/ordinal detection, geographic region and point resolution, cross-column signals. MEASUREMENT only: the policy that decides what a measured shape means for chart selection lives server-side.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs"
+    },
+    "./indexedText": {
+      "types": "./dist/types/indexedText.d.ts",
+      "import": "./dist/indexedText.mjs",
+      "default": "./dist/indexedText.mjs"
+    },
+    "./models": {
+      "types": "./dist/types/models.d.ts",
+      "import": "./dist/models.mjs",
+      "default": "./dist/models.mjs"
+    },
+    "./geoDetector": {
+      "types": "./dist/types/geoDetector.d.ts",
+      "import": "./dist/geoDetector.mjs",
+      "default": "./dist/geoDetector.mjs"
+    },
+    "./geoPoint": {
+      "types": "./dist/types/geoPoint.d.ts",
+      "import": "./dist/geoPoint.mjs",
+      "default": "./dist/geoPoint.mjs"
+    },
+    "./ordinalDetector": {
+      "types": "./dist/types/ordinalDetector.d.ts",
+      "import": "./dist/ordinalDetector.mjs",
+      "default": "./dist/ordinalDetector.mjs"
+    },
+    "./formatDetector": {
+      "types": "./dist/types/formatDetector.d.ts",
+      "import": "./dist/formatDetector.mjs",
+      "default": "./dist/formatDetector.mjs"
+    },
+    "./monthNames": {
+      "types": "./dist/types/monthNames.d.ts",
+      "import": "./dist/monthNames.mjs",
+      "default": "./dist/monthNames.mjs"
+    },
+    "./util": {
+      "types": "./dist/types/util.d.ts",
+      "import": "./dist/util.mjs",
+      "default": "./dist/util.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codexguy/bicharts.git",
+    "directory": "packages/shape-core"
+  },
+  "dependencies": {
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.14"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
