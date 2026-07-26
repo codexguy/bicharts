@@ -37,6 +37,28 @@ Clicking a mark in one chart filters the other. See
 [the package README](packages/chart-host#readme) for the vanilla API, sizing rules, maps,
 d3 plugins, and the row-index hazard you must not hand-roll.
 
+## Where the chart comes from
+
+`chart.js` above is *generated*. The easiest way to produce one is the
+**`@bicharts/chart-mcp`** server, which any MCP-capable agent — Claude Code, Claude Desktop,
+Cursor — can drive:
+
+```bash
+claude mcp add --scope user bic-chart -- npx -y @bicharts/chart-mcp
+```
+
+It exposes three tools. `assess_data_shape` and `list_eligible_charts` profile a dataset and
+tell you which chart types actually suit it — both free. `generate_chart` writes the
+`render(container, data, options)` function and a sample payload into a directory you name.
+
+Generating needs a BIC account. **Running the result does not** — no key, no network call, no
+per-render cost.
+
+> `@bicharts/chart-mcp` is **not covered by this repository's licence.** It is a
+> closed-source, separately-licensed artifact distributed on npm; see the `LICENSE.txt` inside
+> that package. The two packages in *this* repo are Apache-2.0, and the chart code the
+> generator produces is yours outright.
+
 ## Why these exist as open source
 
 The interesting part of BIC is the *generation* — choosing a chart type for a dataset and
