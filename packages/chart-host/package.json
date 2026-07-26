@@ -1,6 +1,6 @@
 {
   "name": "@bicharts/chart-host",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Run a BIC-generated D3 chart in any web host: compiles the generated render() function, applies the shared option defaults, resolves mark clicks (through tooltip overlays), owns the selection affordance, and translates row indices between cross-filtered charts. The same contract the BIC Power BI visual implements, minus Power BI. React bindings at @bicharts/chart-host/react.",
   "license": "Apache-2.0",
   "type": "module",
@@ -50,11 +50,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
+  "// devDependencies": "@bicharts/shape-core is deliberately NOT declared. It is a workspace sibling that npm links regardless, and its code is BUNDLED into dist, so a consumer never installs it. Declaring it made this package a registry DEPENDENT of shape-core, which blocks lifecycle operations on that package in exchange for nothing. Do not add it back; if the build stops resolving it, fix the workspace, not the manifest.",
   "devDependencies": {
     "@types/react": "^19.2.17",
     "esbuild": "^0.28.1",
-    "typescript": "^5.9.3",
-    "@bicharts/shape-core": "^0.1.0"
+    "typescript": "^5.9.3"
   },
   "publishConfig": {
     "access": "public"
