@@ -52,6 +52,13 @@ export {
     normalizePlaceName, cityMatchPct,
 } from "./geoPoint";
 export type { GeoPointPrecision, GeoPointResult, GeoPointColumns } from "./geoPoint";
+// Which COLUMN plays which place role. The codegen response names them, but that answer
+// is a HINT to be verified: a state it omits leaves city names undisambiguated, and a
+// COUNTRY column in the state slot resolves "CA" to California.
+export {
+    resolvePointRoles, looksLikeCountryColumn, admin1MatchPct, zipMatchPct,
+} from "./geoPointRoles";
+export type { PointBind, PointRoleResolution } from "./geoPointRoles";
 export { monthLookupFor, normalizeMonthKey } from "./monthNames";
 
 // Pure utilities (shared so adapters can hash/stringify identically to the engine).

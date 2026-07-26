@@ -14,7 +14,7 @@
 // failed, and no tsconfig alias could fix it: TypeScript does not route RELATIVE specifiers
 // through `paths`, so `tsc -b` failed where the bundler succeeded.
 import {
-    buildGeoIsoColumn, isJoinGeoKind, buildGeoPointColumns, type GeoKind,
+    buildGeoIsoColumn, isJoinGeoKind, buildGeoPointColumns, resolvePointRoles, type GeoKind,
 } from "@bicharts/shape-core";
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
@@ -49,6 +49,15 @@ export interface RenderPayload {
         unplaced: number;
         unplacedExamples: string[];
         ambiguousRows: number;
+        // What the ROLE resolution did to the caller's binding, so the chart can say when
+        // its coordinates rest on something other than what was asked for. Both are
+        // ADDITIVE and optional: a host on an older contract simply ignores them.
+        //   backfilled — roles the binding omitted, resolved from the data
+        //                ("state=StateCode (100% states/provinces)")
+        //   refused    — roles the binding named that were rejected, with why
+        //                ("state=Country (every value is a country, not a state)")
+        rolesBackfilled?: string[];
+        rolesRefused?: string[];
     };
 }
 
@@ -67,9 +76,24 @@ export function buildRenderPayload(
     let pLat: (number | null)[] | null = null;
     let pLon: (number | null)[] | null = null;
     let geoPoint: RenderPayload["geoPoint"];
-    const hasPointBind = !!point && !!(point.city || point.state || point.zip || (point.lat && point.lon));
+    // The caller's binding is a HINT, not the last word. The codegen response names these
+    // roles and can leave one out — a production point map named the city, not the state, so
+    // City+State never engaged and 8 marks landed on the wrong same-named city. Verify
+    // what was named and backfill what was not, from the values themselves.
+    // Measures are excluded: a place is a dimension, and a 5-digit Revenue reads as a ZIP.
+    let bind: GeoPointBinding | null = point ?? null;
+    let rolesBackfilled: string[] = [];
+    let rolesRefused: string[] = [];
+    if (bind) {
+        const dims = cols.filter(c => !c.isMeasure).map(c => c.name);
+        const res = resolvePointRoles(dims, rowObjs, bind);
+        bind = res.bind;
+        rolesBackfilled = res.backfilled;
+        rolesRefused = res.refused;
+    }
+    const hasPointBind = !!bind && !!(bind.city || bind.state || bind.zip || (bind.lat && bind.lon));
     if (hasPointBind) {
-        const p = point!;
+        const p = bind!;
         const built = buildGeoPointColumns(rowObjs.map(r => ({
             lat: p.lat ? r[p.lat] : null,
             lon: p.lon ? r[p.lon] : null,
@@ -83,6 +107,11 @@ export function buildRenderPayload(
             unplaced: built.totalRows - built.matchedRows,
             unplacedExamples: built.unmatched.slice(0, 8),
             ambiguousRows: built.ambiguousRows,
+            // Omitted entirely when nothing was adjusted, so the common case adds no bytes
+            // and a chart can treat presence as "something about this binding is worth
+            // saying".
+            ...(rolesBackfilled.length ? { rolesBackfilled } : {}),
+            ...(rolesRefused.length ? { rolesRefused } : {}),
         };
     }
 

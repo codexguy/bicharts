@@ -107,11 +107,19 @@ export interface RenderOptions {
     // so the chart can say what it actually plotted rather than implying exact positions.
     // `unplaced` feeds the off-map annotation; `ambiguousRows` counts rows placed by the
     // largest-match tie-break on a colliding bare city name. Null on every other chart.
+    // `rolesBackfilled` / `rolesRefused` report what the ROLE resolution did to the
+    // binding it was handed. The codegen response names which column is the city, the
+    // state and the ZIP, and that answer is verified rather than trusted: a role it omits
+    // is filled in from the values, and one it names wrongly is dropped. Both are ABSENT
+    // when nothing was adjusted, so presence means "this binding is not what was asked
+    // for" — worth a line on the chart, because it changes how the points were placed.
     geoPoint?: {
         precision: GeoPointPrecision | null;
         unplaced: number;
         unplacedExamples: string[];
         ambiguousRows: number;
+        rolesBackfilled?: string[];
+        rolesRefused?: string[];
     } | null;
     // Point-map mark-count ceiling (Format > Data "Max Map Points", default 1000).
     // The eligibility gate refuses to OFFER a point-map type above this many rows, but
