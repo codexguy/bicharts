@@ -131,6 +131,43 @@ visual — override them if you want a different look:
 .bic-chart-host.lch-has-selection .d3-mark:not(.lch-mark-selected) { opacity: var(--lch-dim-opacity); }
 ```
 
+## Architecture — three layers, and why it matters if you contribute
+
+Read this before adding code. The package has **three** concerns, and they are independent.
+Most well-meaning changes that damage it do so by collapsing two of them.
+
+| layer | knows about | must **not** know about |
+| --- | --- | --- |
+| **1 · Core** | rows, marks as a *concept*, selection state, the cross-filter protocol, option resolution | any charting library, any host |
+| **2 · Renderer adapter** | how *one* library expresses a binding, and where its marks live | the host it is running in |
+| **3 · Host glue** | one host's lifecycle, identity model and settings | a library's internals |
+
+Layer 3 is **not in this package** — it is the integrator's. `createChartHost` is the glue for a
+plain web page; the BIC Power BI visual has its own, because a report host's lifecycle is
+genuinely different. That separation is deliberate: merging them would drag host concepts into a
+package whose entire value is not having them.
+
+**Layer 2 is the one that is easy to get wrong**, because today only one adapter exists (D3) and
+its assumptions are easy to mistake for universal truths. They are not. Two examples from charts
+BIC already generates:
+
+- **Marks are not always DOM elements.** D3 tags them in the DOM (`.d3-mark` + `data-row-idx`).
+  Other libraries carry the row binding in their *data model* instead, on the trace or point.
+  An abstraction phrased as `querySelectorAll(markClass)` is D3's implementation wearing the
+  costume of an interface.
+- **A renderer may support no interaction at all.** Some chart types render to a raster image —
+  no DOM, no marks, nothing to hit-test. A null adapter has to be legal.
+
+So: if you are adding support for another charting library, you should be implementing layer 2
+and touching nothing else. If your change needs edits in the core to make one library work, the
+seam is in the wrong place — please open an issue rather than widening the core.
+
+**Known wart, and it is ours, not yours.** `contract.ts` currently mixes layers 1 and 2:
+`MARK_CLASS` (`"d3-mark"`) and `ROW_IDX_ATTR` are D3's binding mechanism, while
+`XFILTER_REFRESH_EVENT`, the `lch-*` selection classes and `DIM_OPACITY_VAR` are genuinely
+renderer-neutral. The names are historical. Do not take the file's current shape as licence to
+add more renderer-specific constants to it.
+
 ## Versioning
 
 `HOST_CONTRACT_VERSION` is the grammar version (mark classes, container slots, the cross-filter
