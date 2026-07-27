@@ -59,6 +59,14 @@ const result = await build({
         index: join(here, "src/index.ts"),
         react: join(here, "src/react.tsx"),
         geo: join(here, "src/geo.ts"),
+        // PER-ASSET entries. `geo` is all-or-nothing by construction — geoForKind names every
+        // asset, so a host that wanted one map had to bundle all three. Each entry below
+        // re-exports exactly one generated asset, letting a host pick what it ships and supply
+        // the rest through registerGeoAsset. splitting:true already puts each generated module
+        // in its own chunk, so these entries cost a few hundred bytes apiece.
+        "geo-world": join(here, "src/geo-world.ts"),
+        "geo-us-states": join(here, "src/geo-us-states.ts"),
+        "geo-us-zip3": join(here, "src/geo-us-zip3.ts"),
     },
     bundle: true,
     splitting: true,
