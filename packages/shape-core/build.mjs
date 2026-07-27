@@ -16,6 +16,22 @@ import { execFileSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+// THE PUBLISHED ARTIFACT IS A BUILD, NOT THE SOURCE.
+//
+// This package is Apache-2.0 and its repository is public, so this is not secrecy — the
+// source is on GitHub for anyone who wants to read, fork or verify it. It is about what the
+// npm tarball IS. Until now `npm install @bicharts/shape-core` delivered unminified ESM
+// alongside 16 sourcemaps with `sourcesContent`, which embeds every original .ts file
+// verbatim, comments included. That is not "shipping a package that happens to be
+// inspectable"; it is shipping the source tree with extra steps, and it happened by default
+// rather than by decision.
+//
+// So: `npm run build` stays readable with sourcemaps, because that is what you want when
+// debugging locally. `prepack` — which npm runs for every publish, whether or not anyone
+// remembers — minifies and emits no maps. The .d.ts files are unaffected: consumers need the
+// types, and an API surface is meant to be public.
+const MINIFY = process.argv.includes("--minify");
+
 function sourceHash() {
     const files = [];
     const walk = (d) => {
@@ -63,17 +79,23 @@ await build({
     outExtension: { ".js": ".mjs" },
     // A real dependency, not something to inline — consumers resolve their own copy.
     external: ["papaparse"],
+    minify: MINIFY,
+    // Attribution survives minification: GeoNames CC BY 4.0 is a licence CONDITION, and
+    // esbuild strips ordinary comments. `legalComments: "inline"` keeps /*! */ blocks, and
+    // the banner below is emitted regardless.
     legalComments: "inline",
     banner: {
         js: "/*! @bicharts/shape-core — Apache-2.0. Bundled reference data: GeoNames "
           + "(https://www.geonames.org/) CC BY 4.0; US Census/TIGER (public domain). "
           + "Full text: NOTICE in this package. */",
     },
-    sourcemap: true,
+    // Never in the published artifact — a map with sourcesContent carries the whole original
+    // .ts file and would undo the line above completely.
+    sourcemap: !MINIFY,
 });
 
 execFileSync("npx", ["tsc", "-p", join(here, "tsconfig.build.json")], {
     stdio: "inherit", cwd: here, shell: process.platform === "win32",
 });
 
-console.log(`built dist — src:${hash} (${count} files)`);
+console.log(`built dist — src:${hash} (${count} files)${MINIFY ? " [minified, no sourcemaps]" : ""}`);

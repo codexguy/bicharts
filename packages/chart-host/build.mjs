@@ -96,7 +96,14 @@ const result = await build({
           + "(public domain). Full text: NOTICE in this package. */",
     },
     metafile: true,
-    sourcemap: true,
+    // OFF by default, and deliberately NOT tied to minification — this package's dist stays
+    // readable, because "you can inspect what runs your charts" is the point of publishing it.
+    // What a sourcemap adds on top is `sourcesContent`: every original .ts file embedded
+    // verbatim. Four of those came from a SIBLING package (shape-core's geoDetector, geoPoint,
+    // geoPointRoles, geoPointTables), because this build compiles shape-core from source — so
+    // publishing maps here re-exported that package's source regardless of what shape-core
+    // itself shipped. Pass --sourcemap when debugging locally.
+    sourcemap: process.argv.includes("--sourcemap"),
 });
 
 // Declarations. tsc pulls shape-core in as a dependency of payload.ts and emits it under a
