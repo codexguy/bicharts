@@ -73,9 +73,42 @@ describe("ZIP-3 interior rings", () => {
             .toEqual([]);
     });
 
+    it("covers every ZIP-3 in the source shapefile", () => {
+        // The national build ran Visvalingam 5% + precision=0.01, and 0.01 degrees is about
+        // 1.1 km — so five small urban regions rounded to degenerate rings and were dropped:
+        // 111 (Long Island City NY), 202/204/205 (Washington DC federal) and 753 (Dallas TX).
+        // Four vanished outright and one survived as an empty shell, which is why only the
+        // shell was noticed. All five are recovered from the source at 3 dp.
+        expect(US_ZIP3.features.length).toBe(896);
+        for (const id of ["111", "202", "204", "205", "753"]) {
+            const f = US_ZIP3.features.find((x: any) => x.id === id);
+            expect(f, `ZIP-3 ${id} is missing — the simplification pass dropped it again`).toBeTruthy();
+            expect(rings(f).ext.length, `${id} has no drawable ring`).toBeGreaterThan(0);
+        }
+    });
+
+    it("puts the recovered regions where they actually are", () => {
+        // A polygon that draws but sits in the wrong place is worse than one that is absent,
+        // so the recovered five are checked against their real locations, not merely for
+        // existence. Winding matters here too: a ring reversed the wrong way reads as
+        // >2*pi steradians to d3.geoPath and floods the whole canvas.
+        const centroid = (id: string) => {
+            const r = rings(US_ZIP3.features.find((f: any) => f.id === id)).ext[0];
+            return [r.reduce((s, c) => s + c[0], 0) / r.length, r.reduce((s, c) => s + c[1], 0) / r.length];
+        };
+        const near = (id: string, lon: number, lat: number, tol = 0.5) => {
+            const [x, y] = centroid(id);
+            expect(Math.abs(x - lon), `${id} longitude`).toBeLessThan(tol);
+            expect(Math.abs(y - lat), `${id} latitude`).toBeLessThan(tol);
+        };
+        near("111", -73.92, 40.75);    // Long Island City, western Queens
+        near("202", -77.02, 38.88);    // Washington DC
+        near("204", -77.05, 38.89);
+        near("205", -77.01, 38.87);
+        near("753", -96.84, 32.81);    // Dallas
+    });
+
     it("left the exterior boundaries alone", () => {
-        // The clean must not touch outlines: 892 source features minus the one empty shell.
-        expect(US_ZIP3.features.length).toBe(891);
         for (const f of US_ZIP3.features as any[]) {
             const { ext } = rings(f);
             expect(ext.length, `${f.id} lost its exterior ring`).toBeGreaterThan(0);
