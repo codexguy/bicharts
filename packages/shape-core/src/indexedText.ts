@@ -730,9 +730,9 @@ export class IndexedText implements IValueCollection {
                     const aDet = distinctPairs === cardA;   // A 1:1-determines B
                     const bDet = distinctPairs === cardB;   // B 1:1-determines A
                     (this._cols[a].categoricalPairStats ||= []).push(
-                        { otherColumn: this._cols[b].name, fillPct, determinesOther: aDet, minCellCount });
+                        { otherColumn: this._cols[b].name, fillPct, determinesOther: aDet, minCellCount, distinctCombinations: distinctPairs });
                     (this._cols[b].categoricalPairStats ||= []).push(
-                        { otherColumn: this._cols[a].name, fillPct, determinesOther: bDet, minCellCount });
+                        { otherColumn: this._cols[a].name, fillPct, determinesOther: bDet, minCellCount, distinctCombinations: distinctPairs });
                     if (aDet && cardA > cardB) {           // A nested under (strictly coarser) B
                         const cur = parentCand.get(a);
                         if (!cur || cardB < cur.card)

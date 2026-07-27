@@ -187,7 +187,22 @@ export type LLMColumnWithValue =
         // count — the sparsest group a distribution chart (box/violin) would draw
         // when split by this pair. A box/whisker on a handful of points overstates
         // quartile precision; the server suppresses box geometry below a threshold.
-        categoricalPairStats?: { otherColumn: string, fillPct: number, determinesOther: boolean, minCellCount?: number }[]
+        // distinctCombinations (2026-07-27): the RAW distinct (this,other) pair count
+        // fillPct was already derived from (fillPct = round(distinctCombinations /
+        // (cardThis*cardOther) * 100)) but never itself shipped — a downstream consumer
+        // could only reconstruct it approximately from a rounded percentage. Added so a
+        // HIERARCHY chart's true leaf count is a fact the server can read, not a guess:
+        // for a well-formed hierarchy, the (deepest-child, its 1:1 parent) pair's
+        // distinctCombinations equals the TRUE leaf count of the whole chain, however
+        // many coarser levels sit above it, because each intermediate level is itself
+        // 1:1-determined (primaryParentColumn below) — no separate N-way count needed.
+        // Genesis: a Dendrogram's own leaf count was estimated server-side as the single
+        // largest column's DistinctCount (34, Subcategory alone) when the true nested
+        // (Department,Category,Subcategory) leaf count was 40 — 4 subcategory NAMES
+        // legitimately repeat under different parent categories, which only a real
+        // pairwise count (not a single column's cardinality) can see. Consumption is
+        // v2.2 (RELEASE-2.2-PLAN.md item 15); this ships the fact now so it exists.
+        categoricalPairStats?: { otherColumn: string, fillPct: number, determinesOther: boolean, minCellCount?: number, distinctCombinations?: number }[]
         // NESTING DIRECTION (2026-06-18). determinesOther is bidirectional; this resolves it:
         // when THIS column 1:1-determines a STRICTLY coarser column, THIS column is NESTED
         // UNDER it and primaryParentColumn names that (coarsest) parent. nestingRatio =
