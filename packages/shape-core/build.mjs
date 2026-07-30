@@ -61,6 +61,7 @@ const { hash, count } = sourceHash();
 await build({
     entryPoints: {
         index: join(here, "src/index.ts"),
+        ingest: join(here, "src/ingest.ts"),
         indexedText: join(here, "src/indexedText.ts"),
         models: join(here, "src/models.ts"),
         geoDetector: join(here, "src/geoDetector.ts"),

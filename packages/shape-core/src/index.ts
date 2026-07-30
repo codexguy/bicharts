@@ -63,3 +63,12 @@ export { monthLookupFor, normalizeMonthKey } from "./monthNames";
 
 // Pure utilities (shared so adapters can hash/stringify identically to the engine).
 export { STR, SIMPLE_STRING_HASH, GET_RANDOM } from "./util";
+
+// THE INGEST FRONT DOOR — many source shapes, one measured result. Adapters no longer need
+// to hand-build columns and feed addRow themselves; a decoder translates what the source
+// already knows into descriptors, and the shared core does the rest. Also published as the
+// "@bicharts/shape-core/ingest" subpath for consumers who want only this.
+export { ingest, engineTypeForSqlType } from "./ingest";
+export type {
+    DataSource, IngestOptions, IngestResult, ColumnDescriptor, SqlColumnMeta, EngineDataType,
+} from "./ingest";

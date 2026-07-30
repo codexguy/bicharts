@@ -356,6 +356,15 @@ export class IndexedText implements IValueCollection {
     private _origIndices: number[] = [];
     private _rowHashes: Set<number> = new Set<number>();
 
+    /**
+     * Collapse value-identical rows on addRow. DEFAULT TRUE — the long-standing behaviour,
+     * and the right one for shape measurement. See addRow for when to turn it off.
+     *
+     * A public field rather than a constructor argument so it stays additive: existing
+     * callers construct IndexedText with no arguments and are unaffected.
+     */
+    public dedupRows: boolean = true;
+
     private STR(v: any): string {
         if (v === null || v === undefined) {
             return "";
@@ -1109,19 +1118,29 @@ export class IndexedText implements IValueCollection {
     }
 
     public addRow(colvals: any[], originalIdx?: number) {
-        let str = "";
-        for (const v of colvals) {
-            str += this.STR(v) + "~";
-        }
-        const hash = SIMPLE_STRING_HASH(str);
+        // Value-identical rows are collapsed by DEFAULT: duplicates carry no shape
+        // information and inflate every distribution statistic derived from counts.
+        //
+        // Set `dedupRows = false` when row identity matters more than shape fidelity —
+        // the accumulated rows must line up one-to-one with the source for selection
+        // round-tripping, or repetition is itself the signal (raw event streams, where
+        // the same reading twice is data rather than noise). The hashing is skipped
+        // entirely in that mode, so it costs nothing to turn off.
+        if (this.dedupRows) {
+            let str = "";
+            for (const v of colvals) {
+                str += this.STR(v) + "~";
+            }
+            const hash = SIMPLE_STRING_HASH(str);
 
-        if (this._rowHashes.has(hash)) {
-            return false;
+            if (this._rowHashes.has(hash)) {
+                return false;
+            }
+            this._rowHashes.add(hash);
         }
 
         this._rows.push(colvals);
         this._origIndices.push(originalIdx === undefined || originalIdx === null ? -1 : originalIdx);
-        this._rowHashes.add(hash);
         return true;
     }
 
