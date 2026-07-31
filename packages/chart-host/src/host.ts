@@ -102,6 +102,26 @@ const D3_PLUGIN_PACKAGES: Record<string, string> = {
     weightedVoronoi: "d3-weighted-voronoi",
 };
 
+// FAIL FAST, not fail deep (GAP-6, 2026-07-31). explainRenderFailure below turns a plugin
+// crash into an actionable message, but only AFTER the chart has thrown and drawn nothing.
+// A host that knows what a chart needs BEFORE running it can install the plugin, warn, or
+// choose a different chart. The Power BI visual has always sniffed the code this way to pick
+// which CDN bundles to load; this is that sniff, exported, so an SDK/MCP host stops being the
+// only consumer flying blind.
+//
+// Deliberately a STATIC SCAN of `d3.<name>(` rather than a trial render: synchronous, side
+// effect free, and safe on untrusted generated code — which executing is not. Over-reporting
+// is the safe direction: naming a plugin the chart turns out not to reach costs a needless
+// install, while missing one costs a blank chart failing several frames deep.
+export function requiredD3Plugins(code: string): string[] {
+    const out = new Set<string>();
+    for (const m of String(code || "").matchAll(/\bd3\s*\.\s*(\w+)\s*\(/g)) {
+        const pkg = D3_PLUGIN_PACKAGES[m[1]];
+        if (pkg) out.add(pkg);
+    }
+    return [...out].sort();
+}
+
 export function explainRenderFailure(err: unknown, d3: any): unknown {
     const msg = String((err as any)?.message ?? err ?? "");
     if (!d3) {

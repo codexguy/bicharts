@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { createChartHost, explainRenderFailure } from "../src/host";
+import { createChartHost, explainRenderFailure, requiredD3Plugins } from "../src/host";
 
 // SHAREABLE-SDK-PLAN Phase 3 (GAP-6). "Requires D3 v7" was the whole of the d3 story, and
 // it was wrong for the bundled path (compileRenderFn INJECTS d3, so there is no global).
@@ -50,6 +50,72 @@ describe("d3 failure messages are actionable", () => {
     });
 
     it("surfaces the actionable error from an actual render()", () => {
+        const host = createChartHost(container, {
+            data: { columns: [{ name: "c" }], rows: [["a", 0]] },
+            code: "function render(c,d,o){ d3.sankey(); }",
+            d3: {},                                  // a d3 with no sankey attached
+        });
+        expect(() => host.render()).toThrow(/d3-sankey/);
+    });
+});
+
+// GAP-6's other half (2026-07-31): asking BEFORE the render. The message above only arrives
+// once the chart has already thrown and drawn nothing, which is too late for a host that
+// could simply have installed the plugin — the exact position an MCP/React consumer is in.
+describe("requiredD3Plugins — what this chart needs, before running it", () => {
+    it("names the package for a sankey, from code alone", () => {
+        expect(requiredD3Plugins("function render(){ const g = d3.sankey().nodeWidth(15); }"))
+            .toEqual(["d3-sankey"]);
+    });
+
+    it("dedupes the many call names that come from ONE package", () => {
+        // sankey/sankeyLinkHorizontal/sankeyJustify all ship in d3-sankey; a host should be
+        // told to install one thing, not three.
+        const code = "d3.sankey(); d3.sankeyLinkHorizontal(); d3.sankeyJustify(); d3.sankeyCenter();";
+        expect(requiredD3Plugins(code)).toEqual(["d3-sankey"]);
+    });
+
+    it("reports every distinct package a chart touches, sorted for a stable message", () => {
+        const code = "d3.voronoiTreemap(); d3.hexbin(); d3.weightedVoronoi();";
+        expect(requiredD3Plugins(code)).toEqual(["d3-hexbin", "d3-voronoi-treemap", "d3-weighted-voronoi"]);
+    });
+
+    it("returns nothing for core-only d3 — the common case must stay silent", () => {
+        // Over-reporting here would train hosts to ignore the list.
+        expect(requiredD3Plugins("d3.select(el).append('svg'); d3.scaleLinear(); d3.max(v);")).toEqual([]);
+    });
+
+    it("is not fooled by whitespace, and ignores look-alike member names", () => {
+        expect(requiredD3Plugins("d3 . sankey ( )")).toEqual(["d3-sankey"]);
+        // `mysankey(` is not `d3.sankey(`, and a bare property read is not a call.
+        expect(requiredD3Plugins("mysankey(); const f = d3.sankey;")).toEqual([]);
+    });
+
+    it("never throws on empty, null or non-string input", () => {
+        expect(requiredD3Plugins("")).toEqual([]);
+        expect(requiredD3Plugins(null as any)).toEqual([]);
+        expect(requiredD3Plugins(undefined as any)).toEqual([]);
+    });
+
+    it("agrees with explainRenderFailure — the same call maps to the same package", () => {
+        // The two halves must never drift: one predicts, the other diagnoses, and a host that
+        // sees different package names from them has no idea which to trust.
+        for (const call of ["sankey", "hexbin", "voronoiTreemap", "voronoiMap", "weightedVoronoi"]) {
+            const [pkg] = requiredD3Plugins(`d3.${call}()`);
+            const msg = String((explainRenderFailure(new TypeError(`d3.${call} is not a function`), {}) as Error).message);
+            expect(msg).toContain(pkg);
+        }
+    });
+});
+
+describe("d3 failure messages, continued", () => {
+    let container: HTMLElement;
+    beforeEach(() => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+    });
+
+    it("still surfaces the actionable error from an actual render()", () => {
         const host = createChartHost(container, {
             data: { columns: [{ name: "c" }], rows: [["a", 0]] },
             code: "function render(c,d,o){ d3.sankey(); }",

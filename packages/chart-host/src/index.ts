@@ -13,6 +13,9 @@ export {
     type GeoAssetName,
 } from "./geoLazy";
 export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./payload";
-export { createChartHost, compileRenderFn, type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
+// requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):
+// ask BEFORE rendering, explain AFTER a failure. Both belong on the public surface — a host
+// that can only do the second one has already drawn a blank chart.
+export { createChartHost, compileRenderFn, requiredD3Plugins, explainRenderFailure, type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
 export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./selection";
 
