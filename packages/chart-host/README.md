@@ -120,6 +120,19 @@ The integration contract returned by `generate_chart` names exactly which ones *
 needs. If one is missing, the host throws a message naming the package instead of a bare
 `d3.sankey is not a function`.
 
+You can also ask the code itself, *before* rendering it — which is what you want when the chart
+arrives at run time and a blank frame is not an acceptable answer:
+
+```js
+import { requiredD3Plugins } from "@bicharts/chart-host";
+
+requiredD3Plugins(code);            // -> ["d3-sankey"]  (sorted, deduped, [] for core-only d3)
+```
+
+It is a static scan, not a trial render: synchronous, side-effect free, and safe to run on
+generated code you have not executed yet. It errs toward naming a plugin the chart may not
+reach — a needless install is cheaper than a blank chart.
+
 ## Selection styling
 
 Generated code emits marks and `data-row-idx`; it never styles "selected", because only the host
