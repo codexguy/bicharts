@@ -64,6 +64,40 @@ payload→source row mapping — which is the part you must not hand-roll:
 > zero, so the same integer now denotes a different record. Comparing indices across two charts
 > does not throw — it quietly filters to the wrong thing.
 
+### The coordinated dashboard: one chart filters, the other highlights
+
+The pairing almost every dashboard actually wants. A table *filters* down to the selection; a
+map **keeps every bubble and dims the rest**, because filtering a map to one city throws the
+geography away and leaves nothing to click to change the selection.
+
+```tsx
+<BicChartGroup columns={columns} rows={rows} point={{ city: "City", state: "StateOrProvince" }}>
+  <BicChart id="map"   code={mapCode}   d3={d3} geoKind="na" respondsWith="highlight" />
+  <BicChart id="table" code={tableCode} d3={d3} />
+</BicChartGroup>
+```
+
+That is the whole recipe. `respondsWith="highlight"` keeps the full payload and paints the
+sibling's selection onto the marks, so the map is **re-painted, never re-rendered** — it holds
+its projection, zoom and basemap while the table filters beside it. The rest follows from rules
+the group already enforces:
+
+- **A chart never filters itself.** The origin keeps all its marks with the selected ones lit,
+  so the gesture stays reversible.
+- **Mutual by default.** Click a bubble → the table filters; click a row → the map highlights.
+  Add `filteredBy="table"` only when you want one-way wiring.
+- **Clearing** is `group.clear()`, or clicking the selected mark again.
+
+Outside React it is `host.selection.highlight(rowIdxs)` on the chart that should dim, and
+`setData()` with a filtered payload on the one that should filter. Both notify subscribers with
+source `"host"` — that tag is what stops two linked charts republishing each other's selection
+and fighting.
+
+Do **not** reach for the `lch-*` classes to do this by hand. They are an implementation detail
+of the affordance, they are re-applied on every render (so a manual `classList` poke is lost at
+the next data change), and getting row indices right across a filtered payload is the hazard
+above.
+
 ## Vanilla
 
 ```js

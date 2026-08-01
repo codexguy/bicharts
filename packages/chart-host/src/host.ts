@@ -75,6 +75,22 @@ export interface ChartHost {
         onChange(cb: (rowIdxs: number[], source: string) => void): () => void;
         /** Clear the chart's own selection (calls __llmXfClear when the chart set it). */
         clear(): void;
+        /**
+         * Paint a selection that came from ANOTHER chart — highlight instead of filter.
+         *
+         * The chart keeps every mark and dims the ones outside `rowIdxs`, which is what a
+         * map wants when a companion table is filtered: the geography stays legible and
+         * there is still something to click to change or clear the selection. Contrast the
+         * `<BicChartGroup>` default, which re-derives a FILTERED payload for the partner.
+         *
+         * Indices are in THIS chart's payload space. In a group that is the same space as
+         * the source chart's, because the group hands every member the same rows; outside
+         * one, translate first — the row-index hazard this package exists to absorb.
+         *
+         * Subscribers are notified with source `"host"`, so a mutual pair does not
+         * republish what the other just sent and fight itself.
+         */
+        highlight(rowIdxs: number[]): void;
         readonly current: number[] | null;
     };
     animation: {
@@ -432,6 +448,18 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 // a chart that clears WITHOUT dispatching would otherwise leave the host
                 // (and every subscriber) believing the old selection is still live.
                 notify([], "host");
+            },
+            highlight(rowIdxs) {
+                // HIGHLIGHT, DON'T FILTER — the second half of a coordinated dashboard, and
+                // until now the half a host had to hand-roll out of the lch-* class grammar
+                // after reading this package's source. (Measured 2026-08-01: ~5 minutes of a
+                // build spent exactly there.)
+                //
+                // Source "host" is load-bearing, not a label: it is the marker that says
+                // "this selection came from OUTSIDE, do not publish it back". Without it a
+                // pair of mutually-linked charts each republish what the other just sent and
+                // the dashboard fights itself.
+                notify(Array.isArray(rowIdxs) ? rowIdxs.slice() : [], "host");
             },
             get current() { return current; },
         },

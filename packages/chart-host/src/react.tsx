@@ -39,6 +39,19 @@ export interface BicChartProps {
     id?: string;
     /** Take this group member's selection as a filter on THIS chart's rows. */
     filteredBy?: string;
+    /**
+     * How this chart REACTS to a sibling's selection.
+     *
+     *   "filter"    (default) — re-render with only the selected rows.
+     *   "highlight"           — keep every mark, dim the ones outside the selection.
+     *
+     * A map almost always wants "highlight": filtering a bubble map to one city throws the
+     * geography away, and the dashboard that motivated this option hand-rolled the dim out
+     * of the `lch-*` classes to get it back. A table almost always wants "filter". The pair
+     * — map highlights, table filters — is the ordinary coordinated dashboard, and it is
+     * now two props rather than a DOM workaround.
+     */
+    respondsWith?: "filter" | "highlight";
     /** Selection callback in SOURCE row indices (group) or payload indices (standalone). */
     onSelect?: (rowIdxs: number[]) => void;
     className?: string;
@@ -125,7 +138,8 @@ function payloadFor(g: GroupCtx, sourceIdxs: number[] | null) {
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, id, filteredBy, onSelect, className, style } = props;
+    const { code, renderFn, options, d3, geoKind, id, filteredBy, respondsWith,
+            onSelect, className, style } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -135,9 +149,15 @@ export function BicChart(props: BicChartProps) {
     // `filteredBy` narrows this to ONE partner when a page wants explicit one-way wiring;
     // omit it and the chart responds to whichever sibling published — mutual by default.
     const active = group ? group.selection : null;
-    const filterSel = !group ? null
+    const incoming = !group ? null
         : (filteredBy ? (active!.sourceId === filteredBy ? group.filterFor(id) : null)
                       : group.filterFor(id));
+    // HIGHLIGHT mode keeps the FULL payload — the sibling's selection is painted onto the
+    // marks below instead of removing rows. Splitting it here rather than downstream is
+    // what makes it a re-paint and not a re-render: the chart is never rebuilt, so a map
+    // keeps its projection, its zoom and its basemap while the table beside it filters.
+    const highlightMode = respondsWith === "highlight";
+    const filterSel = highlightMode ? null : incoming;
     const built = useMemo(() => {
         if (!group) return null;
         return payloadFor(group, filterSel);
@@ -196,12 +216,27 @@ export function BicChart(props: BicChartProps) {
     // Drop a STALE highlight: once the group's selection belongs to someone else (or was
     // cleared), this chart must stop showing its own marks as selected. Without it a
     // "Clear" button empties the filter while the origin chart stays visibly dimmed.
+    //
+    // In HIGHLIGHT mode the same effect does the opposite job as well: a sibling's
+    // selection is PAINTED here rather than clearing. Both branches route through the
+    // host's `"host"` source, so nothing published here comes back as a new selection.
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !group) return;
         const mine = group.selection.sourceId === id && group.selection.rows.length > 0;
-        if (!mine && host.selection.current && host.selection.current.length) host.selection.clear();
-    }, [group?.selection, id, group]);
+        if (mine) return;                       // our own selection — the host already painted it
+        if (highlightMode && incoming && incoming.length) {
+            // Group members share one row space (every member is handed the same rows), so
+            // the sibling's source indices ARE this chart's payload indices — no
+            // translation. That equality is exactly what payloadFor's rowMap buys, and it
+            // holds only while this chart keeps the unfiltered payload, which is what
+            // highlight mode guarantees.
+            host.selection.highlight(incoming);
+            return;
+        }
+        if (host.selection.current && host.selection.current.length) host.selection.clear();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [group?.selection, id, group, highlightMode, incoming && incoming.join(",")]);
 
     // No children: the chart owns this element's contents.
     return <div ref={ref} className={className} style={style} />;
