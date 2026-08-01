@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 import { createChartHost, type ChartHost, type ChartHostConfig } from "./host";
 import type { ResolveOptionsInput } from "./defaults";
 import { buildRenderPayload, type GeoPointBinding } from "./payload";
+import { geoFromCache, loadGeo } from "./geoLazy";
 
 export interface BicChartProps {
     /** Generated render() source (an ES module's `code` export, or the raw string). */
@@ -169,6 +170,25 @@ export function BicChart(props: BicChartProps) {
     // Keep the newest callback without making it a rebuild trigger.
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
+
+    // GEOMETRY — core render() is synchronous by contract, so the host can only attach what
+    // is already cached; a cold cache used to mean a bubble map that painted its marks over
+    // NO land, with nothing but a console warning (2026-08-01). This binding is the one
+    // async-aware layer, so it owns the fetch: when `geoKind` names geometry the cache
+    // doesn't hold, load it and re-render.
+    // loadGeo is cached and idempotent (StrictMode double-run is free), and a chart with no
+    // geoKind never touches it. Preloading before mount still works and skips the one-frame
+    // basemap pop-in.
+    const [geoTick, setGeoTick] = useState(0);
+    useEffect(() => {
+        if (!geoKind || geoFromCache(geoKind)) return;
+        let alive = true;
+        loadGeo(geoKind).then(g => { if (alive && g) setGeoTick(t => t + 1); });
+        return () => { alive = false; };
+    }, [geoKind]);
+    useEffect(() => {
+        if (geoTick) hostRef.current?.render();
+    }, [geoTick]);
 
     // BUILD/TEARDOWN — only when the code identity changes. useLayoutEffect so the chart
     // paints before the browser does, avoiding a flash of empty container.

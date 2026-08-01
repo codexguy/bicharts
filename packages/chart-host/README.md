@@ -72,7 +72,7 @@ geography away and leaves nothing to click to change the selection.
 
 ```tsx
 <BicChartGroup columns={columns} rows={rows} point={{ city: "City", state: "StateOrProvince" }}>
-  <BicChart id="map"   code={mapCode}   d3={d3} geoKind="na" respondsWith="highlight" />
+  <BicChart id="map"   code={mapCode}   d3={d3} geoKind="north-america" respondsWith="highlight" />
   <BicChart id="table" code={tableCode} d3={d3} />
 </BicChartGroup>
 ```
@@ -137,7 +137,11 @@ createChartHost(el, { code, data, d3, geoKind, geoProvider: geoForKind });
 createChartHost(el, { code, data, d3, options: { geo } });   // or pass data.geo.json directly
 ```
 
-Setting `geoKind` with no geometry available warns and draws without a basemap.
+The React `<BicChart>` handles this itself: give it `geoKind` and it fetches the geometry when
+the cache is cold, re-rendering with the basemap when it lands. `await loadGeo(kind)` before
+mounting still works and skips the one-frame pop-in. Outside React, `render()` is synchronous
+by contract, so setting `geoKind` with no geometry available warns and draws without a
+basemap — load or provide geometry first.
 
 ## D3 plugins
 
