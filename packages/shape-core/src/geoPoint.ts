@@ -84,6 +84,49 @@ function cityIndex(): Map<string, CityRow[]> {
     return m;
 }
 
+// "<X> City" written as bare "<X>". Nobody types "New York City" or "Mexico City" in a
+// city column — they type "New York" and "Mexico" — and the bare form is in NO gazetteer,
+// so the row fell straight through to the STATE tier and landed on a state centroid. NYC
+// was ~25 km off (the NY centroid sits near the city that dominates its population), which
+// is precisely why it never looked broken: silently wrong, geographically plausible.
+//
+// A blanket "retry with ' city' appended" is NOT safe — it is actively worse than the
+// status quo for bare STATE names, which also collide with small "* City" towns:
+//   "Missouri" -> Missouri City, TX (pop 74k)   "Texas" -> Texas City, TX (47k)
+//   "Iowa"     -> Iowa City, IA     (74k)       "Oregon" -> Oregon City, OR (35k)
+// The discriminator is POPULATION, and it separates the two sets cleanly with nothing in
+// between: every correct shorthand is >= 200k (Mexico 12.3M, New York 8.8M, Oklahoma 681k,
+// Kansas 475k, Jersey 264k, Salt Lake 215k) and every harmful one is <= 136k. So the rule
+// is stated as what it actually is — a bare name is shorthand for "<X> City" only when
+// that city is big enough that the shorthand is what people mean.
+//
+// The alias rows go through the IDENTICAL narrowing/disambiguation path as a direct hit,
+// so a contradicting state still refuses it ("New York, CA" does not become NYC).
+const CITY_SUFFIX_ALIAS_MIN_POP = 200;   // thousands, matching the packed table's units
+
+let _cityAlias: Map<string, CityRow[]> | null = null;
+function cityAliasIndex(): Map<string, CityRow[]> {
+    if (_cityAlias) return _cityAlias;
+    const m = new Map<string, CityRow[]>();
+    for (const [key, rows] of cityIndex()) {
+        if (!key.endsWith(" city")) continue;
+        const bare = key.slice(0, -5);
+        // A bare form that is ALREADY a city name of its own keeps that meaning.
+        if (!bare || cityIndex().has(bare)) continue;
+        if (rows[0].pop < CITY_SUFFIX_ALIAS_MIN_POP) continue;   // rows are pop-descending
+        m.set(bare, rows);
+    }
+    _cityAlias = m;
+    return m;
+}
+
+/** Candidate city rows for an already-normalized name: the direct gazetteer hit, else the
+ *  "<name> City" shorthand when that city is dominant enough to be what was meant. */
+function cityRowsFor(key: string): CityRow[] | undefined {
+    if (!key) return undefined;
+    return cityIndex().get(key) ?? cityAliasIndex().get(key);
+}
+
 let _admins: Map<string, Admin1Row> | null = null;   // BOTH code and name -> row
 function adminIndex(): Map<string, Admin1Row> {
     if (_admins) return _admins;
@@ -253,7 +296,7 @@ export function resolveGeoPoint(args: {
     // 2. City (+ state when present to disambiguate, + country to narrow).
     if (args.city !== undefined && args.city !== null) {
         const key = normalizePlaceName(String(args.city));
-        let rows = key ? cityIndex().get(key) : undefined;
+        let rows = cityRowsFor(key);
         // COUNTRY NARROWING. Restricting the candidates to the row's own country is what
         // stops a bare "Burlington" on a US row landing in Ontario because the Canadian
         // one is larger. An empty result is INFORMATION, not a miss to be papered over:
@@ -300,6 +343,17 @@ export type GeoPointColumns = {
     lon: (number | null)[];
     /** COARSEST precision actually used, so the caller can annotate honestly. */
     precision: GeoPointPrecision | null;
+    /** HOW MANY rows landed on each tier. The scalar above is a WORST CASE and says
+     *  nothing about how much of the map it describes: one state-centroid row among 41
+     *  city rows reports identically to an all-state map, so a caption written off the
+     *  scalar alone ("approximated to state centres") is FALSE for 41 of the 42 rows.
+     *  Count what is actually there, so the annotation can be specific — or stay silent
+     *  when the coarse tail is a rounding error. */
+    precisionCounts: Record<GeoPointPrecision, number>;
+    /** Distinct inputs that landed COARSER than a city point — exactly the rows a
+     *  state/ZIP-centroid caption is about, and the ones a diagnostic should name.
+     *  Capped; `precisionCounts` carries the true totals. */
+    coarseExamples: string[];
     /** Distinct inputs that resolved to nothing (feeds the off-map annotation). */
     unmatched: string[];
     /** Rows placed by the largest-match tie-break on an ambiguous bare city name. */
@@ -310,12 +364,17 @@ export type GeoPointColumns = {
 
 const PRECISION_RANK: Record<GeoPointPrecision, number> = { latlon: 0, city: 1, zip3: 2, state: 3 };
 
+/** Enough to name the offenders in a caption or a log line without unbounded growth. */
+const COARSE_EXAMPLE_CAP = 8;
+
 /**
  * Build aligned __geoLat__ / __geoLon__ columns for a full table. Pure.
  *
  * `precision` reports the COARSEST tier any row needed, because that is what bounds
  * what the chart may claim: one state-centroid row among a thousand city rows still
- * means the map is not uniformly city-accurate.
+ * means the map is not uniformly city-accurate. It is a CEILING, not a description —
+ * `precisionCounts` says how many rows each tier actually covers, and anything written
+ * for the user should be built from the counts.
  */
 export function buildGeoPointColumns(
     rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any; country?: any }>,
@@ -324,6 +383,10 @@ export function buildGeoPointColumns(
     const lon: (number | null)[] = new Array(rows.length);
     const unmatchedSeen = new Set<string>();
     const unmatched: string[] = [];
+    const coarseSeen = new Set<string>();
+    const coarseExamples: string[] = [];
+    const precisionCounts: Record<GeoPointPrecision, number> =
+        { latlon: 0, city: 0, zip3: 0, state: 0 };
     let matchedRows = 0, ambiguousRows = 0;
     let coarsest: GeoPointPrecision | null = null;
 
@@ -333,29 +396,44 @@ export function buildGeoPointColumns(
         if (hit) {
             lat[i] = hit.lat; lon[i] = hit.lon;
             matchedRows++;
+            precisionCounts[hit.precision]++;
             if (hit.ambiguous) ambiguousRows++;
             if (coarsest === null || PRECISION_RANK[hit.precision] > PRECISION_RANK[coarsest])
                 coarsest = hit.precision;
+            if (PRECISION_RANK[hit.precision] > PRECISION_RANK.city) {
+                const label = describeRow(r);
+                if (label && !coarseSeen.has(label.toLowerCase())) {
+                    coarseSeen.add(label.toLowerCase());
+                    if (coarseExamples.length < COARSE_EXAMPLE_CAP) coarseExamples.push(label);
+                }
+            }
         } else {
             lat[i] = null; lon[i] = null;
-            // Report the most specific thing the row offered, so the annotation names
-            // something the user recognizes.
-            const label = [r.city, r.state, r.zip].filter(v => v !== null && v !== undefined && String(v).trim() !== "")
-                .map(v => String(v).trim()).join(", ");
+            const label = describeRow(r);
             if (label && !unmatchedSeen.has(label.toLowerCase())) {
                 unmatchedSeen.add(label.toLowerCase());
                 unmatched.push(label);
             }
         }
     }
-    return { lat, lon, precision: coarsest, unmatched, ambiguousRows, matchedRows, totalRows: rows.length };
+    return { lat, lon, precision: coarsest, precisionCounts, coarseExamples,
+             unmatched, ambiguousRows, matchedRows, totalRows: rows.length };
+}
+
+/** The most specific thing the row offered, so an annotation names something the user
+ *  recognizes ("Nowhereville, TX" rather than "row 37"). */
+function describeRow(r: { city?: any; state?: any; zip?: any }): string {
+    return [r.city, r.state, r.zip]
+        .filter(v => v !== null && v !== undefined && String(v).trim() !== "")
+        .map(v => String(v).trim())
+        .join(", ");
 }
 
 /** Is this an ALREADY-NORMALIZED name (normalizePlaceName applied) of a known city?
  *  geoDetector calls this per distinct value to emit the "city-name" kind — it passes
  *  its own normalized form, so this must NOT re-normalize. */
 export function isKnownCity(normalizedName: string): boolean {
-    return !!normalizedName && cityIndex().has(normalizedName);
+    return !!normalizedName && !!cityRowsFor(normalizedName);
 }
 
 /** Share of DISTINCT values that are known city names, 0..100 (one decimal). NOTE:
@@ -370,7 +448,7 @@ export function cityMatchPct(values: Array<string | null | undefined>): number {
         const k = normalizePlaceName(String(v));
         if (!k || seen.has(k)) continue;
         seen.add(k);
-        if (cityIndex().has(k)) matched++;
+        if (cityRowsFor(k)) matched++;
     }
     return seen.size === 0 ? 0 : Math.round((matched / seen.size) * 1000) / 10;
 }

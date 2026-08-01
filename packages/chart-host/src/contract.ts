@@ -113,8 +113,15 @@ export interface RenderOptions {
     // is filled in from the values, and one it names wrongly is dropped. Both are ABSENT
     // when nothing was adjusted, so presence means "this binding is not what was asked
     // for" — worth a line on the chart, because it changes how the points were placed.
+    // `precision` is a CEILING, never a description: one state-centroid row among 41 city
+    // rows reports "state" exactly as an all-state map does. Annotate from
+    // `precisionCounts` (rows per tier) and name the offenders from `coarseExamples` —
+    // "3 of 42 placed at state centres", not a blanket "approximated to state centres"
+    // that is false for the other 39.
     geoPoint?: {
         precision: GeoPointPrecision | null;
+        precisionCounts: Record<GeoPointPrecision, number>;
+        coarseExamples: string[];
         unplaced: number;
         unplacedExamples: string[];
         ambiguousRows: number;

@@ -50,6 +50,12 @@ export interface RenderPayload {
     // largest-match tie-break on a colliding bare city name.
     geoPoint?: {
         precision: GeoPointPrecision | null;
+        // Rows per tier. `precision` alone is a CEILING and reads the same for 1-of-42
+        // and 42-of-42 coarse rows, so a caption written from it can be false for almost
+        // the whole map; these counts are what the chart should annotate from.
+        precisionCounts: Record<GeoPointPrecision, number>;
+        // The rows a coarse-tier caption is actually about, named and capped.
+        coarseExamples: string[];
         unplaced: number;
         unplacedExamples: string[];
         ambiguousRows: number;
@@ -109,6 +115,8 @@ export function buildRenderPayload(
         pLat = built.lat; pLon = built.lon;
         geoPoint = {
             precision: built.precision,
+            precisionCounts: built.precisionCounts,
+            coarseExamples: built.coarseExamples,
             unplaced: built.totalRows - built.matchedRows,
             unplacedExamples: built.unmatched.slice(0, 8),
             ambiguousRows: built.ambiguousRows,

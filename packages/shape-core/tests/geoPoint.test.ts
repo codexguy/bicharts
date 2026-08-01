@@ -247,6 +247,66 @@ describe("resolveAdmin1", () => {
     });
 });
 
+describe("resolveGeoPoint — the bare \"<X> City\" shorthand (2026-08-01)", () => {
+    it("bare 'New York' is New York City, not the New York STATE centroid", () => {
+        // The bug this closes: nobody types "New York City" in a city column, the bare
+        // form was in no gazetteer, so the single most-charted city in North America fell
+        // to the state tier and was drawn ~25 km off — plausible enough to never look
+        // broken, and it dragged the WHOLE map's reported precision to "state".
+        const r = resolveGeoPoint({ city: "New York", state: "NY", country: "USA" })!;
+        expect(r.precision).toBe("city");
+        expect(near(r.lat, 40.71)).toBe(true);
+        expect(near(r.lon, -74.01)).toBe(true);
+        // ...and without a state column, which is how most city lists arrive.
+        expect(resolveGeoPoint({ city: "New York" })!.precision).toBe("city");
+    });
+
+    it("bare 'Mexico' in the CITY role is Mexico City", () => {
+        const r = resolveGeoPoint({ city: "Mexico", country: "MX" })!;
+        expect(r.precision).toBe("city");
+        expect(near(r.lat, 19.43)).toBe(true);
+    });
+
+    it("a bare STATE name is NOT dragged to its small '* City' namesake", () => {
+        // This is why the rule is gated on population rather than being a blanket
+        // "retry with ' city' appended": Missouri City TX (74k), Texas City TX (47k),
+        // Iowa City IA (74k) and Oregon City OR (35k) all exist, and reading a bare
+        // state name as one of them would be WORSE than the state centroid — it would
+        // move Missouri data into Texas.
+        for (const s of ["Missouri", "Texas", "Iowa", "Oregon"]) {
+            // Alone in the city role: no placement at all, which is the honest answer.
+            expect(resolveGeoPoint({ city: s })).toBeNull();
+            // With the state column that such data actually carries: the state centroid,
+            // exactly as before this change — never the namesake town.
+            expect(resolveGeoPoint({ city: s, state: s })!.precision).toBe("state");
+        }
+    });
+
+    it("the shorthand still refuses a contradicting state", () => {
+        // Alias rows run the IDENTICAL narrowing path as a direct hit, so the existing
+        // "state that disagrees with every match falls through" rule still governs.
+        const r = resolveGeoPoint({ city: "New York", state: "CA" })!;
+        expect(r.precision).not.toBe("city");
+    });
+
+    it("a bare form that is ALREADY a city keeps its own meaning", () => {
+        // "Kansas City" exists, but so does the state; the shorthand only ever fills a
+        // GAP — it never overrides a name the gazetteer already knows.
+        const kc = resolveGeoPoint({ city: "Kansas City", state: "MO" })!;
+        const bare = resolveGeoPoint({ city: "Kansas", state: "MO" })!;
+        expect(kc.precision).toBe("city");
+        expect(bare.precision).toBe("city");
+        expect(bare.lat).toBe(kc.lat);
+    });
+
+    it("the shorthand counts as a known city for the offerability signal", () => {
+        // isKnownCity / cityMatchPct gate whether a column is OFFERED as geographic at
+        // all. If they disagreed with the resolver, a short NA city list containing
+        // "New York" could fail the match threshold and never be offered as a map.
+        expect(cityMatchPct(["New York", "Seattle", "Chicago", "Miami"])).toBe(100);
+    });
+});
+
 describe("buildGeoPointColumns", () => {
     it("aligns 1:1, counts matches, and reports the COARSEST precision used", () => {
         const out = buildGeoPointColumns([
@@ -297,6 +357,43 @@ describe("buildGeoPointColumns", () => {
         expect(out.totalRows).toBe(0);
         expect(out.matchedRows).toBe(0);
         expect(out.precision).toBeNull();
+        expect(out.precisionCounts).toEqual({ latlon: 0, city: 0, zip3: 0, state: 0 });
+        expect(out.coarseExamples).toEqual([]);
+    });
+
+    it("precisionCounts says HOW MUCH of the map the coarse tier covers", () => {
+        // The scalar `precision` is a ceiling and reads identically for 1-of-3 and
+        // 3-of-3 state rows. A caption built on the scalar alone ("approximated to
+        // state centres") is then false for the city rows — the counts are what make
+        // an honest annotation possible.
+        const out = buildGeoPointColumns([
+            { city: "Plano", state: "TX" },
+            { city: "Seattle", state: "WA" },
+            { state: "NY" },
+        ]);
+        expect(out.precision).toBe("state");
+        expect(out.precisionCounts).toEqual({ latlon: 0, city: 2, zip3: 0, state: 1 });
+    });
+
+    it("names the rows the coarse tier is actually about, deduped and capped", () => {
+        const out = buildGeoPointColumns([
+            { city: "Plano", state: "TX" },
+            { state: "NY" },
+            { state: "NY" },                     // same label, named once
+            { zip: "331" },
+        ]);
+        expect(out.coarseExamples).toEqual(["NY", "331"]);
+        expect(out.precisionCounts.state).toBe(2);
+        expect(out.precisionCounts.zip3).toBe(1);
+    });
+
+    it("explicit coordinates count as latlon, not as a coarse row", () => {
+        const out = buildGeoPointColumns([
+            { lat: 47.6, lon: -122.3 }, { city: "Plano", state: "TX" },
+        ]);
+        expect(out.precision).toBe("city");
+        expect(out.precisionCounts).toEqual({ latlon: 1, city: 1, zip3: 0, state: 0 });
+        expect(out.coarseExamples).toEqual([]);
     });
 });
 
