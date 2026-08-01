@@ -143,10 +143,53 @@ export function explainRenderFailure(err: unknown, d3: any): unknown {
     return err;
 }
 
+// A generated chart is delivered in one of two forms — the bare render() function, or the
+// SAME code plus an ES-module export clause so it can be `import`ed from a file. Both are
+// legitimate artifacts of the same generator, and nothing in either form tells the caller
+// which one a given host accepts. Feeding the module form to the code-string path below
+// threw a SyntaxError inside `new Function` before a single line ran: a blank chart, no
+// mark, no annotation, and an error whose text says nothing about the artifact form.
+//
+// So accept both. The export clause is pure module bookkeeping and carries no behaviour —
+// `render` is already a top-level binding, which is exactly what the compile below picks
+// up — so removing it changes nothing about what the chart does.
+//
+// Deliberately narrow: only STATEMENT-POSITION export forms at the start of a line, so an
+// `export` inside a string, a comment, or a property name is untouched. `export function` /
+// `export const` keep their declaration and lose only the keyword, because the binding they
+// introduce is the one being returned.
+const ESM_EXPORT_CLAUSE = /^[ \t]*export[ \t]+(?:\{[^}]*\}|default[ \t]+[A-Za-z_$][\w$]*)[ \t]*;?[ \t]*$/gm;
+const ESM_EXPORT_DECL = /^([ \t]*)export[ \t]+(?=(?:async[ \t]+)?function\b|const\b|let\b|var\b|class\b)/gm;
+
+export function stripEsmExports(code: string): string {
+    return String(code || "")
+        .replace(ESM_EXPORT_CLAUSE, "")
+        .replace(ESM_EXPORT_DECL, "$1");
+}
+
 export function compileRenderFn(code: string, win: any, doc: any, d3: any): RenderFn {
     // Same compile the preview/exec-gate use: the code must define a top-level render().
-    const factory = new Function("container", "data", "options", "window", "document", "d3",
-        code + "\n;return (typeof render === 'function') ? render : null;");
+    const body = stripEsmExports(code) + "\n;return (typeof render === 'function') ? render : null;";
+    let factory: Function;
+    try {
+        factory = new Function("container", "data", "options", "window", "document", "d3", body);
+    } catch (e) {
+        // A SyntaxError here happens BEFORE any chart code runs, so there is no mark, no
+        // annotation and nothing on screen — and the raw message ("Unexpected token") names
+        // a token, not a cause. Say what was handed in and what it needs to be.
+        const msg = String((e as any)?.message ?? e ?? "");
+        const modular = /\bimport\b|\bexport\b/.test(String(code || ""));
+        throw new Error(
+            "[@bicharts/chart-host] the generated code could not be COMPILED, so nothing was " +
+            "drawn. This path evaluates the chart as a code string, which cannot contain " +
+            "ES-module syntax" +
+            (modular
+                ? " — and this code still has `import`/`export` in it after the export clause was " +
+                  "stripped. Either request the plain form from the generator, or `import` the " +
+                  "module yourself and pass the render function directly."
+                : ".") +
+            " Original error: " + msg);
+    }
     const fn = factory.call(null, null, null, null, win, doc, d3);
     if (typeof fn !== "function") throw new Error("generated code did not define render(container, data, options)");
     return fn as RenderFn;

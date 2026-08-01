@@ -16,6 +16,9 @@ export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./
 // requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):
 // ask BEFORE rendering, explain AFTER a failure. Both belong on the public surface — a host
 // that can only do the second one has already drawn a blank chart.
-export { createChartHost, compileRenderFn, requiredD3Plugins, explainRenderFailure, type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
+// stripEsmExports is on the surface for the same reason: a host that receives the
+// module-form artifact and wants to compile it itself needs the same normalization the
+// host applies, or the two paths disagree about what a valid chart artifact is.
+export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure, type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
 export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./selection";
 
