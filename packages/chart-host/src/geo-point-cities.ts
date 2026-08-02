@@ -13,4 +13,9 @@
 //
 // Until something registers it, city lookups fall through to ZIP-3 / state / country and
 // REPORT that coarser precision. Nothing guesses, and nothing throws.
-export { CITY_PACKED } from "@bicharts/shape-core/geoPointCities";
+// Re-declared rather than re-exported: shape-core is BUNDLED into this package, not a
+// dependency of it, so a shipped .d.ts that names "@bicharts/shape-core/..." would point a
+// consumer at a package they never installed. typeSelfContainment.test.ts enforces that.
+import { CITY_PACKED as PACKED } from "@bicharts/shape-core/geoPointCities";
+
+export const CITY_PACKED: string = PACKED;

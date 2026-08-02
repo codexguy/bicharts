@@ -17,7 +17,17 @@ export {
 // and 93 KB of coordinates is only needed when a point map actually draws. DETECTION stays
 // bundled in shape-core so offerability never waits on a fetch.
 // Bundle it via "@bicharts/chart-host/geo/point-cities", or fetch the JSON and register.
-export { registerCityTable, isCityTableLoaded } from "@bicharts/shape-core";
+// WRAPPED rather than re-exported: shape-core is bundled INTO this package, not a dependency
+// of it, so a shipped .d.ts naming "@bicharts/shape-core" would point consumers at a package
+// they never installed. typeSelfContainment.test.ts is what says so, and it caught this.
+import { registerCityTable as _registerCityTable, isCityTableLoaded as _isCityTableLoaded } from "@bicharts/shape-core";
+
+/** Hand the city placement table to the resolver. Without it, city lookups degrade to
+ *  ZIP-3 / state / country and REPORT that coarser precision — they never guess. */
+export function registerCityTable(packed: string): void { _registerCityTable(packed); }
+
+/** True once a placement table is registered, i.e. the city tier can return coordinates. */
+export function isCityTableLoaded(): boolean { return _isCityTableLoaded(); }
 export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./payload";
 // requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):
 // ask BEFORE rendering, explain AFTER a failure. Both belong on the public surface — a host
