@@ -1,6 +1,6 @@
 {
   "name": "@bicharts/chart-host",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "Run a BIC-generated D3 chart in any web host: compiles the generated render() function, applies the shared option defaults, resolves mark clicks (through tooltip overlays), owns the selection affordance, and translates row indices between cross-filtered charts. The same contract the BIC Power BI visual implements, minus Power BI. React bindings at @bicharts/chart-host/react.",
   "license": "Apache-2.0",
   "type": "module",
@@ -39,12 +39,7 @@
       "import": "./dist/geo-us-zip3.mjs",
       "default": "./dist/geo-us-zip3.mjs"
     },
-    "./package.json": "./package.json",
-    "./geo/point-cities": {
-      "types": "./dist/types/geo-point-cities.d.ts",
-      "import": "./dist/geo-point-cities.mjs",
-      "default": "./dist/geo-point-cities.mjs"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

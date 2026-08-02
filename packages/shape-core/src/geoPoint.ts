@@ -35,7 +35,10 @@
 // Data: geoPointTables.generated.ts (GeoNames CC BY 4.0 — attribution ships in the EULA;
 // ZIP-3 + admin1 centroids derive from geometry the visual already bundles).
 
-import { CITY_DETECT_PACKED, ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.generated";
+import { ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.generated";
+// The gazetteer is a separate module purely to keep the generated files readable; it is
+// a STATIC import, so it ships in every bundle. That is the point — see the note below.
+import { CITY_PACKED } from "./geoPointCities.generated";
 import { countryIso3, iso2ToIso3 } from "./geoCountryNames";
 
 export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state" | "country";
@@ -78,47 +81,37 @@ type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: numb
 // v2 record: name|a1|cc|lon|lat|popK|kinds|alt1;alt2 — ALT keys (Latin-script exonyms
 // like "Munich"/"Londres" that diacritic folding cannot reach) index onto the SAME row,
 // so a variant is just another door to one place, never a second place.
-// ── The BUNDLED/FETCHED split (Joel 2026-08-02) ────────────────────────────────
-// The gazetteer serves two jobs with different requirements, so it ships as two pieces:
+// ── WHY THIS TABLE IS BUNDLED, DELIBERATELY (Joel 2026-08-02) ───────────────
+// It is ~93 KB gz, by far the largest thing shape-core ships, and it was briefly SPLIT so a
+// host could fetch the coordinates and bundle only a name index (0.5.5, reverted here in
+// 0.5.6). The split worked — 118 KB off the .pbiviz — and was still the wrong call, for a
+// reason worth writing down so nobody re-derives it from the byte count alone:
 //
-//   DETECTION (bundled, CITY_DETECT_PACKED)  isKnownCity / cityMatchPct answer "is this
-//     column full of city names?". detectGeo calls them SYNCHRONOUSLY inside the profiler,
-//     for every column of every dataset, and the answer decides which chart types are
-//     OFFERED. Making that wait on a network fetch would change offerability for non-geo
-//     data — the one thing the geo work has never done — so the name+scope index stays in
-//     the bundle. 34 KB gz.
+//   AIR-GAPPED RENDER IS A PRODUCT PROPERTY. A licensed report renders its cached chart with
+//   the service unreachable, and a PINNED report is meant to be handed to someone who never
+//   talks to us at all. Serving this table means a point map that resolves places by NAME
+//   quietly drops to state or country centroids in exactly those sessions.
 //
-//   PLACEMENT (registered, CITY_PACKED)  resolveGeoPoint turning a name into a coordinate.
-//     Only a rendering point map needs it, which is the same condition the geometry fetch
-//     already engages on. 93 KB gz, and the Power BI visual fetches it; every other host
-//     imports @bicharts/shape-core/geoPointCities and registers it at startup.
+//   "Fetch it once and cache it" does not rescue that, and the reason is specific: the
+//   custom-visual sandbox iframe has no allow-same-origin, so localStorage / IndexedDB throw
+//   SecurityError (visual.ts stubs them). The only cache available is the HTTP cache, which
+//   is per-machine and evictable — and the case that matters is a report AUTHORED online and
+//   OPENED somewhere else, where nothing was ever cached. The chart still draws and still
+//   annotates honestly; it is just coarser than the author ever saw it, silently.
 //
-// Until something registers the placement table the city TIER is skipped: lookups fall
-// through to ZIP-3 / state / country and report that coarser precision, which is the same
-// honest degradation a row with no city column already gets. Nothing silently guesses.
-let _cityPacked = "";
+// The ZIP-3 GEOMETRY is fetched, and that is not an inconsistency: it serves ONE chart type,
+// it is 941 KB rather than 93, and losing it offline was weighed and accepted for that lane
+// alone. This table serves every point map. If package size forces the question again the
+// split is in git history at v0.5.5 — but the durable answer is storageV2Service (2.2 item
+// 1), which would move the GEOMETRY out first and could take this with it.
+//
+// A host that genuinely needs a different gazetteer can still supply one: registerCityTable
+// REPLACES what is bundled here.
+let _cityPacked = CITY_PACKED;
 
-// DETECTION index: normalized name -> scope flags ("N" | "W" | "NW"). Bare records in the
-// packed string are North-America-only (the common case, so it costs nothing); "|W" and
-// "|B" carry the other two. Built lazily like every other table here.
-let _detect: Map<string, string> | null = null;
-function detectIndex(): Map<string, string> {
-    if (_detect) return _detect;
-    const m = new Map<string, string>();
-    for (const rec of CITY_DETECT_PACKED.split(",")) {
-        const bar = rec.indexOf("|");
-        if (bar < 0) m.set(rec, "N");
-        else {
-            const f = rec.slice(bar + 1);
-            m.set(rec.slice(0, bar), f === "W" ? "W" : "NW");
-        }
-    }
-    _detect = m;
-    return m;
-}
-
-/** Hand the placement table to the resolver (see the split note above). Idempotent;
- *  re-registering a different table rebuilds the index. */
+/** REPLACE the bundled gazetteer with another packed table (same record format). The
+ *  bundled table is the default precisely so air-gapped rendering keeps working — read the
+ *  note above before reaching for this. Idempotent. */
 export function registerCityTable(packed: string): void {
     if (packed === _cityPacked) return;
     _cityPacked = packed || "";
@@ -126,8 +119,8 @@ export function registerCityTable(packed: string): void {
     _cityAlias = null;
 }
 
-/** True once a placement table is registered — i.e. the city tier can produce coordinates.
- *  False means city lookups degrade to the coarser tiers, NOT that they fail. */
+/** True when a gazetteer is available to the city tier. Always true with the bundled table;
+ *  false only if a host deliberately cleared it with registerCityTable(""). */
 export function isCityTableLoaded(): boolean {
     return _cityPacked.length > 0;
 }
@@ -654,16 +647,11 @@ export function isKnownCity(normalizedName: string, mapKind?: GeoMapKind | null)
     // verifier, so widening its default to the world rows would silently change which
     // COLUMNS classify as cities — and with it, which charts old data shapes are offered.
     // World callers opt in with mapKind="world".
-    //
-    // Answered from the BUNDLED detection index, NEVER from the placement table: this
-    // runs inside the profiler and its answer decides offerability, so it must give the
-    // same result whether or not a placement table has been fetched. (Verified by
-    // geoPointSplit.test.ts, which asserts detection is identical with the table absent.)
     if (!normalizedName) return false;
-    const flags = detectIndex().get(normalizedName);
-    if (flags === undefined) return false;
+    const rows = cityRowsFor(normalizedName);
+    if (!rows) return false;
     const flag = KIND_FLAG[(mapKind as GeoMapKind) || "north-america"] ?? "N";
-    return flags.includes(flag);
+    return rows.some(h => h.row.kinds.includes(flag));
 }
 
 /** Share of DISTINCT values that are known city names, 0..100 (one decimal). NOTE:

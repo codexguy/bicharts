@@ -12,22 +12,18 @@ export {
     loadGeo, geoFromCache, registerGeo, registerGeoAsset, geoAssetFor, clearGeoCache,
     type GeoAssetName,
 } from "./geoLazy";
-// The city PLACEMENT table follows the SAME bundle-or-register shape as the geometry: it is
-// no longer inside the resolver, because package size is the constraint in a Power BI visual
-// and 93 KB of coordinates is only needed when a point map actually draws. DETECTION stays
-// bundled in shape-core so offerability never waits on a fetch.
-// Bundle it via "@bicharts/chart-host/geo/point-cities", or fetch the JSON and register.
+// The city gazetteer is BUNDLED in the resolver (shape-core), deliberately — a served table
+// silently coarsens by-name point maps in air-gapped and shared-report sessions, and the
+// Power BI sandbox has no durable cache to soften that. registerCityTable is the escape
+// hatch for a host that needs a DIFFERENT gazetteer, not a required setup step.
 // WRAPPED rather than re-exported: shape-core is bundled INTO this package, not a dependency
 // of it, so a shipped .d.ts naming "@bicharts/shape-core" would point consumers at a package
-// they never installed. typeSelfContainment.test.ts is what says so, and it caught this.
-import { registerCityTable as _registerCityTable, isCityTableLoaded as _isCityTableLoaded } from "@bicharts/shape-core";
+// they never installed. typeSelfContainment.test.ts is what says so, and it caught that.
+import { registerCityTable as _registerCityTable } from "@bicharts/shape-core";
 
-/** Hand the city placement table to the resolver. Without it, city lookups degrade to
- *  ZIP-3 / state / country and REPORT that coarser precision — they never guess. */
+/** REPLACE the bundled city gazetteer with another packed table. Rarely needed — see the
+ *  note above registerCityTable in shape-core's geoPoint.ts before using it. */
 export function registerCityTable(packed: string): void { _registerCityTable(packed); }
-
-/** True once a placement table is registered, i.e. the city tier can return coordinates. */
-export function isCityTableLoaded(): boolean { return _isCityTableLoaded(); }
 export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./payload";
 // requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):
 // ask BEFORE rendering, explain AFTER a failure. Both belong on the public surface — a host

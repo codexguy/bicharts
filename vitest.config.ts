@@ -14,9 +14,6 @@ export default defineConfig({
         // Root `tests/` holds repo-level concerns that belong to neither package
         // (licensing consistency across both, for one).
         include: ["packages/*/tests/**/*.test.ts", "packages/*/tests/**/*.test.tsx", "tests/**/*.test.ts"],
-        // Tests are a HOST, and a host registers the city placement table — it is no longer
-        // bundled into the resolver (see the bundled/fetched split note in geoPoint.ts).
-        setupFiles: ["tests/setup.geoCities.ts"],
         environment: "node",
     },
 });
