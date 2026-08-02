@@ -40,7 +40,7 @@
 // only asks "is this a known city?" to emit the city-name KIND. One-directional —
 // geoPoint never imports geoDetector — so there is no import cycle.
 import { isKnownCity } from "./geoPoint";
-import { ROLE_MATCH_PCT } from "./matchQuality";
+import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT } from "./matchQuality";
 // The country tables + the shared normalizer moved to geoCountryNames when the World
 // point map needed them too — geoPoint could not import them back without a cycle.
 import {
@@ -233,6 +233,8 @@ export function detectGeo(
     const cnMap = countryNameMap();
 
     let iso3 = 0, iso2 = 0, usps = 0, cName = 0, sName = 0, zip = 0, county = 0, cityHits = 0;
+    // 4-digit values, held aside: a ZIP whose leading zero integer storage ate, or just a year.
+    let zip4 = 0;
     let iso2AndUsps = 0;      // values valid as BOTH an ISO-2 and a USPS code
     let cNameAndSName = 0;    // values matching BOTH a country and a US-state name
     let stateBoth = 0;        // values valid as BOTH a USPS code and a state name/abbrev
@@ -259,15 +261,26 @@ export function detectGeo(
         if (isCName && isSName) cNameAndSName++;
         if (isUsps && isSName) stateBoth++;
         if (/^\d{5}(-\d{4})?$/.test(raw) || (zipHint && /^\d{3,4}$/.test(raw))) zip++;
+        // A bare 4-digit value is a ZIP whose LEADING ZERO integer storage ate - 02108
+        // becomes 2108, which happens to every New England ZIP the moment the column is
+        // typed as a number. Held aside and redeemed below ONLY beside genuine 5-digit
+        // ZIPs, because a column of nothing but 4-digit numbers is years or counts.
+        else if (/^\d{4}$/.test(raw)) zip4++;
         if (/^\d{5}$/.test(raw) && STATE_FIPS_SET.has(raw.slice(0, 2))) county++;
         if (isKnownCity(nm)) cityHits++;
     }
+
+    // Redeem stripped-leading-zero ZIPs only in the company of real ones.
+    if (!zipHint && zip > 0) zip += zip4;
 
     const pct = (n: number) => (n / total) * 100;
     const cands: Candidate[] = [];
     const add = (kind: GeoKind, matched: number, spec: number, guardNameKind = false) => {
         const p = pct(matched);
-        if (p < THRESHOLD_PCT || matched < 2) return;
+        // city-name is open free text and takes the looser bar; every other kind is a
+        // closed vocabulary held to ROLE_MATCH_PCT. See CITY_ROLE_MATCH_PCT.
+        const bar = kind === "city-name" ? CITY_ROLE_MATCH_PCT : THRESHOLD_PCT;
+        if (p < bar || matched < 2) return;
         if (guardNameKind && matched < NAME_KIND_MIN_DISTINCT) {
             const tokens = kind === "country-name" ? COUNTRY_NAME_TOKENS
                 : kind === "city-name" ? CITY_NAME_TOKENS

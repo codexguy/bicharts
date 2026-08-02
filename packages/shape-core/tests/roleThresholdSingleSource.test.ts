@@ -10,13 +10,20 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ROLE_MATCH_PCT } from "../src/matchQuality";
+import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT } from "../src/matchQuality";
 
 const src = (f: string) => readFileSync(resolve(process.cwd(), "packages/shape-core/src", f), "utf8");
 
 describe("the role-identification threshold has a single source", () => {
     it("is the value Joel set", () => {
-        expect(ROLE_MATCH_PCT).toBe(95);
+        expect(ROLE_MATCH_PCT).toBe(96);
+    });
+
+    it("CITY is deliberately looser, because city names are not a closed vocabulary", () => {
+        // Joel 2026-08-02: "maybe city is a good one to make lower - 80% even". Two numbers,
+        // still ONE file - the point was never a single value, it was a single place to tune.
+        expect(CITY_ROLE_MATCH_PCT).toBe(80);
+        expect(CITY_ROLE_MATCH_PCT).toBeLessThan(ROLE_MATCH_PCT);
     });
 
     it("no classifier carries its own percentage literal", () => {
@@ -48,6 +55,11 @@ describe("the role-identification threshold has a single source", () => {
         const doc = src("matchQuality.ts");
         expect(doc).toMatch(/IDENTIFICATION/);
         expect(doc).toMatch(/MATCHING/);
-        expect(doc).toMatch(/no ratio, no nearly, no fuzzy fallback/i);
+        expect(doc).toMatch(/There is no ratio and no nearly/i);
+        // And the other half, which is just as easy to lose: refusing a partial match is NOT
+        // refusing normalization. Case, diacritics and recorded alternates all still resolve
+        // (Joel: "the match to the gazette can still use normalized strings").
+        expect(doc).toMatch(/NORMALIZED/);
+        expect(doc).toMatch(/diacritic/i);
     });
 });

@@ -37,7 +37,7 @@
 
 import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
 import { countryIso3 } from "./geoCountryNames";
-import { ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
+import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 
 /** The place parts a coordinate can be resolved from. Any subset. */
 export type PointBind = {
@@ -390,7 +390,8 @@ export function resolvePointRoles(
             if (taken.has(c)) continue;
             const vals = valuesOf(c);
             const pct = cityPct(vals, mapKind);
-            if (pct < ROLE_MATCH_PCT) continue;
+            // Cities are open free text, not a closed vocabulary - see CITY_ROLE_MATCH_PCT.
+            if (pct < CITY_ROLE_MATCH_PCT) continue;
             if (distinctMatches(vals, v => isKnownCity(v, mapKind)) < MIN_DISTINCT_BACKFILL) continue;
             if (!best || pct > best.pct) best = { name: c, pct };
         }
