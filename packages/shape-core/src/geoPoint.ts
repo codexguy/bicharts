@@ -65,6 +65,12 @@ export type GeoMapKind = "north-america" | "world";
 const KIND_FLAG: Record<GeoMapKind, string> = { "north-america": "N", world: "W" };
 
 type CityRow = { a1: string; cc: string; lon: number; lat: number; pop: number; kinds: string };
+/** One door onto a city row: `primary` marks the city's own name, false marks a
+ *  multilingual variant. A primary match OUTRANKS an alt match at the same attribute
+ *  rank, so "Santiago" means the city actually called Santiago even though another
+ *  city carries it as a translated name — real ambiguity (two cities both NAMED it)
+ *  still refuses. */
+type CityHit = { row: CityRow; primary: boolean };
 type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: number };
 
 // Lazily parsed once (the monthNames.ts / countryNameMap pattern) — the packed
@@ -72,25 +78,28 @@ type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: numb
 // v2 record: name|a1|cc|lon|lat|popK|kinds|alt1;alt2 — ALT keys (Latin-script exonyms
 // like "Munich"/"Londres" that diacritic folding cannot reach) index onto the SAME row,
 // so a variant is just another door to one place, never a second place.
-let _cities: Map<string, CityRow[]> | null = null;
-function cityIndex(): Map<string, CityRow[]> {
+let _cities: Map<string, CityHit[]> | null = null;
+function cityIndex(): Map<string, CityHit[]> {
     if (_cities) return _cities;
-    const m = new Map<string, CityRow[]>();
-    const add = (key: string, row: CityRow) => {
+    const m = new Map<string, CityHit[]>();
+    const add = (key: string, row: CityRow, primary: boolean) => {
         if (!key) return;
         const cur = m.get(key);
-        if (cur) { if (!cur.includes(row)) cur.push(row); } else m.set(key, [row]);
+        if (cur) { if (!cur.some(h => h.row === row)) cur.push({ row, primary }); }
+        else m.set(key, [{ row, primary }]);
     };
     for (const rec of CITY_PACKED.split(",")) {
         const p = rec.split("|");
         if (p.length < 7) continue;
         const row: CityRow = { a1: p[1], cc: p[2], lon: +p[3], lat: +p[4], pop: +p[5], kinds: p[6] || "N" };
-        add(normalizePlaceName(p[0]), row);
-        if (p.length > 7 && p[7]) for (const alt of p[7].split(";")) add(normalizePlaceName(alt), row);
+        add(normalizePlaceName(p[0]), row, true);
+        // Alt keys arrive already normalized (the generator stores the lookup key itself),
+        // but normalizing again is free and keeps the table format forgiving.
+        if (p.length > 7 && p[7]) for (const alt of p[7].split(";")) add(normalizePlaceName(alt), row, false);
     }
     // Population order is kept ONLY for stable diagnostics — it is NO LONGER a tie-break.
     // Since v2 (Joel 2026-08-02) an ambiguous name is REFUSED and reported, never guessed.
-    for (const rows of m.values()) rows.sort((a, b) => b.pop - a.pop);
+    for (const hits of m.values()) hits.sort((a, b) => b.row.pop - a.row.pop);
     _cities = m;
     return m;
 }
@@ -115,17 +124,17 @@ function cityIndex(): Map<string, CityRow[]> {
 // so a contradicting state still refuses it ("New York, CA" does not become NYC).
 const CITY_SUFFIX_ALIAS_MIN_POP = 200;   // thousands, matching the packed table's units
 
-let _cityAlias: Map<string, CityRow[]> | null = null;
-function cityAliasIndex(): Map<string, CityRow[]> {
+let _cityAlias: Map<string, CityHit[]> | null = null;
+function cityAliasIndex(): Map<string, CityHit[]> {
     if (_cityAlias) return _cityAlias;
-    const m = new Map<string, CityRow[]>();
-    for (const [key, rows] of cityIndex()) {
+    const m = new Map<string, CityHit[]>();
+    for (const [key, hits] of cityIndex()) {
         if (!key.endsWith(" city")) continue;
         const bare = key.slice(0, -5);
         // A bare form that is ALREADY a city name of its own keeps that meaning.
         if (!bare || cityIndex().has(bare)) continue;
-        if (rows[0].pop < CITY_SUFFIX_ALIAS_MIN_POP) continue;   // rows are pop-descending
-        m.set(bare, rows);
+        if (hits[0].row.pop < CITY_SUFFIX_ALIAS_MIN_POP) continue;   // rows are pop-descending
+        m.set(bare, hits);
     }
     _cityAlias = m;
     return m;
@@ -133,7 +142,7 @@ function cityAliasIndex(): Map<string, CityRow[]> {
 
 /** Candidate city rows for an already-normalized name: the direct gazetteer hit, else the
  *  "<name> City" shorthand when that city is dominant enough to be what was meant. */
-function cityRowsFor(key: string): CityRow[] | undefined {
+function cityRowsFor(key: string): CityHit[] | undefined {
     if (!key) return undefined;
     return cityIndex().get(key) ?? cityAliasIndex().get(key);
 }
@@ -371,9 +380,10 @@ export function resolveGeoPoint(args: {
             const stateRaw = args.state === undefined || args.state === null ? "" : String(args.state).trim();
             const stateKey = stateRaw ? normalizePlaceName(stateRaw) : "";
             const stateCode = stateRaw ? resolveAdmin1(stateRaw) : null;   // "Texas"/"Ontario" → code
-            let best: CityRow[] = [];
+            let best: CityHit[] = [];
             let bestRank = -1;
-            for (const r of all) {
+            for (const h of all) {
+                const r = h.row;
                 if (!r.kinds.includes(scope)) continue;
                 let rank = 0;
                 if (stateRaw) {
@@ -386,15 +396,22 @@ export function resolveGeoPoint(args: {
                     if (iso2ToIso3(r.cc) === iso3) rank++;
                     else continue;
                 }
-                if (rank > bestRank) { bestRank = rank; best = [r]; }
-                else if (rank === bestRank) best.push(r);
+                if (rank > bestRank) { bestRank = rank; best = [h]; }
+                else if (rank === bestRank) best.push(h);
             }
+            // NAME-KIND PRECEDENCE, applied only WITHIN the winning attribute rank: a city's
+            // own name beats another city's translated name. Source attributes still decide
+            // first — "Santiago, Spain" must reach Santiago de Compostela through its Spanish
+            // variant rather than being dragged to Chile by primary-ness. What this removes is
+            // the accidental ambiguity of a bare name that one city IS and another merely
+            // ANSWERS TO; two cities genuinely named the same thing still refuse.
+            if (best.some(h => h.primary)) best = best.filter(h => h.primary);
             // Two doors onto one place (a primary name and an exonym, or duplicate source
             // rows) are ONE match — dedupe by coordinate before judging ambiguity.
             const distinct = new Map<string, CityRow>();
-            for (const r of best) distinct.set(r.lon.toFixed(2) + "," + r.lat.toFixed(2), r);
+            for (const h of best) distinct.set(h.row.lon.toFixed(2) + "," + h.row.lat.toFixed(2), h.row);
             if (distinct.size === 1) {
-                const r = best[0];
+                const r = best[0].row;
                 return { lat: r.lat, lon: r.lon, precision: "city" };
             }
             if (distinct.size > 1) return { ambiguous: true, matches: distinct.size };
@@ -561,7 +578,7 @@ export function isKnownCity(normalizedName: string, mapKind?: GeoMapKind | null)
     const rows = cityRowsFor(normalizedName);
     if (!rows) return false;
     const flag = KIND_FLAG[(mapKind as GeoMapKind) || "north-america"] ?? "N";
-    return rows.some(r => r.kinds.includes(flag));
+    return rows.some(h => h.row.kinds.includes(flag));
 }
 
 /** Share of DISTINCT values that are known city names, 0..100 (one decimal). NOTE:

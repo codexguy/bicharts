@@ -25,12 +25,30 @@
 // strip diacritics, lowercase, non-alphanumerics to space, collapse whitespace.
 // Folding diacritics on BOTH sides is why no alternate-spelling table is needed —
 // "Montréal" and "Montreal" land on the same key.
+// NFD + combining-mark stripping folds every letter whose accent is a SEPARATE code point
+// (é, ñ, å, ü). It does nothing for Latin letters whose mark is fused into the character
+// itself — ø, ł, đ, ı, æ, ß, þ, ð have no decomposition at all, so they survive into the
+// key and leave "København" unreachable from "Kobenhavn". Those are exactly the letters
+// Danish, Norwegian, Polish, Turkish, Vietnamese and Icelandic place names are full of.
+// (Joel 2026-08-02: "convert accented 'o' into just utf-8 'o' ... and that's it" — this
+// map is the rest of that instruction, the part NFD can't do.) The multi-letter
+// expansions are the conventional transliterations, not inventions: ß→ss is how German
+// writes it without the letter, æ→ae and œ→oe likewise.
+const LATIN_FOLD: Record<string, string> = {
+    "ø": "o", "œ": "oe", "æ": "ae", "ß": "ss", "ł": "l", "đ": "d", "ð": "d",
+    "þ": "th", "ı": "i", "ħ": "h", "ŧ": "t", "ŋ": "n", "ə": "e", "ĸ": "k",
+};
+
 export function normalizePlaceName(s: string): string {
     return s
         .normalize("NFD")
         .replace(/\p{Diacritic}/gu, "")
         .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s]/gu, " ")
+        .replace(/[øœæßłđðþıħŧŋəĸ]/g, ch => LATIN_FOLD[ch])
+        // \p{Nd} (decimal digits) rather than \p{N}: the wider class keeps superscripts and
+        // fractions, and a footnote marker riding a place name ("Ottawa²") then becomes part
+        // of its key. Letters stay unrestricted — country names arrive in every script.
+        .replace(/[^\p{L}\p{Nd}\s]/gu, " ")
         .replace(/\s+/g, " ")
         .trim();
 }
