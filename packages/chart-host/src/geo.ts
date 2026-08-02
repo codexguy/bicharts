@@ -22,7 +22,27 @@ export function geoForKind(geoKind: string | null | undefined): any | undefined 
     if (k === "us-state-code" || k === "us-state-name") return US_STATES;
     if (k === "us-zip5") return US_ZIP3;
     if (k === "north-america") return northAmerica();
+    if (k === "world") return worldBasemap();
     return undefined;
+}
+
+// WORLD BASEMAP for World (Bubbles). The geoLazy twin of this sits beside its own
+// northAmerica(); BOTH files must gain a kind together or a host gets geometry from one
+// route and nothing from the other. Polygons only, for the same reason as northAmerica
+// below: the world asset carries 62 centroid Point features (choropleth join aids for
+// countries whose polygons are sub-pixel) and d3.geoPath draws a Point as a circle — 62
+// grey dots a bubble map would then have to explain. No latitude clip: a world map keeps
+// its poles, and the archetype fits the projection to this collection.
+let _worldBase: any | undefined;
+function worldBasemap(): any {
+    if (!_worldBase) {
+        _worldBase = {
+            type: "FeatureCollection",
+            features: (WORLD_110M.features as any[])
+                .filter((f: any) => f?.geometry && f.geometry.type !== "Point"),
+        };
+    }
+    return _worldBase;
 }
 
 // North America BASEMAP for point-map (lat/lon) types — e.g. North America (Bubbles).

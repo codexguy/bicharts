@@ -56,10 +56,14 @@ describe("the duplicated GeoPointPrecision cannot drift", () => {
     });
 
     it("the runtime list matches the type, most precise first", () => {
-        expect([...GEO_POINT_PRECISIONS]).toEqual(["latlon", "city", "zip3", "state"]);
+        // "country" added 2026-08-02 for World (Bubbles) — the coarsest tier, so it goes
+        // last. Updating this list is the DELIBERATE half of the guard: the Record below
+        // stops compiling until the union is covered, so a tier can never be added to one
+        // declaration and forgotten in the other.
+        expect([...GEO_POINT_PRECISIONS]).toEqual(["latlon", "city", "zip3", "state", "country"]);
         // Exhaustiveness: every member of the union is present in the runtime list.
         const check: Record<GeoPointPrecision, true> = {
-            latlon: true, city: true, zip3: true, state: true,
+            latlon: true, city: true, zip3: true, state: true, country: true,
         };
         expect(Object.keys(check).sort()).toEqual([...GEO_POINT_PRECISIONS].sort());
     });

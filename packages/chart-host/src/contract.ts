@@ -13,7 +13,10 @@
 
 // Bump when the contract changes in a way a host must adapt to (semver). Stamped
 // into the MCP integration contract so a caller can pin behavior.
-export const HOST_CONTRACT_VERSION = "1.0.0";
+// 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
+// but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
+// has a new case to handle — which is exactly what this version exists to announce.
+export const HOST_CONTRACT_VERSION = "1.1.0";
 
 // The coarsest geocoding tier a point map used. Declared HERE, not imported from
 // @bicharts/shape-core, because this type is part of chart-host's PUBLIC surface: shape-core
@@ -21,10 +24,10 @@ export const HOST_CONTRACT_VERSION = "1.0.0";
 // a `.d.ts` importing from it would dangle. That bug shipped in the first packed build and
 // went unnoticed because the test app had `skipLibCheck: true`, which skips .d.ts checking
 // entirely. The two declarations are kept identical by a test in this package.
-export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state";
+export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state" | "country";
 /** Every valid tier, ordered most precise → coarsest. Runtime form of GeoPointPrecision. */
 export const GEO_POINT_PRECISIONS: readonly GeoPointPrecision[] =
-    ["latlon", "city", "zip3", "state"] as const;
+    ["latlon", "city", "zip3", "state", "country"] as const;
 
 // ---- Interaction grammar (what generated code emits; the host binds to these) ----
 

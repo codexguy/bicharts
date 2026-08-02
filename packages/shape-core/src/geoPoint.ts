@@ -23,6 +23,9 @@
 //            to its prefix — the honest limit of the geometry we bundle)
 //   "state"  population-weighted centroid of the state/province (very coarse; every row
 //            in a state lands on ONE point)
+//   "country" population-weighted centroid of the country (coarsest; every row in a
+//            country lands on ONE point — the tier a WORLD point map leans on when the
+//            data names nations rather than places inside them)
 //
 // AMBIGUITY is reported, never hidden. 9% of North American city names collide (8
 // Springfields, 6 Burlingtons). With a state column they disambiguate exactly; without
@@ -32,9 +35,10 @@
 // Data: geoPointTables.generated.ts (GeoNames CC BY 4.0 — attribution ships in the EULA;
 // ZIP-3 + admin1 centroids derive from geometry the visual already bundles).
 
-import { CITY_PACKED, ADMIN1_PACKED, ZIP3_PACKED } from "./geoPointTables.generated";
+import { CITY_PACKED, ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.generated";
+import { countryIso3, iso2ToIso3 } from "./geoCountryNames";
 
-export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state";
+export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state" | "country";
 
 export type GeoPointResult = {
     lat: number;
@@ -44,20 +48,12 @@ export type GeoPointResult = {
     ambiguous?: boolean;
 };
 
-// ── Normalizers ─────────────────────────────────────────────────────────────
-// MUST match tools/geo_build_points.py norm() or lookups silently miss:
-// strip diacritics, lowercase, non-alphanumerics to space, collapse whitespace.
-// Folding diacritics on BOTH sides is why no alternate-spelling table is needed —
-// "Montréal" and "Montreal" land on the same key.
-export function normalizePlaceName(s: string): string {
-    return s
-        .normalize("NFD")
-        .replace(/\p{Diacritic}/gu, "")
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s]/gu, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-}
+// ── Normalizer ── re-exported, defined once in geoCountryNames (see the note there:
+// the packed tables are keyed by normalized names, so a second copy that disagrees by
+// one character misses every lookup silently). Kept on geoPoint's public surface
+// because callers have always imported it from here.
+export { normalizePlaceName } from "./geoCountryNames";
+import { normalizePlaceName } from "./geoCountryNames";
 
 type CityRow = { a1: string; lon: number; lat: number; pop: number };
 type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: number };
@@ -125,6 +121,25 @@ function cityAliasIndex(): Map<string, CityRow[]> {
 function cityRowsFor(key: string): CityRow[] | undefined {
     if (!key) return undefined;
     return cityIndex().get(key) ?? cityAliasIndex().get(key);
+}
+
+// COUNTRY centroids, ISO-3 keyed. Coarsest tier of the cascade and the one a WORLD point
+// map leans on: data that names nations has nothing finer to resolve. Population-weighted
+// for the same reason ADMIN1 is, and it matters more at this scale — a landmass centre
+// puts Russia in empty Siberia and Canada in Nunavut. (The generator additionally SNAPS to
+// the largest city whenever the weighted mean falls outside the country's own polygons,
+// which is what keeps Indonesia out of the Java Sea and Canada out of Michigan.)
+let _countries: Map<string, { lon: number; lat: number }> | null = null;
+function countryIndex(): Map<string, { lon: number; lat: number }> {
+    if (_countries) return _countries;
+    const m = new Map<string, { lon: number; lat: number }>();
+    for (const rec of COUNTRY_PACKED.split(",")) {
+        const p = rec.split("|");
+        if (p.length < 3) continue;
+        m.set(p[0], { lon: +p[1], lat: +p[2] });
+    }
+    _countries = m;
+    return m;
 }
 
 let _admins: Map<string, Admin1Row> | null = null;   // BOTH code and name -> row
@@ -207,6 +222,14 @@ function countryOfAdmin1(a1: string): string | null {
     return adminIndex().get(normalizePlaceName(a1))?.cc ?? null;
 }
 
+/** The same answer as ISO-3, so it can be compared against a WORLD country identifier.
+ *  The ADMIN1 table stores 2-letter codes (its scope is US/CA/MX); the cascade compares
+ *  in ISO-3 now that a row's country may be any nation on earth. */
+function admin1Iso3(a1: string): string | null {
+    const cc = countryOfAdmin1(a1);
+    return cc ? iso2ToIso3(cc) : null;
+}
+
 /**
  * Normalize a ZIP to its 3-digit prefix.
  *
@@ -285,13 +308,21 @@ export function resolveGeoPoint(args: {
         }
     }
 
-    const cc = normalizeCountry(args.country);
+    // WORLD-wide country resolution (ISO-3). Was US/CA/MX-only, because until the World
+    // point map the country could only ever NARROW a city match — an unrecognized country
+    // was a correct no-op. Now it can also PLACE a row, so it has to know every country.
+    //
+    // The widening changes one pre-existing behaviour, and the change is the fix: "Paris,
+    // France" used to narrow nothing (FRA unrecognized) and matched Paris, ONTARIO at city
+    // precision. It now narrows to zero NA candidates, falls through, and lands on the
+    // France centroid at country precision — coarser, and *right*, with the tier saying so.
+    const iso3 = countryIso3(args.country);
     let a1 = resolveAdmin1(args.state);
     // A state belonging to a DIFFERENT country than the row claims is not a state we can
     // trust. The common cause is a country value sitting in the state slot: "CA" resolves
     // to California, so a Canadian row would otherwise be dragged into the US. Dropping
     // the state here leaves the country narrowing below to do the work.
-    if (a1 && cc && countryOfAdmin1(a1) !== cc) a1 = null;
+    if (a1 && iso3 && admin1Iso3(a1) !== iso3) a1 = null;
 
     // 2. City (+ state when present to disambiguate, + country to narrow).
     if (args.city !== undefined && args.city !== null) {
@@ -302,7 +333,7 @@ export function resolveGeoPoint(args: {
         // one is larger. An empty result is INFORMATION, not a miss to be papered over:
         // the city does not exist in the country the row claims, so fall through to the
         // coarser tiers rather than place it in a country the data contradicts.
-        if (rows && cc) rows = rows.filter(r => countryOfAdmin1(r.a1) === cc);
+        if (rows && iso3) rows = rows.filter(r => admin1Iso3(r.a1) === iso3);
         if (rows && rows.length > 0) {
             if (a1) {
                 const exact = rows.find(r => r.a1 === a1);
@@ -331,6 +362,16 @@ export function resolveGeoPoint(args: {
     if (a1) {
         const row = adminIndex().get(normalizePlaceName(a1));
         if (row) return { lat: row.lat, lon: row.lon, precision: "state" };
+    }
+
+    // 5. COUNTRY alone — the coarsest honest answer. Every row in a country lands on ONE
+    //    point, which is why the tier is reported: a world map of 40 countries is 40 dots
+    //    that mean "somewhere in here", not 40 places. Reached either because the data only
+    //    ever named countries, or because a finer tier CONTRADICTED the country and was
+    //    dropped above — in both cases this is the most precise claim the data supports.
+    if (iso3) {
+        const row = countryIndex().get(iso3);
+        if (row) return { lat: row.lat, lon: row.lon, precision: "country" };
     }
 
     // No name tier resolved — a literal (0,0) is all the row claims, so report it.
@@ -362,7 +403,7 @@ export type GeoPointColumns = {
     totalRows: number;
 };
 
-const PRECISION_RANK: Record<GeoPointPrecision, number> = { latlon: 0, city: 1, zip3: 2, state: 3 };
+const PRECISION_RANK: Record<GeoPointPrecision, number> = { latlon: 0, city: 1, zip3: 2, state: 3, country: 4 };
 
 /** Enough to name the offenders in a caption or a log line without unbounded growth. */
 const COARSE_EXAMPLE_CAP = 8;
@@ -386,7 +427,7 @@ export function buildGeoPointColumns(
     const coarseSeen = new Set<string>();
     const coarseExamples: string[] = [];
     const precisionCounts: Record<GeoPointPrecision, number> =
-        { latlon: 0, city: 0, zip3: 0, state: 0 };
+        { latlon: 0, city: 0, zip3: 0, state: 0, country: 0 };
     let matchedRows = 0, ambiguousRows = 0;
     let coarsest: GeoPointPrecision | null = null;
 
@@ -422,8 +463,12 @@ export function buildGeoPointColumns(
 
 /** The most specific thing the row offered, so an annotation names something the user
  *  recognizes ("Nowhereville, TX" rather than "row 37"). */
-function describeRow(r: { city?: any; state?: any; zip?: any }): string {
-    return [r.city, r.state, r.zip]
+function describeRow(r: { city?: any; state?: any; zip?: any; country?: any }): string {
+    // COUNTRY included since the World point map: on country-only data it is the row's
+    // ONLY identifier, and without it an unplaced row is counted but never named — the
+    // annotation would say "3 rows could not be placed" and be unable to say which,
+    // which is precisely the silent-drop behaviour the unmatched report exists to end.
+    return [r.city, r.state, r.zip, r.country]
         .filter(v => v !== null && v !== undefined && String(v).trim() !== "")
         .map(v => String(v).trim())
         .join(", ");

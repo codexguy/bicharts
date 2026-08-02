@@ -357,7 +357,7 @@ describe("buildGeoPointColumns", () => {
         expect(out.totalRows).toBe(0);
         expect(out.matchedRows).toBe(0);
         expect(out.precision).toBeNull();
-        expect(out.precisionCounts).toEqual({ latlon: 0, city: 0, zip3: 0, state: 0 });
+        expect(out.precisionCounts).toEqual({ latlon: 0, city: 0, zip3: 0, state: 0, country: 0 });
         expect(out.coarseExamples).toEqual([]);
     });
 
@@ -372,7 +372,7 @@ describe("buildGeoPointColumns", () => {
             { state: "NY" },
         ]);
         expect(out.precision).toBe("state");
-        expect(out.precisionCounts).toEqual({ latlon: 0, city: 2, zip3: 0, state: 1 });
+        expect(out.precisionCounts).toEqual({ latlon: 0, city: 2, zip3: 0, state: 1, country: 0 });
     });
 
     it("names the rows the coarse tier is actually about, deduped and capped", () => {
@@ -392,7 +392,7 @@ describe("buildGeoPointColumns", () => {
             { lat: 47.6, lon: -122.3 }, { city: "Plano", state: "TX" },
         ]);
         expect(out.precision).toBe("city");
-        expect(out.precisionCounts).toEqual({ latlon: 1, city: 1, zip3: 0, state: 0 });
+        expect(out.precisionCounts).toEqual({ latlon: 1, city: 1, zip3: 0, state: 0, country: 0 });
         expect(out.coarseExamples).toEqual([]);
     });
 });

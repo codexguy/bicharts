@@ -44,6 +44,7 @@ export function geoAssetFor(geoKind: string | null | undefined): GeoAssetName | 
     const k = geoKind.toLowerCase();
     if (/^country/.test(k)) return "world";
     if (k === "north-america") return "world";          // derived from the world asset
+    if (k === "world") return "world";                  // basemap-as-context (World Bubbles)
     if (k === "us-state-code" || k === "us-state-name") return "us-states";
     if (k === "us-zip5") return "us-zip3";
     return null;
@@ -55,6 +56,24 @@ export function geoAssetFor(geoKind: string | null | undefined): GeoAssetName | 
 // clutter a context map. Mirrors geo.ts's northAmerica(); membership and the Greenland
 // exclusion live in geoNaRegions, which carries no geometry, so importing it statically here
 // leaves this module asset-free.
+// WORLD BASEMAP for the World point map. Same job as northAmerica() — pure grey context
+// polygons — minus the membership filter and the latitude clip, so it is not simply the
+// raw asset: the world FeatureCollection also carries 62 centroid POINT features (join
+// aids the choropleth needs for countries whose polygons are sub-pixel), and d3.geoPath
+// renders a Point as a small circle. Handing those to a BUBBLE map would sprinkle 62 grey
+// dots across the basemap that are indistinguishable from data marks. Polygons only.
+let _worldBase: any | undefined;
+function worldBasemap(world: any): any {
+    if (!_worldBase) {
+        _worldBase = {
+            type: "FeatureCollection",
+            features: (world.features as any[])
+                .filter((f: any) => f?.geometry && f.geometry.type !== "Point"),
+        };
+    }
+    return _worldBase;
+}
+
 function northAmerica(world: any): any {
     if (!_na) {
         _na = {
@@ -74,7 +93,9 @@ function fromAssets(key: string): any | undefined {
     if (!asset) return undefined;
     const geo = byAsset.get(asset);
     if (!geo) return undefined;
-    return key === "north-america" ? northAmerica(geo) : geo;
+    if (key === "north-america") return northAmerica(geo);
+    if (key === "world") return worldBasemap(geo);
+    return geo;
 }
 
 /**
@@ -124,7 +145,9 @@ export function registerGeo(geoKind: string, geo: any): void {
 export function registerGeoAsset(asset: GeoAssetName, geo: any): void {
     if (!asset || !geo) return;
     byAsset.set(asset, geo);
-    if (asset === "world") _na = undefined;   // re-derive the basemap from the new world asset
+    // Re-derive BOTH world-derived basemaps from the new asset. Missing either one here
+    // leaves a stale FeatureCollection serving a kind whose source geometry just changed.
+    if (asset === "world") { _na = undefined; _worldBase = undefined; }
 }
 
 /**
@@ -138,4 +161,5 @@ export function clearGeoCache(): void {
     byKind.clear();
     byAsset.clear();
     _na = undefined;
+    _worldBase = undefined;
 }

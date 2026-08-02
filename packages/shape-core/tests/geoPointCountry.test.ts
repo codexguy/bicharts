@@ -40,8 +40,13 @@ describe("country narrowing fixes the cross-border placements", () => {
         const wrong = resolveGeoPoint({ city: "Plano" });
         expect(wrong!.lat).toBeCloseTo(33.02, 1);      // Plano, TX — confidently wrong
 
+        // Falls through to the coarsest tier the cascade CAN support — which since the
+        // World point map (2026-08-02) is the country centroid rather than nothing at all.
+        // The contract this test exists for is unchanged and better served: the row is not
+        // drawn in Texas, and `precision` states exactly how coarse the answer is.
         const right = resolveGeoPoint({ city: "Plano", country: "CA" });
-        expect(right).toBeNull();                       // nothing else to go on
+        expect(right!.precision).toBe("country");
+        expect(right!.lat).toBeGreaterThan(41);         // in Canada, not Plano TX (33.0)
         const withState = resolveGeoPoint({ city: "Plano", state: "ON", country: "CA" });
         expect(withState!.precision).toBe("state");
         expect(withState!.lat).toBeGreaterThan(42);     // Ontario centroid
@@ -81,8 +86,30 @@ describe("country changes NOTHING when absent or unrecognized", () => {
             const base = resolveGeoPoint(c);
             expect(resolveGeoPoint({ ...c, country: null })).toEqual(base);
             expect(resolveGeoPoint({ ...c, country: "" })).toEqual(base);
-            // An unrecognized country must NOT filter every candidate away.
-            expect(resolveGeoPoint({ ...c, country: "France" })).toEqual(base);
+            // A value that is not a country at all must NOT filter every candidate away.
+            // (This used to say "France" — a fine stand-in while the resolver only knew
+            // US/CA/MX, and wrong the moment it learned every nation. The CONTRACT is
+            // unchanged; only an example that stopped being unrecognized was replaced.)
+            expect(resolveGeoPoint({ ...c, country: "Freedonia" })).toEqual(base);
+            expect(resolveGeoPoint({ ...c, country: "zzzz" })).toEqual(base);
+        }
+    });
+
+    it("a REAL foreign country is recognized and refuses the NA match", () => {
+        // The behaviour the widening exists to produce, and the one case where an
+        // already-resolving row deliberately MOVES. "Paris, France" used to match Paris,
+        // ONTARIO at city precision because FRA was unrecognized and narrowed nothing.
+        const paris = resolveGeoPoint({ city: "Paris", country: "France" });
+        expect(paris!.precision).toBe("country");
+        expect(paris!.lon).toBeGreaterThan(0);          // Europe, not Ontario (-80)
+        expect(paris!.lat).toBeCloseTo(47.3, 0);
+
+        // …and a country that names no NA city at all still places, which is the whole
+        // point of the tier for a world map.
+        for (const [name, lonSign] of [["Japan", 1], ["Brazil", -1], ["ZAF", 1]] as const) {
+            const r = resolveGeoPoint({ country: name });
+            expect(r!.precision).toBe("country");
+            expect(Math.sign(r!.lon)).toBe(lonSign);
         }
     });
 
