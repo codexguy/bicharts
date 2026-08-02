@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-    resolveGeoPoint, buildGeoPointColumns, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
-    normalizePlaceName, cityMatchPct,
+    resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, resolveAdmin1, zipToPrefix3,
+    zipPrefixCandidates, normalizePlaceName, cityMatchPct,
 } from "../src/geoPoint";
 
 // POINT GEOCODING (2026-07-25): "allow someone to drop in ONLY city NAMES",
@@ -87,11 +87,18 @@ describe("resolveGeoPoint — tier 2, city (+state)", () => {
         expect(mo.ambiguous).toBeUndefined();
     });
 
-    it("an ambiguous BARE city name takes the largest and FLAGS it", () => {
-        const r = resolveGeoPoint({ city: "Springfield" })!;
-        expect(r.precision).toBe("city");
-        expect(r.ambiguous).toBe(true);
-        expect(near(r.lat, 37.22)).toBe(true);   // Springfield MO, the largest
+    it("an ambiguous BARE city name is REFUSED and reported — never guessed (v2)", () => {
+        // v2 matching (Joel 2026-08-02): "if multiple possible matches are found, that
+        // should be a call-out … and it should not be plotted." This replaced the old
+        // largest-city tie-break, which put every bare Springfield in Missouri with a
+        // flag — a guess with a footnote is still a guess.
+        const r = resolveGeoPoint({ city: "Springfield" });
+        expect(isGeoPointAmbiguity(r)).toBe(true);
+        expect((r as any).matches).toBeGreaterThan(1);
+        // …and a disambiguating attribute still resolves it exactly.
+        const il = resolveGeoPoint({ city: "Springfield", state: "IL" })!;
+        expect(il.precision).toBe("city");
+        expect(near((il as any).lat, 39.80)).toBe(true);
     });
 
     it("full state NAMES work as well as codes", () => {
@@ -137,14 +144,21 @@ describe("resolveGeoPoint — non-US provinces (\"include non-US provinces\")", 
     });
 
     it("bare 'Mexico' is a COUNTRY, not the State of México (2026-07-25 sweep)", () => {
-        // City+Country data where the LLM bound Country into the state slot must not
-        // read "Mexico" as the state MX15 — that contradicts every Mexican city and
-        // demotes those rows to the state tier. The state keeps its unambiguous forms.
+        // The admin1 carve-out is unchanged: "Mexico" never resolves as a state.
         expect(resolveAdmin1("Mexico")).toBeNull();
         expect(resolveAdmin1("Estado de México")).toBeTruthy();
-        const r = resolveGeoPoint({ city: "Mexico City", state: "Mexico" })!;
-        expect(r.precision).toBe("city");
-        expect(near(r.lat, 19.43)).toBe(true);   // CDMX, not the Toluca-side centroid
+        // v2 CHANGED the direct-resolve half. Under "non-blank source attributes must
+        // match same-or-blank", a state slot holding 'Mexico' matches no lookup state,
+        // so the row is excluded at the city tier instead of the bad state being
+        // silently dropped. The PRODUCTION recovery for country-in-the-state-slot is
+        // resolvePointRoles (column-level, tested in geoPointRoles) — it refuses the
+        // binding before the resolver ever sees it, and the city then places clean:
+        const viaRoles = resolveGeoPoint({ city: "Mexico City" })!;
+        expect(viaRoles.precision).toBe("city");
+        expect(near((viaRoles as any).lat, 19.43)).toBe(true);
+        // Direct call with the bad slot left in: strict rule, nothing finer than the
+        // (absent) country can honour it — unplaced, never a Toluca-side guess.
+        expect(resolveGeoPoint({ city: "Mexico City", state: "Mexico" })).toBeNull();
     });
 
     it("province centroids are POPULATION-weighted, not geometric", () => {
@@ -342,14 +356,18 @@ describe("buildGeoPointColumns", () => {
         expect(out.unmatched).toEqual(["Nowherecityville"]);
     });
 
-    it("counts ambiguous placements so the chart can annotate them", () => {
+    it("ambiguous rows are NOT plotted, and are named for the info call-out (v2)", () => {
         const out = buildGeoPointColumns([
-            { city: "Springfield" },             // ambiguous -> largest
-            { city: "Springfield", state: "IL" },// disambiguated -> not ambiguous
+            { city: "Springfield" },             // multiple matches -> refused, reported
+            { city: "Springfield", state: "IL" },// disambiguated -> placed
             { city: "Plano", state: "TX" },
         ]);
         expect(out.ambiguousRows).toBe(1);
-        expect(out.matchedRows).toBe(3);
+        expect(out.ambiguousExamples).toEqual(["Springfield"]);
+        expect(out.matchedRows).toBe(2);                 // the refused row is not "matched"
+        expect(out.lat[0]).toBeNull();                   // …and carries no coordinates,
+        expect(out.lat[1]).not.toBeNull();               // which is what keeps OLD generated
+        // code honest: it counts null-coord rows into its own off-map annotation.
     });
 
     it("an empty table is not an error", () => {

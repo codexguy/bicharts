@@ -48,10 +48,10 @@ export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
 // Point geocoding — a COORDINATE for a row that has none (City+State / ZIP / State),
 // as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
 export {
-    resolveGeoPoint, buildGeoPointColumns, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
+    resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
     normalizePlaceName, cityMatchPct, normalizeCountry,
 } from "./geoPoint";
-export type { GeoPointPrecision, GeoPointResult, GeoPointColumns } from "./geoPoint";
+export type { GeoPointPrecision, GeoPointResult, GeoPointColumns, GeoPointAmbiguity, GeoMapKind } from "./geoPoint";
 // Which COLUMN plays which place role. The codegen response names them, but that answer
 // is a HINT to be verified: a state it omits leaves city names undisambiguated, and a
 // COUNTRY column in the state slot resolves "CA" to California.

@@ -35,7 +35,7 @@
 // to be CONTEXTUAL, which is exactly what a column-level pass can do and a row-level
 // lookup cannot: judge the column by ALL its values at once.
 
-import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates } from "./geoPoint";
+import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
 
 /** The place parts a coordinate can be resolved from. Any subset. */
 export type PointBind = {
@@ -168,12 +168,15 @@ export function zipMatchPct(values: Array<unknown>): number {
     return Math.round((n / d.length) * 1000) / 10;
 }
 
-/** Share of DISTINCT values that are known city names, 0..100 (one decimal). */
-function cityPct(values: Array<unknown>): number {
+/** Share of DISTINCT values that are known city names, 0..100 (one decimal). Scope
+ *  follows the MAP being built (v2 tables carry per-row kind flags): a world map
+ *  verifies its city column against the world rows, while the default stays North
+ *  America so existing shapes classify exactly as before. */
+function cityPct(values: Array<unknown>, mapKind?: GeoMapKind | null): number {
     const d = distinctNormalized(values);
     if (d.length === 0) return 0;
     let n = 0;
-    for (const v of d) if (isKnownCity(v)) n++;
+    for (const v of d) if (isKnownCity(v, mapKind)) n++;
     return Math.round((n / d.length) * 1000) / 10;
 }
 
@@ -208,6 +211,7 @@ export function resolvePointRoles(
     columns: string[],
     rows: Array<Record<string, any>>,
     hint: PointBind | null,
+    mapKind?: GeoMapKind | null,
 ): PointRoleResolution {
     const backfilled: string[] = [];
     const refused: string[] = [];
@@ -312,9 +316,9 @@ export function resolvePointRoles(
         for (const c of candidates) {
             if (taken.has(c)) continue;
             const vals = valuesOf(c);
-            const pct = cityPct(vals);
+            const pct = cityPct(vals, mapKind);
             if (pct < THRESHOLD_PCT) continue;
-            if (distinctMatches(vals, v => isKnownCity(v)) < MIN_DISTINCT_BACKFILL) continue;
+            if (distinctMatches(vals, v => isKnownCity(v, mapKind)) < MIN_DISTINCT_BACKFILL) continue;
             if (!best || pct > best.pct) best = { name: c, pct };
         }
         if (best) {

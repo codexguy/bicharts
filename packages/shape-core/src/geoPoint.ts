@@ -44,7 +44,9 @@ export type GeoPointResult = {
     lat: number;
     lon: number;
     precision: GeoPointPrecision;
-    /** The city name was ambiguous and the largest match was chosen. */
+    /** NO LONGER PRODUCED (v2 matching, 2026-08-02): an ambiguous name is refused and
+     *  reported (see GeoPointAmbiguity), never placed by a tie-break. The field stays so
+     *  older compiled consumers reading it keep type-checking; it is always absent. */
     ambiguous?: boolean;
 };
 
@@ -55,26 +57,39 @@ export type GeoPointResult = {
 export { normalizePlaceName } from "./geoCountryNames";
 import { normalizePlaceName } from "./geoCountryNames";
 
-type CityRow = { a1: string; lon: number; lat: number; pop: number };
+/** Which point-map's candidate set a lookup runs against. Rows carry kind flags
+ *  (N = North America map, W = World map; a row may carry both), so ONE table serves
+ *  every map type with the map deciding its own scope — Joel 2026-08-02: "one row can
+ *  apply to 1 or more map types", and the matching rules are COMMON logic. */
+export type GeoMapKind = "north-america" | "world";
+const KIND_FLAG: Record<GeoMapKind, string> = { "north-america": "N", world: "W" };
+
+type CityRow = { a1: string; cc: string; lon: number; lat: number; pop: number; kinds: string };
 type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: number };
 
 // Lazily parsed once (the monthNames.ts / countryNameMap pattern) — the packed
 // strings are module constants, so parsing is deferred until something geocodes.
+// v2 record: name|a1|cc|lon|lat|popK|kinds|alt1;alt2 — ALT keys (Latin-script exonyms
+// like "Munich"/"Londres" that diacritic folding cannot reach) index onto the SAME row,
+// so a variant is just another door to one place, never a second place.
 let _cities: Map<string, CityRow[]> | null = null;
 function cityIndex(): Map<string, CityRow[]> {
     if (_cities) return _cities;
     const m = new Map<string, CityRow[]>();
+    const add = (key: string, row: CityRow) => {
+        if (!key) return;
+        const cur = m.get(key);
+        if (cur) { if (!cur.includes(row)) cur.push(row); } else m.set(key, [row]);
+    };
     for (const rec of CITY_PACKED.split(",")) {
         const p = rec.split("|");
-        if (p.length < 5) continue;
-        const key = normalizePlaceName(p[0]);
-        if (!key) continue;
-        const row: CityRow = { a1: p[1], lon: +p[2], lat: +p[3], pop: +p[4] };
-        const cur = m.get(key);
-        if (cur) cur.push(row); else m.set(key, [row]);
+        if (p.length < 7) continue;
+        const row: CityRow = { a1: p[1], cc: p[2], lon: +p[3], lat: +p[4], pop: +p[5], kinds: p[6] || "N" };
+        add(normalizePlaceName(p[0]), row);
+        if (p.length > 7 && p[7]) for (const alt of p[7].split(";")) add(normalizePlaceName(alt), row);
     }
-    // The generator emits population-descending within a name, so index 0 is already
-    // the largest match; sort defensively so the tie-break can't depend on file order.
+    // Population order is kept ONLY for stable diagnostics — it is NO LONGER a tie-break.
+    // Since v2 (Joel 2026-08-02) an ambiguous name is REFUSED and reported, never guessed.
     for (const rows of m.values()) rows.sort((a, b) => b.pop - a.pop);
     _cities = m;
     return m;
@@ -274,18 +289,31 @@ export function zipPrefixCandidates(value: string | null | undefined): string[] 
  * Order is deliberate: an explicit coordinate always beats a lookup; a city beats a ZIP
  * prefix (a city is a point, a ZIP-3 is a region); a ZIP prefix beats a whole state.
  */
+/** The city tier found MORE THAN ONE place the source row could mean, after every
+ *  non-blank source attribute was honoured. The row is NOT plotted and the caller
+ *  reports it as info — since v2 (Joel 2026-08-02) a guess is never made: "if multiple
+ *  possible matches are found, that should be a call-out … and it should not be
+ *  plotted." Distinct from `null` (nothing matched at all): coarser tiers must NOT
+ *  rescue an ambiguity, because the coarser placement would silently pick a side. */
+export type GeoPointAmbiguity = { ambiguous: true; matches: number };
+
+export function isGeoPointAmbiguity(r: GeoPointResult | GeoPointAmbiguity | null | undefined): r is GeoPointAmbiguity {
+    return !!r && (r as any).ambiguous === true && !("precision" in (r as any));
+}
+
 export function resolveGeoPoint(args: {
     lat?: number | string | null;
     lon?: number | string | null;
     city?: string | null;
     state?: string | null;
     zip?: string | null;
-    /** Optional COUNTRY narrowing. When supplied and recognized, a city name is only
-     *  matched against cities in that country, and a state that belongs to a different
-     *  country is not trusted. Absent/unrecognized = the cascade behaves exactly as it
-     *  did before, so this can never make a currently-correct map worse. */
+    /** COUNTRY: a matching constraint like state, and — since the country tier — also a
+     *  placement of last resort. Absent = unconstrained. */
     country?: string | null;
-}): GeoPointResult | null {
+    /** Which map's candidate rows the CITY tier may use (default "north-america", which
+     *  is byte-identical to the pre-v2 candidate set). The WORLD map passes "world". */
+    mapKind?: GeoMapKind | null;
+}): GeoPointResult | GeoPointAmbiguity | null {
     // 1. Explicit coordinates — trust the data over any table. TRIMMED first: a
     // whitespace-only string is "no value", but `+" "` coerces to 0, and an untrimmed
     // check would fabricate a point at (0,0) — the null-as-zero trap wearing a
@@ -324,29 +352,53 @@ export function resolveGeoPoint(args: {
     // the state here leaves the country narrowing below to do the work.
     if (a1 && iso3 && admin1Iso3(a1) !== iso3) a1 = null;
 
-    // 2. City (+ state when present to disambiguate, + country to narrow).
+    // 2. City — the v2 COMMON matching rules (Joel 2026-08-02), identical for every
+    //    point-map type; only the candidate SCOPE differs (row kind flags):
+    //      • every NON-BLANK source attribute must match the SAME value or a BLANK in
+    //        the lookup row — a blank lookup attribute passes, a contradicting one
+    //        EXCLUDES the row;
+    //      • among the survivors, rows matching MORE source attributes EXPLICITLY win
+    //        ("match as many properties as you can");
+    //      • more than one survivor at distinct coordinates = AMBIGUOUS: the row is NOT
+    //        plotted and is reported as info. Population is no longer a tie-break, and
+    //        an ambiguity is TERMINAL — a coarser tier "rescue" would silently pick a
+    //        side of the very question the refusal exists to surface.
     if (args.city !== undefined && args.city !== null) {
         const key = normalizePlaceName(String(args.city));
-        let rows = cityRowsFor(key);
-        // COUNTRY NARROWING. Restricting the candidates to the row's own country is what
-        // stops a bare "Burlington" on a US row landing in Ontario because the Canadian
-        // one is larger. An empty result is INFORMATION, not a miss to be papered over:
-        // the city does not exist in the country the row claims, so fall through to the
-        // coarser tiers rather than place it in a country the data contradicts.
-        if (rows && iso3) rows = rows.filter(r => admin1Iso3(r.a1) === iso3);
-        if (rows && rows.length > 0) {
-            if (a1) {
-                const exact = rows.find(r => r.a1 === a1);
-                // A state that disagrees with every match of this city name is a real
-                // conflict ("Paris, TX" is fine; "Plano, ON" is not) — fall THROUGH to the
-                // coarser tiers rather than silently placing it in the wrong state.
-                if (exact) return { lat: exact.lat, lon: exact.lon, precision: "city" };
-            } else if (rows.length === 1) {
-                return { lat: rows[0].lat, lon: rows[0].lon, precision: "city" };
-            } else {
-                // Ambiguous bare name: the largest city wins, and we SAY so.
-                return { lat: rows[0].lat, lon: rows[0].lon, precision: "city", ambiguous: true };
+        const scope = KIND_FLAG[(args.mapKind as GeoMapKind) || "north-america"] ?? "N";
+        const all = cityRowsFor(key);
+        if (all) {
+            const stateRaw = args.state === undefined || args.state === null ? "" : String(args.state).trim();
+            const stateKey = stateRaw ? normalizePlaceName(stateRaw) : "";
+            const stateCode = stateRaw ? resolveAdmin1(stateRaw) : null;   // "Texas"/"Ontario" → code
+            let best: CityRow[] = [];
+            let bestRank = -1;
+            for (const r of all) {
+                if (!r.kinds.includes(scope)) continue;
+                let rank = 0;
+                if (stateRaw) {
+                    if (r.a1 === "") { /* blank lookup attribute passes, not explicit */ }
+                    else if ((stateCode && r.a1 === stateCode) || normalizePlaceName(r.a1) === stateKey) rank++;
+                    else continue;                                   // non-blank vs non-blank mismatch
+                }
+                if (iso3) {
+                    // Lookup rows always carry a country, so this constraint is match-or-exclude.
+                    if (iso2ToIso3(r.cc) === iso3) rank++;
+                    else continue;
+                }
+                if (rank > bestRank) { bestRank = rank; best = [r]; }
+                else if (rank === bestRank) best.push(r);
             }
+            // Two doors onto one place (a primary name and an exonym, or duplicate source
+            // rows) are ONE match — dedupe by coordinate before judging ambiguity.
+            const distinct = new Map<string, CityRow>();
+            for (const r of best) distinct.set(r.lon.toFixed(2) + "," + r.lat.toFixed(2), r);
+            if (distinct.size === 1) {
+                const r = best[0];
+                return { lat: r.lat, lon: r.lon, precision: "city" };
+            }
+            if (distinct.size > 1) return { ambiguous: true, matches: distinct.size };
+            // zero candidates in scope → fall through to the coarser tiers
         }
     }
 
@@ -397,8 +449,14 @@ export type GeoPointColumns = {
     coarseExamples: string[];
     /** Distinct inputs that resolved to nothing (feeds the off-map annotation). */
     unmatched: string[];
-    /** Rows placed by the largest-match tie-break on an ambiguous bare city name. */
+    /** Rows whose name matched MORE THAN ONE place after every non-blank source
+     *  attribute was honoured. NOT PLOTTED (null coordinates), by rule — v2 matching
+     *  (2026-08-02) refuses instead of guessing; before that this counted rows placed by
+     *  a largest-city tie-break, which is the behaviour the rule replaced. */
     ambiguousRows: number;
+    /** Distinct inputs behind ambiguousRows — the info call-out a chart shows so the
+     *  user can add the disambiguating column (a state, a country). Capped. */
+    ambiguousExamples: string[];
     matchedRows: number;
     totalRows: number;
 };
@@ -419,6 +477,7 @@ const COARSE_EXAMPLE_CAP = 8;
  */
 export function buildGeoPointColumns(
     rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any; country?: any }>,
+    mapKind?: GeoMapKind | null,
 ): GeoPointColumns {
     const lat: (number | null)[] = new Array(rows.length);
     const lon: (number | null)[] = new Array(rows.length);
@@ -426,6 +485,8 @@ export function buildGeoPointColumns(
     const unmatched: string[] = [];
     const coarseSeen = new Set<string>();
     const coarseExamples: string[] = [];
+    const ambiguousSeen = new Set<string>();
+    const ambiguousExamples: string[] = [];
     const precisionCounts: Record<GeoPointPrecision, number> =
         { latlon: 0, city: 0, zip3: 0, state: 0, country: 0 };
     let matchedRows = 0, ambiguousRows = 0;
@@ -433,12 +494,25 @@ export function buildGeoPointColumns(
 
     for (let i = 0; i < rows.length; ++i) {
         const r = rows[i];
-        const hit = resolveGeoPoint(r);
-        if (hit) {
+        const hit = resolveGeoPoint({ ...r, mapKind });
+        if (isGeoPointAmbiguity(hit)) {
+            // v2 rule: multiple possible matches → NOT plotted, reported as info. Null
+            // coordinates on purpose — that is also what keeps OLDER generated chart code
+            // honest on a newer host: it counts null-coord rows into its existing off-map
+            // annotation, so an ambiguous row reads as "not shown" there too, just without
+            // the richer why. Deliberately NOT folded into `unmatched`: "we found nothing"
+            // and "we found several" call for different user action.
+            lat[i] = null; lon[i] = null;
+            ambiguousRows++;
+            const label = describeRow(r);
+            if (label && !ambiguousSeen.has(label.toLowerCase())) {
+                ambiguousSeen.add(label.toLowerCase());
+                if (ambiguousExamples.length < COARSE_EXAMPLE_CAP) ambiguousExamples.push(label);
+            }
+        } else if (hit) {
             lat[i] = hit.lat; lon[i] = hit.lon;
             matchedRows++;
             precisionCounts[hit.precision]++;
-            if (hit.ambiguous) ambiguousRows++;
             if (coarsest === null || PRECISION_RANK[hit.precision] > PRECISION_RANK[coarsest])
                 coarsest = hit.precision;
             if (PRECISION_RANK[hit.precision] > PRECISION_RANK.city) {
@@ -458,7 +532,7 @@ export function buildGeoPointColumns(
         }
     }
     return { lat, lon, precision: coarsest, precisionCounts, coarseExamples,
-             unmatched, ambiguousRows, matchedRows, totalRows: rows.length };
+             unmatched, ambiguousRows, ambiguousExamples, matchedRows, totalRows: rows.length };
 }
 
 /** The most specific thing the row offered, so an annotation names something the user
@@ -477,15 +551,25 @@ function describeRow(r: { city?: any; state?: any; zip?: any; country?: any }): 
 /** Is this an ALREADY-NORMALIZED name (normalizePlaceName applied) of a known city?
  *  geoDetector calls this per distinct value to emit the "city-name" kind — it passes
  *  its own normalized form, so this must NOT re-normalize. */
-export function isKnownCity(normalizedName: string): boolean {
-    return !!normalizedName && !!cityRowsFor(normalizedName);
+export function isKnownCity(normalizedName: string, mapKind?: GeoMapKind | null): boolean {
+    // SCOPE DEFAULTS TO NORTH AMERICA on purpose, and this default is compatibility
+    // load-bearing: this predicate feeds detectGeo's "city-name" kind and the role
+    // verifier, so widening its default to the world rows would silently change which
+    // COLUMNS classify as cities — and with it, which charts old data shapes are offered.
+    // World callers opt in with mapKind="world".
+    if (!normalizedName) return false;
+    const rows = cityRowsFor(normalizedName);
+    if (!rows) return false;
+    const flag = KIND_FLAG[(mapKind as GeoMapKind) || "north-america"] ?? "N";
+    return rows.some(r => r.kinds.includes(flag));
 }
 
 /** Share of DISTINCT values that are known city names, 0..100 (one decimal). NOTE:
  *  production offerability does NOT ride on this — detectGeo's "city-name" kind is the
  *  gate (THRESHOLD_PCT 85, ≥2 matches, roster guard). This is the standalone measure
- *  for harness/MCP callers; keep its notion of "match" aligned with isKnownCity. */
-export function cityMatchPct(values: Array<string | null | undefined>): number {
+ *  for harness/MCP callers; keep its notion of "match" aligned with isKnownCity
+ *  (including the NA-scope default — see the note there). */
+export function cityMatchPct(values: Array<string | null | undefined>, mapKind?: GeoMapKind | null): number {
     const seen = new Set<string>();
     let matched = 0;
     for (const v of values) {
@@ -493,7 +577,7 @@ export function cityMatchPct(values: Array<string | null | undefined>): number {
         const k = normalizePlaceName(String(v));
         if (!k || seen.has(k)) continue;
         seen.add(k);
-        if (cityRowsFor(k)) matched++;
+        if (isKnownCity(k, mapKind)) matched++;
     }
     return seen.size === 0 ? 0 : Math.round((matched / seen.size) * 1000) / 10;
 }

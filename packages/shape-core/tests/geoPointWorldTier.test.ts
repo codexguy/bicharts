@@ -161,9 +161,11 @@ describe("the NA cascade is untouched by the widening", () => {
 
     it("still refuses a country column parked in the state slot", () => {
         // The "CA" collision the role system exists for: as a STATE it is California, and
-        // a Canadian row must not be dragged to Bakersfield.
-        const r = resolveGeoPoint({ city: "Burnaby", state: "CA", country: "CA" });
-        expect(r!.lat).toBeGreaterThan(48);
-        expect(r!.precision).toBe("city");
+        // a Canadian row must not be dragged to Bakersfield. v2's strict matching sends
+        // the direct call to the country centroid (the mismatching state EXCLUDES the
+        // city row); the city-precise recovery is resolvePointRoles' column-level refusal.
+        const r = resolveGeoPoint({ city: "Burnaby", state: "CA", country: "CA" }) as any;
+        expect(r.precision).toBe("country");
+        expect(r.lat).toBeGreaterThan(41);              // in Canada, never Bakersfield
     });
 });

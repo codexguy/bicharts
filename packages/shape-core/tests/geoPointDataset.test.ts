@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { buildGeoPointColumns, resolveGeoPoint } from "../src/geoPoint";
+import { buildGeoPointColumns, resolveGeoPoint, isGeoPointAmbiguity } from "../src/geoPoint";
 
 // Pins the shipped test dataset (testharness/datasets/geo_point_resolution_test.csv)
 // to the resolutions it is DOCUMENTED to produce. Two jobs:
@@ -53,7 +53,9 @@ describe("geo_point_resolution_test.csv — the shipped test dataset", () => {
         const expected: Record<string, string | null> = {
             "city unambiguous": "city",
             "ambiguous city + state": "city",
-            "ambiguous city NO state": "city",
+            // v2 (Joel 2026-08-02): multiple possible matches = NOT plotted + reported.
+            // The old behaviour placed these at the largest same-named city with a flag.
+            "ambiguous city NO state": "AMBIGUOUS",
             "canada city + code": "city",
             "canada city + name": "city",
             "canada diacritics": "city",
@@ -82,22 +84,25 @@ describe("geo_point_resolution_test.csv — the shipped test dataset", () => {
         for (const r of rows) {
             const want = expected[r.Scenario];
             const got = resolveGeoPoint(asArgs(r));
-            const gotP = got ? got.precision : null;
+            const gotP = isGeoPointAmbiguity(got) ? "AMBIGUOUS" : (got ? got.precision : null);
             if (gotP !== want) miss.push(`${r.Scenario} [${r.City}|${r.StateCode}${r.StateName}|${r.Zip5}${r.Zip3}] want=${want} got=${gotP}`);
         }
         expect(miss).toEqual([]);
     });
 
-    it("the ambiguous-no-state rows are FLAGGED, the disambiguated ones are not", () => {
+    it("ambiguous-no-state rows are REFUSED; the disambiguated ones place clean (v2)", () => {
         for (const r of rows.filter(r => r.Scenario === "ambiguous city NO state"))
-            expect(resolveGeoPoint(asArgs(r))!.ambiguous).toBe(true);
-        for (const r of rows.filter(r => r.Scenario === "ambiguous city + state"))
-            expect(resolveGeoPoint(asArgs(r))!.ambiguous).toBeUndefined();
+            expect(isGeoPointAmbiguity(resolveGeoPoint(asArgs(r)))).toBe(true);
+        for (const r of rows.filter(r => r.Scenario === "ambiguous city + state")) {
+            const p = resolveGeoPoint(asArgs(r));
+            expect(isGeoPointAmbiguity(p)).toBe(false);
+            expect((p as any).precision).toBe("city");
+        }
     });
 
     it("the four Springfields land in four DIFFERENT places", () => {
         const pts = rows.filter(r => r.Scenario === "ambiguous city + state")
-            .map(r => { const p = resolveGeoPoint(asArgs(r))!; return `${p.lat},${p.lon}`; });
+            .map(r => { const p = resolveGeoPoint(asArgs(r)) as any; return `${p.lat},${p.lon}`; });
         expect(new Set(pts).size).toBe(pts.length);
     });
 
@@ -109,7 +114,7 @@ describe("geo_point_resolution_test.csv — the shipped test dataset", () => {
 
     it("coordinates beat the city lookup (Miami row carries Seattle coordinates)", () => {
         const r = rows.find(r => r.Scenario === "latlon wins over city")!;
-        const p = resolveGeoPoint(asArgs(r))!;
+        const p = resolveGeoPoint(asArgs(r)) as any;
         expect(p.precision).toBe("latlon");
         expect(p.lat).toBeCloseTo(47.61, 2);   // NOT Miami's ~25.8
     });
@@ -117,8 +122,14 @@ describe("geo_point_resolution_test.csv — the shipped test dataset", () => {
     it("whole-table build reports the coarsest tier, the unmatched rows, and ambiguity", () => {
         const out = buildGeoPointColumns(rows.map(asArgs));
         expect(out.totalRows).toBe(41);
-        expect(out.matchedRows).toBe(38);          // 3 rows resolve to nothing
-        expect(out.ambiguousRows).toBe(3);         // the bare Springfield/Burlington/Lakewood
+        // v2: the 3 ambiguous bare names (Springfield/Burlington/Lakewood) are REFUSED
+        // and reported rather than placed at the largest — matched drops 38 -> 35, and
+        // each refused row is NAMED so the info call-out can say what to disambiguate.
+        expect(out.matchedRows).toBe(35);
+        expect(out.ambiguousRows).toBe(3);
+        expect(out.ambiguousExamples).toEqual(
+            expect.arrayContaining(["Springfield", "Burlington", "Lakewood"]));
+        expect(out.lat.filter(v => v === null).length).toBe(6);  // 3 no-match + 3 ambiguous
         expect(out.precision).toBe("state");       // the state-only rows are the coarsest
         // Only TWO labels though: the all-blank row has no city/state/zip to name, so it
         // is unmatched but contributes nothing an annotation could usefully print.
@@ -133,11 +144,11 @@ describe("geo_point_resolution_test.csv — the shipped test dataset", () => {
         console.log("\n" + w("Scenario", 26) + w("City", 18) + w("St", 6) + w("Zip", 12)
             + w("precision", 10) + w("lat", 9) + w("lon", 10) + "amb");
         for (const r of rows) {
-            const p = resolveGeoPoint(asArgs(r));
+            const got = resolveGeoPoint(asArgs(r));
+            const p = isGeoPointAmbiguity(got) ? null : got;
             console.log(w(r.Scenario, 26) + w(r.City, 18) + w(r.StateCode || r.StateName, 6)
-                + w(r.Zip5 || r.Zip3, 12) + w(p ? p.precision : "(none)", 10)
-                + w(p ? p.lat.toFixed(2) : "-", 9) + w(p ? p.lon.toFixed(2) : "-", 10)
-                + (p?.ambiguous ? "AMBIGUOUS" : ""));
+                + w(r.Zip5 || r.Zip3, 12) + w(p ? p.precision : (isGeoPointAmbiguity(got) ? "AMBIG" : "(none)"), 10)
+                + w(p ? p.lat.toFixed(2) : "-", 9) + w(p ? p.lon.toFixed(2) : "-", 10));
         }
     });
 });

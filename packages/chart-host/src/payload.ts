@@ -19,7 +19,7 @@ import {
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
 // install — so importing the type here put a dangling specifier in the shipped payload.d.ts.
-import type { GeoPointPrecision } from "./contract";
+import type { GeoPointPrecision, GeoMapKind } from "./contract";
 
 /** Which columns hold the place parts a coordinate can be resolved from. Any subset;
  *  the cascade uses the most precise tier available per row. */
@@ -29,10 +29,15 @@ export interface GeoPointBinding {
     zip?: string;
     lat?: string;
     lon?: string;
-    // Narrows city matching to the row's own country, so a bare "Burlington" on a US row
-    // cannot land on the larger Canadian one. Optional: absent = the cascade behaves
-    // exactly as it did before.
+    // A matching CONSTRAINT like state (any non-blank source attribute must match the
+    // same value or a blank in the lookup row), and — since the country tier — also the
+    // placement of last resort. Optional: absent = unconstrained.
     country?: string;
+    // Which map's gazetteer rows the city tier may use. The v2 table (2026-08-02)
+    // carries per-row map-kind flags so ONE list serves every point map, each map
+    // declaring its own scope. Absent = "north-america" — the pre-v2 candidate set
+    // exactly, so an older caller that never sends this is byte-identical.
+    mapKind?: GeoMapKind;
 }
 
 export interface RenderPayload {
@@ -46,8 +51,9 @@ export interface RenderPayload {
     geoUnmatchedDistinct?: number;
     // Present only when a POINT binding was given (city/state/zip -> coordinates).
     // Feeds options.geoPoint so the chart can annotate honestly: `precision` is the
-    // COARSEST tier any row needed, `ambiguousRows` counts rows placed by the
-    // largest-match tie-break on a colliding bare city name.
+    // COARSEST tier any row needed; `ambiguousRows` counts rows whose name matched
+    // MULTIPLE places and were therefore NOT plotted (v2 matching, 2026-08-02 — refusal
+    // replaced the old largest-city tie-break).
     geoPoint?: {
         precision: GeoPointPrecision | null;
         // Rows per tier. `precision` alone is a CEILING and reads the same for 1-of-42
@@ -59,6 +65,11 @@ export interface RenderPayload {
         unplaced: number;
         unplacedExamples: string[];
         ambiguousRows: number;
+        // The rows behind ambiguousRows, named so the chart's info call-out can tell the
+        // user WHAT to disambiguate (add a state/country column). ADDITIVE + optional —
+        // absent on older hosts, and old generated code needs nothing from it: ambiguous
+        // rows carry null coordinates, so its own off-map counting already covers them.
+        ambiguousExamples?: string[];
         // What the ROLE resolution did to the caller's binding, so the chart can say when
         // its coordinates rest on something other than what was asked for. Both are
         // ADDITIVE and optional: a host on an older contract simply ignores them.
@@ -96,7 +107,7 @@ export function buildRenderPayload(
     let rolesRefused: string[] = [];
     if (bind) {
         const dims = cols.filter(c => !c.isMeasure).map(c => c.name);
-        const res = resolvePointRoles(dims, rowObjs, bind);
+        const res = resolvePointRoles(dims, rowObjs, bind, point?.mapKind);
         bind = res.bind;
         rolesBackfilled = res.backfilled;
         rolesRefused = res.refused;
@@ -111,15 +122,21 @@ export function buildRenderPayload(
             state: p.state ? r[p.state] : null,
             zip: p.zip ? r[p.zip] : null,
             country: p.country ? r[p.country] : null,
-        })));
+        })), point?.mapKind);
         pLat = built.lat; pLon = built.lon;
         geoPoint = {
             precision: built.precision,
             precisionCounts: built.precisionCounts,
             coarseExamples: built.coarseExamples,
-            unplaced: built.totalRows - built.matchedRows,
+            // STRICTLY no-match. Ambiguous rows are deliberately NOT in here: new charts
+            // report them from ambiguousRows/ambiguousExamples, while OLD generated code
+            // still shows them — it computes its own off-map count from null coordinates
+            // and takes max(offMap, unplaced), so the not-shown total stays right without
+            // double-counting on either side of the upgrade.
+            unplaced: built.totalRows - built.matchedRows - built.ambiguousRows,
             unplacedExamples: built.unmatched.slice(0, 8),
             ambiguousRows: built.ambiguousRows,
+            ...(built.ambiguousExamples.length ? { ambiguousExamples: built.ambiguousExamples } : {}),
             // Omitted entirely when nothing was adjusted, so the common case adds no bytes
             // and a chart can treat presence as "something about this binding is worth
             // saying".

@@ -13,10 +13,15 @@
 
 // Bump when the contract changes in a way a host must adapt to (semver). Stamped
 // into the MCP integration contract so a caller can pin behavior.
+// 1.2.0 (2026-08-02): gazetteer v2. GeoPointBinding gained mapKind; geoPoint gained
+// ambiguousExamples; and ambiguousRows CHANGED MEANING — it now counts rows REFUSED
+// (multiple possible matches, not plotted, null coordinates) where it used to count rows
+// placed by a largest-city tie-break. Old generated code stays honest without changes:
+// refused rows carry null coordinates, so its own off-map counting covers them.
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.1.0";
+export const HOST_CONTRACT_VERSION = "1.2.0";
 
 // The coarsest geocoding tier a point map used. Declared HERE, not imported from
 // @bicharts/shape-core, because this type is part of chart-host's PUBLIC surface: shape-core
@@ -28,6 +33,12 @@ export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state" | "country"
 /** Every valid tier, ordered most precise → coarsest. Runtime form of GeoPointPrecision. */
 export const GEO_POINT_PRECISIONS: readonly GeoPointPrecision[] =
     ["latlon", "city", "zip3", "state", "country"] as const;
+
+/** Which point-map's gazetteer rows a lookup runs against (v2 unified table, 2026-08-02:
+ *  one list, per-row map-kind flags). Duplicated from shape-core for the same reason as
+ *  GeoPointPrecision above — public surface must not dangle on a bundled devDependency —
+ *  and held identical by the same anti-drift test. */
+export type GeoMapKind = "north-america" | "world";
 
 // ---- Interaction grammar (what generated code emits; the host binds to these) ----
 

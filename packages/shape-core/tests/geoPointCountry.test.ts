@@ -4,7 +4,7 @@
 // placed, so the bar is: it must fix the cross-border cases and leave everything else
 // bit-identical. The "unchanged when absent" block below is the load-bearing half.
 import { describe, it, expect } from "vitest";
-import { resolveGeoPoint, normalizeCountry } from "../src/geoPoint";
+import { resolveGeoPoint, normalizeCountry, isGeoPointAmbiguity } from "../src/geoPoint";
 import { resolvePointRoles } from "../src/geoPointRoles";
 
 describe("normalizeCountry", () => {
@@ -23,15 +23,20 @@ describe("normalizeCountry", () => {
 });
 
 describe("country narrowing fixes the cross-border placements", () => {
-    it("keeps a US Burlington out of Ontario", () => {
-        // The larger Burlington is in Ontario, so the bare name resolves there.
-        const bare = resolveGeoPoint({ city: "Burlington" });
-        expect(bare!.lat).toBeCloseTo(43.39, 1);
-        expect(bare!.ambiguous).toBe(true);
+    it("keeps a US Burlington out of Ontario — by REFUSING, not by picking (v2)", () => {
+        // Pre-v2, bare "Burlington" placed at the larger Ontario one with a flag, and
+        // country:"US" narrowed to… still SEVERAL US Burlingtons, silently resolved by
+        // population. v2 refuses both: multiple possible matches are a call-out, not a
+        // guess. Only a genuinely disambiguating attribute places the row.
+        expect(isGeoPointAmbiguity(resolveGeoPoint({ city: "Burlington" }))).toBe(true);
+        expect(isGeoPointAmbiguity(resolveGeoPoint({ city: "Burlington", country: "US" }))).toBe(true);
 
-        const us = resolveGeoPoint({ city: "Burlington", country: "US" });
-        expect(us!.lat).toBeLessThan(43);              // Vermont/NC, not Ontario
-        expect(us!.precision).toBe("city");
+        const vt = resolveGeoPoint({ city: "Burlington", state: "VT", country: "US" }) as any;
+        expect(vt.precision).toBe("city");
+        expect(vt.lat).toBeCloseTo(44.48, 1);          // Vermont, exactly
+        const on = resolveGeoPoint({ city: "Burlington", country: "CA" }) as any;
+        expect(on.precision).toBe("city");             // only ONE Canadian Burlington
+        expect(on.lat).toBeCloseTo(43.39, 1);
     });
 
     it("refuses to place a city in a country that has no such city", () => {
@@ -52,11 +57,22 @@ describe("country narrowing fixes the cross-border placements", () => {
         expect(withState!.lat).toBeGreaterThan(42);     // Ontario centroid
     });
 
-    it("distrusts a state that belongs to a different country than the row", () => {
-        // "CA" in the state slot on a Canadian row is California. The country wins.
-        const r = resolveGeoPoint({ city: "Burnaby", state: "CA", country: "CA" });
-        expect(r!.lat).toBeGreaterThan(48);             // Burnaby BC, not Bakersfield
-        expect(r!.precision).toBe("city");
+    it("distrusts a state that belongs to a different country than the row (v2: strict)", () => {
+        // "CA" in the state slot on a Canadian row is California. Pre-v2 the resolver
+        // DROPPED the suspicious state and placed the city; v2's rule is stricter — a
+        // non-blank source attribute that matches nothing EXCLUDES the row at the city
+        // tier, and the row falls to the country centroid, labelled as such. Coarser and
+        // honest. The row-level guarantee that matters is unchanged: never Bakersfield.
+        // (The CITY-precise recovery lives in resolvePointRoles, which refuses a country
+        // column in the state slot at COLUMN level before the resolver ever runs — the
+        // production path for exactly this data shape, tested below and in geoPointRoles.)
+        const r = resolveGeoPoint({ city: "Burnaby", state: "CA", country: "CA" }) as any;
+        expect(r.precision).toBe("country");
+        expect(r.lat).toBeGreaterThan(41);              // in Canada, never Bakersfield
+        // With the bad slot refused (what roles do), the city places exactly:
+        const clean = resolveGeoPoint({ city: "Burnaby", country: "CA" }) as any;
+        expect(clean.precision).toBe("city");
+        expect(clean.lat).toBeGreaterThan(48);
     });
 
     it("resolves an ambiguous name unambiguously once the country is known", () => {
