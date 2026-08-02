@@ -37,6 +37,7 @@
 
 import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
 import { countryIso3 } from "./geoCountryNames";
+import { GAZETTEER_MATCH_PCT, isBlankLike } from "./matchQuality";
 
 /** The place parts a coordinate can be resolved from. Any subset. */
 export type PointBind = {
@@ -77,12 +78,8 @@ const ZIP_THRESHOLD_PCT = 100;
 // Classification reads DISTINCT values, so a wide column costs no more than a narrow
 // one; this only bounds a pathological all-unique text column.
 const MAX_DISTINCT_SCAN = 400;
-// Minimum share of a column's DISTINCT values that must be country identifiers before it can
-// claim the country role. Deliberately higher than the name roles' 85%: a country column is
-// a closed vocabulary, so real ones score ~100 and the only thing this tolerates is the odd
-// blank-ish sentinel ("N/A", "Unknown") or a typo. Below it, the data needs cleaning - that
-// is the user's call, not something to guess through.
-const COUNTRY_THRESHOLD_PCT = 97;
+// The gazetteer-quality bar lives in matchQuality.ts so it is tunable in ONE place; see
+// GAZETTEER_MATCH_PCT there for why the looser name roles deliberately do not use it.
 
 /**
  * Is this normalized token a country identifier?
@@ -109,7 +106,10 @@ function distinctNormalized(values: Array<unknown>): string[] {
     for (const v of values) {
         if (v === null || v === undefined) continue;
         const k = normalizePlaceName(String(v));
-        if (!k) continue;
+        // isBlankLike, not just falsy: "-" and "?" already reduce to "" here, but "N/A"
+        // survives as "n a" and would otherwise count as a FAILED match and drag the ratio
+        // down. A blank is not a value, so it leaves the denominator rather than voting.
+        if (isBlankLike(k)) continue;
         if (!seen.has(k)) {
             seen.add(k);
             if (seen.size >= MAX_DISTINCT_SCAN) break;
@@ -148,7 +148,7 @@ export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     // country column disqualified the whole column and silently cost the map its country
     // role. 97% keeps that from being a cliff while staying far too strict for a column of
     // something else to claim the role by accident.
-    if (countryMatchPct(values) < COUNTRY_THRESHOLD_PCT) return false;
+    if (countryMatchPct(values) < GAZETTEER_MATCH_PCT) return false;
 
     // AN AMBIGUOUS TOKEN IS SETTLED BY THE COMPANY IT KEEPS (Joel, same note): "CA" should
     // read as Canada beside US/DE/IT, and as California beside CO/FL/WA. Count only the
@@ -226,7 +226,9 @@ function distinctRaw(values: Array<unknown>): string[] {
     for (const v of values) {
         if (v === null || v === undefined) continue;
         const s = String(v).trim();
-        if (!s) continue;
+        // Same rule as distinctNormalized: a typed placeholder is a blank, and ZIP is held
+        // to a 100% bar, so one "N/A" would otherwise disqualify an entire clean column.
+        if (isBlankLike(normalizePlaceName(s))) continue;
         if (!seen.has(s)) {
             seen.add(s);
             if (seen.size >= MAX_DISTINCT_SCAN) break;

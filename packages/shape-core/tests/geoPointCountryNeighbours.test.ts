@@ -54,17 +54,38 @@ describe("the gazetteer match ratio", () => {
         expect(looksLikeCountryColumn(MANY)).toBe(true);
     });
 
-    it("one sentinel in a large clean column stays above the bar", () => {
-        // 40 of 41 = 97.6%. The old all-or-nothing rule failed this outright, so a single
-        // "N/A" cost the column its country role and the map its placement.
-        const withJunk = [...MANY, "N/A"];
-        expect(countryMatchPct(withJunk)).toBeGreaterThanOrEqual(97);
-        expect(looksLikeCountryColumn(withJunk)).toBe(true);
+    it("the ratio is over NON-BLANKS, so placeholders do not dilute it", () => {
+        // Joel: "my 97% is for non-blanks, by the way." A blank is not a value and does not
+        // get to vote against the column. Four countries and a placeholder is a clean country
+        // column with a hole in it — 100% of what is actually there — not an 80% one.
+        expect(countryMatchPct(["US", "DE", "IT", "JP", "N/A"])).toBe(100);
+        expect(looksLikeCountryColumn(["US", "DE", "IT", "JP", "N/A"])).toBe(true);
+    });
+
+    it("treats the usual placeholders as blank", () => {
+        for (const junk of ["N/A", "n/a", "N.A.", "-", "--", "?", "none", "NULL", "unknown", "TBD", "  "]) {
+            expect(countryMatchPct(["US", "DE", "IT", junk]), junk).toBe(100);
+        }
+    });
+
+    it("but NA is NAMIBIA, not a placeholder", () => {
+        // "N/A" normalizes to "n a" (with a space) and "NA" to "na" — different tokens, which
+        // is the only reason the placeholder can be dropped safely. Collapsing them would
+        // erase a country from every world map to catch a typo.
+        expect(countryMatchPct(["NA"])).toBe(100);
+        expect(countryMatchPct(["NA", "ZA", "BW", "ZW"])).toBe(100);
+        expect(looksLikeCountryColumn(["NA", "ZA", "BW", "ZW"])).toBe(true);
     });
 
     it("genuinely dirty data is refused - that is the user's to clean", () => {
-        expect(countryMatchPct(["US", "DE", "IT", "JP", "N/A"])).toBeLessThan(97);
-        expect(looksLikeCountryColumn(["US", "DE", "IT", "JP", "N/A"])).toBe(false);
+        // Real non-blank junk, which is what the ratio is actually for.
+        expect(countryMatchPct(["US", "DE", "IT", "Widget"])).toBeLessThan(97);
+        expect(looksLikeCountryColumn(["US", "DE", "IT", "Widget"])).toBe(false);
+    });
+
+    it("a column of nothing but placeholders claims no role at all", () => {
+        expect(countryMatchPct(["N/A", "-", "unknown"])).toBe(0);
+        expect(looksLikeCountryColumn(["N/A", "-", "unknown"])).toBe(false);
     });
 
     it("a column of something else never claims the role", () => {
