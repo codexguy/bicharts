@@ -39,7 +39,7 @@
 // The city table lives in geoPoint (the point-geocode cascade owns it); this module
 // only asks "is this a known city?" to emit the city-name KIND. One-directional —
 // geoPoint never imports geoDetector — so there is no import cycle.
-import { isKnownCity } from "./geoPoint";
+import { isKnownCity, normalizeZip5 } from "./geoPoint";
 import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT } from "./matchQuality";
 // The country tables + the shared normalizer moved to geoCountryNames when the World
 // point map needed them too — geoPoint could not import them back without a cycle.
@@ -409,16 +409,11 @@ export function toGeoIso(value: string | null | undefined, geoKind: GeoKind): st
             return STATE_NAME_TO_USPS.get(normalizeName(raw)) ?? null;
         }
         case "us-zip5": {
-            const m = /^(\d{5})(-\d{4})?$/.exec(raw);
-            if (m) return m[1];
-            // Power BI / Excel silently coerce a ZIP column to a NUMBER, dropping the
-            // leading zero(s): "01001" -> 1001, "00501" -> 501. Within a column already
-            // resolved as ZIP-5, a bare 3-4 digit integer is a zero-stripped ZIP — left-
-            // pad to recover it (the whole New England / NJ / PR 0xxxx block otherwise
-            // reads as unmatched, prod 2026-07-23). USPS ZIPs are 00501..99950, so any
-            // <5-digit value is unambiguously a stripped leading zero.
-            if (/^\d{3,4}$/.test(raw)) return raw.padStart(5, "0");
-            return null;
+            // ONE reader, shared with the point cascade (geoPoint.normalizeZip5). These two
+            // had drifted: this branch padded stripped leading zeros but not a float round
+            // trip, so "60614.0" resolved on a point map and came back unmatched on a
+            // choropleth over the very same column.
+            return normalizeZip5(raw);
         }
         case "us-county-fips": {
             return /^\d{5}$/.test(raw) && STATE_FIPS_SET.has(raw.slice(0, 2)) ? raw : null;

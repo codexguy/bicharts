@@ -51,7 +51,7 @@ export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
 // Point geocoding — a COORDINATE for a row that has none (City+State / ZIP / State),
 // as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
 export {
-    resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
+    resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, resolveAdmin1, zipToPrefix3, zipPrefixCandidates, normalizeZip5,
     normalizePlaceName, cityMatchPct, normalizeCountry,
     // The city PLACEMENT table is REGISTERED, not bundled here: detection stays in the
     // package (it decides offerability and runs in the profiler) while the coordinates

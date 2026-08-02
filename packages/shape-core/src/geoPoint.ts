@@ -338,21 +338,57 @@ export function zipToPrefix3(value: string | null | undefined): string | null {
 
 /** Ordered prefix interpretations, most likely first. Callers with the lookup table
  *  available should try each and take the first that exists. */
+/**
+ * THE ZIP READER. One function, because a ZIP arrives in whatever shape the pipeline left it
+ * and both matchers — the point cascade here and the choropleth join key in geoDetector —
+ * have to read it identically (Joel 2026-08-02: "the matcher to the gazette needs to do
+ * proper zip matching: it should work for 02108 no matter how the source is interpreted").
+ *
+ * Everything it survives, and why each one is real:
+ *
+ *   "02108"       the honest case
+ *   "02108-1234"  ZIP+4; the +4 is routing detail, not a place
+ *   2108          Power BI and Excel silently coerce a ZIP column to a NUMBER and the
+ *                 leading zero is gone. This is not an edge case: it takes out the entire
+ *                 New England / New Jersey / Puerto Rico 0xxxx block (prod, 2026-07-23)
+ *   501           the same thing to Holtsville NY 00501, the lowest ZIP there is
+ *   "60614.0"     a round trip through a float — a CSV export, a DAX FORMAT
+ *   " 02108 "     whitespace from a hand-maintained sheet
+ *
+ * USPS ZIPs run 00501..99950, so any value shorter than five digits is unambiguously a
+ * stripped leading zero and padding recovers it rather than guessing.
+ *
+ * Returns the canonical 5-digit form, or null when the value simply is not a ZIP.
+ */
+export function normalizeZip5(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) return null;
+    // A real ZIP never contains a dot, so stripping a trailing ".0…" is safe.
+    const raw = String(value).trim().replace(/\.0+$/, "");
+    if (!raw) return null;
+    const m = /^(\d{5})(-\d{4})?$/.exec(raw);
+    if (m) return m[1];
+    if (/^\d{3,4}$/.test(raw)) return raw.padStart(5, "0");
+    return null;
+}
+
+/** Ordered prefix interpretations, most likely first. Callers with the lookup table
+ *  available should try each and take the first that exists. */
 export function zipPrefixCandidates(value: string | null | undefined): string[] {
     if (value === null || value === undefined) return [];
-    // "60614.0" — a ZIP that took a round trip through a float (CSV export, a DAX
-    // FORMAT, etc.). A real ZIP never contains a dot, so stripping ".0…" is safe and
-    // recovers the value instead of dropping the row to a coarser tier.
     const raw = String(value).trim().replace(/\.0+$/, "");
     if (!raw) return [];
-    const m = /^(\d{5})(-\d{4})?$/.exec(raw);
-    if (m) return [m[1].slice(0, 3)];
-    if (/^\d{4}$/.test(raw)) return [raw.padStart(5, "0").slice(0, 3)];
+
+    // A BARE 3-DIGIT value is the one genuinely ambiguous shape, and it is why this cannot
+    // simply defer to normalizeZip5: "021" is either the ZIP-3 prefix itself (already what
+    // this function returns) or 00021 with two zeros eaten. Offer both readings, the literal
+    // one first, and let the caller take whichever the table actually holds.
     if (/^\d{3}$/.test(raw)) {
         const stripped = raw.padStart(5, "0").slice(0, 3);   // the 00xxx reading
         return stripped === raw ? [raw] : [raw, stripped];
     }
-    return [];
+
+    const z = normalizeZip5(raw);
+    return z ? [z.slice(0, 3)] : [];
 }
 
 /**
