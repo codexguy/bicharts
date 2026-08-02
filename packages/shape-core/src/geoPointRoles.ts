@@ -77,6 +77,12 @@ const ZIP_THRESHOLD_PCT = 100;
 // Classification reads DISTINCT values, so a wide column costs no more than a narrow
 // one; this only bounds a pathological all-unique text column.
 const MAX_DISTINCT_SCAN = 400;
+// Minimum share of a column's DISTINCT values that must be country identifiers before it can
+// claim the country role. Deliberately higher than the name roles' 85%: a country column is
+// a closed vocabulary, so real ones score ~100 and the only thing this tolerates is the odd
+// blank-ish sentinel ("N/A", "Unknown") or a typo. Below it, the data needs cleaning - that
+// is the user's call, not something to guess through.
+const COUNTRY_THRESHOLD_PCT = 97;
 
 /**
  * Is this normalized token a country identifier?
@@ -134,8 +140,29 @@ function distinctNormalized(values: Array<unknown>): string[] {
 export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     const d = distinctNormalized(values);
     if (d.length === 0) return false;
-    if (!d.every(isCountryId)) return false;
-    return d.some(v => !resolveAdmin1(v));
+
+    // A MINIMUM RATIO against the gazetteer, not "every value" (Joel 2026-08-02: "there
+    // probably needs to be a minimum ratio of successful matches against the gazette (e.g.
+    // 97% - if data quality is worse, it's the user's responsibility to clean it)"). The old
+    // all-or-nothing test meant one "N/A", one "Unknown" or one typo in an otherwise clean
+    // country column disqualified the whole column and silently cost the map its country
+    // role. 97% keeps that from being a cliff while staying far too strict for a column of
+    // something else to claim the role by accident.
+    if (countryMatchPct(values) < COUNTRY_THRESHOLD_PCT) return false;
+
+    // AN AMBIGUOUS TOKEN IS SETTLED BY THE COMPANY IT KEEPS (Joel, same note): "CA" should
+    // read as Canada beside US/DE/IT, and as California beside CO/FL/WA. Count only the
+    // values that can mean ONE thing — those are the column's actual evidence — and let them
+    // decide. {CA, DE, IT}: IT is a country and nothing else, DE and CA are both, so the sole
+    // evidence says country. {CA, CO, FL, WA}: FL and WA are states and nothing else, so it
+    // says state (and the ratio test above has usually already excluded it).
+    //
+    // {CA} alone still decides NOTHING, which remains the honest answer: zero sole evidence
+    // either way. That is the cross-filter case — one Californian row surviving a click must
+    // not turn its StateCode column into "Canada" and blank the map.
+    const soleCountry = d.filter(v => isCountryId(v) && !resolveAdmin1(v)).length;
+    const soleState = d.filter(v => !isCountryId(v) && !!resolveAdmin1(v)).length;
+    return soleCountry >= 1 && soleCountry >= soleState;
 }
 
 /**
@@ -171,6 +198,15 @@ function isAmbiguousCountryState(normalized: string, mapKind?: GeoMapKind | null
     const iso = countryIso3(normalized);
     if (!iso) return false;
     return mapKind === "world" ? true : NORTH_AMERICA_COUNTRIES.has(iso);
+}
+
+/** Share of DISTINCT values that are country identifiers, 0..100 (one decimal). */
+export function countryMatchPct(values: Array<unknown>): number {
+    const d = distinctNormalized(values);
+    if (d.length === 0) return 0;
+    let n = 0;
+    for (const v of d) if (isCountryId(v)) n++;
+    return Math.round((n / d.length) * 1000) / 10;
 }
 
 /** Share of DISTINCT values that resolve to a state/province, 0..100 (one decimal). */
