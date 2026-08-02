@@ -36,6 +36,7 @@
 // lookup cannot: judge the column by ALL its values at once.
 
 import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
+import { countryIso3 } from "./geoCountryNames";
 
 /** The place parts a coordinate can be resolved from. Any subset. */
 export type PointBind = {
@@ -77,14 +78,24 @@ const ZIP_THRESHOLD_PCT = 100;
 // one; this only bounds a pathological all-unique text column.
 const MAX_DISTINCT_SCAN = 400;
 
-// Country identifiers, normalized. Deliberately NOT a general ISO table: this exists
-// only to break the one measured admin1 collision, and a column of countries is
-// recognized by ALL its values being country identifiers, not by any single one.
-const COUNTRY_IDS = new Set([
-    "us", "usa", "u s", "u s a", "united states", "united states of america", "america",
-    "ca", "can", "canada",
-    "mx", "mex", "mexico", "estados unidos mexicanos",
-]);
+/**
+ * Is this normalized token a country identifier?
+ *
+ * This used to be a hardcoded fourteen-entry set of US/CA/MX spellings, and its comment
+ * explained why: it existed "only to break the one measured admin1 collision", back when
+ * country could do nothing but narrow a North-American city match. Every word of that was
+ * true at 0.1.7 and none of it survived the world expansion — placement resolves all 195
+ * countries through countryIso3, so detection that stops at three of them means a column of
+ * European or Asian countries is not recognized as a country column at all, and the tier
+ * that could place it never engages. That was the third guard behind the World (Bubbles)
+ * empty state (dev LLMLogID 38905), after the two placeability gates.
+ *
+ * Detection and placement now read the SAME table, which is the only arrangement where
+ * "we recognized it" and "we can place it" cannot disagree.
+ */
+function isCountryId(normalized: string): boolean {
+    return !!countryIso3(normalized);
+}
 
 /** Distinct, normalized, non-blank values of a column (capped). */
 function distinctNormalized(values: Array<unknown>): string[] {
@@ -123,14 +134,43 @@ function distinctNormalized(values: Array<unknown>): string[] {
 export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     const d = distinctNormalized(values);
     if (d.length === 0) return false;
-    if (!d.every(v => COUNTRY_IDS.has(v))) return false;
+    if (!d.every(isCountryId)) return false;
     return d.some(v => !resolveAdmin1(v));
 }
 
-/** A token that is BOTH a country identifier and a state/province code — today only "CA"
- *  (Canada vs California). Such a value can never, on its own, decide a column's role. */
-function isAmbiguousCountryState(normalized: string): boolean {
-    return COUNTRY_IDS.has(normalized) && !!resolveAdmin1(normalized);
+/**
+ * The countries the NORTH-AMERICA scope can draw. This is a FILTER, not gazetteer truth:
+ * the gazetteer knows every country regardless of which map is on screen, and a map decides
+ * which of those readings are live for it (Joel 2026-08-02: "detection ought to be global…
+ * same code base, but different filters depending on chart type. the gazette is 'true' no
+ * matter the chart, though."). It matches the admin1 table's own coverage — US, Canada and
+ * Mexico are exactly the countries whose states/provinces resolve.
+ */
+const NORTH_AMERICA_COUNTRIES = new Set(["USA", "CAN", "MEX"]);
+
+/**
+ * A token that could be read EITHER as a state/province or as a country the map can show.
+ * Such a value cannot, on its own, decide a column's role.
+ *
+ * SCOPE IS LOAD-BEARING HERE, and it is why this takes a mapKind. The rule was written for
+ * the single North-American collision, "CA" = Canada vs California. Once detection went
+ * global (it must — see isCountryId) the collision set exploded: IL is Illinois AND Israel,
+ * IN India, DE Germany, LA Laos, PA Panama, MD Moldova, and about a dozen more. Treating all
+ * of those as ambiguous everywhere cost real placements — a two-row subset whose only state
+ * value was "IL" stopped resolving the state role at all, and a row that placed in the full
+ * table blanked under cross-filter, which is the one thing payloadGeoSubset.test.ts exists to
+ * forbid.
+ *
+ * The resolution is not to shrink the gazetteer back down; it is to ask whether the COUNTRY
+ * reading is live for THIS map. On a North America map, "IL" cannot mean Israel because
+ * Israel is not on it, so Illinois wins uncontested. On a World map it genuinely can, and the
+ * value stays ambiguous — which is the honest answer there.
+ */
+function isAmbiguousCountryState(normalized: string, mapKind?: GeoMapKind | null): boolean {
+    if (!resolveAdmin1(normalized)) return false;
+    const iso = countryIso3(normalized);
+    if (!iso) return false;
+    return mapKind === "world" ? true : NORTH_AMERICA_COUNTRIES.has(iso);
 }
 
 /** Share of DISTINCT values that resolve to a state/province, 0..100 (one decimal). */
@@ -230,7 +270,7 @@ export function resolvePointRoles(
     if (hintedState && colSet.has(hintedState)) {
         const vals = valuesOf(hintedState);
         const dvals = distinctNormalized(vals);
-        if (dvals.length > 0 && dvals.every(isAmbiguousCountryState)) {
+        if (dvals.length > 0 && dvals.every(v => isAmbiguousCountryState(v, mapKind))) {
             // Everything in this column is the Canada/California token and nothing else.
             // It is genuinely undecidable, so decide nothing: refuse it as a state (using it
             // would place Canadian cities in California) and do NOT promote it to country
@@ -271,7 +311,7 @@ export function resolvePointRoles(
             // state role on every single-row subset — degrading precision for no reason. One
             // "TX" is proof enough; one "CA" is not, because it is equally Canada.
             const hits = distinctMatches(vals, v => !!resolveAdmin1(v));
-            const unambiguous = distinctMatches(vals, v => !!resolveAdmin1(v) && !isAmbiguousCountryState(v));
+            const unambiguous = distinctMatches(vals, v => !!resolveAdmin1(v) && !isAmbiguousCountryState(v, mapKind));
             if (hits < MIN_DISTINCT_BACKFILL && unambiguous < 1) continue;
             if (!best || pct > best.pct) best = { name: c, pct };
         }
@@ -327,8 +367,52 @@ export function resolvePointRoles(
         }
     }
 
-    // country ALONE is not a placeable binding — it only narrows the other tiers — so it
-    // deliberately does not count toward "we can geocode something".
-    const any = !!(out.city || out.state || out.zip || (out.lat && out.lon));
+    // COUNTRY ALONE CAN PLACE, since the COUNTRY precision tier (0.4.2) — under two
+    // conditions, both of which matter.
+    //
+    // This line used to exclude country outright, and said so deliberately. At 0.1.7, where
+    // the rule was written, country could only NARROW the other tiers, so a country-only
+    // binding really did mean "nothing to geocode". 0.4.2 added country PLACEMENT — every row
+    // in a country on its centroid, the coarsest honest answer, with the precision tier
+    // saying exactly that — and this rule was never revisited. The two then contradicted each
+    // other: resolveGeoPoint would happily place a country-only row while this refused to
+    // hand it one, so the capability shipped unreachable. Symptom: a World point map over
+    // country-only data drew "No coordinate data available" with a perfectly resolvable
+    // 44-country table behind it (dev LLMLogID 38905).
+    //
+    // CONDITION 1 — DETECTION, not a hint (Joel 2026-08-02: "you can certainly use country
+    // alone - as long as the detection proves there IS a true country column"). A hinted
+    // country role is carried above WITHOUT checking its values, which was safe while country
+    // could only narrow: an unrecognized country is a no-op inside resolveGeoPoint. Now that
+    // it can place, an unverified hint would open the gate on any column at all and append a
+    // full set of null coordinates — telling the chart it has a map when it has none. So
+    // placement requires looksLikeCountryColumn to agree. A hint that fails is still KEPT as
+    // a narrowing constraint (it costs nothing); it just cannot be the thing that makes a
+    // binding geocodable.
+    //
+    // CONDITION 2 — the column must actually DISTINGUISH rows. Joel: "World types yes, North
+    // America, yes, USA - no." Gated on the structural trait rather than a map-type allowlist,
+    // because that is what the map-type answer is really about: on a US map every row is in
+    // the US, so country-alone stacks the entire dataset on one centroid. Two or more resolvable
+    // countries is exactly the condition that makes the tier meaningful, and it gives Joel's
+    // three answers without new plumbing — GeoMapKind cannot even express "usa" today, so a
+    // literal per-map rule would be untestable AND would still miss a World map holding
+    // single-country data, which is the same degenerate picture.
+    const countryValues = out.country ? valuesOf(out.country) : [];
+    const countryProven = !!out.country && looksLikeCountryColumn(countryValues);
+    const distinctCountries = countryProven
+        ? new Set(countryValues.map(v => countryIso3(v == null ? null : String(v))).filter(Boolean)).size
+        : 0;
+    const countryCanPlace = countryProven && distinctCountries >= 2;
+
+    if (out.country && !countryCanPlace && !(out.city || out.state || out.zip || (out.lat && out.lon))) {
+        // The only candidate role was country and it cannot carry the map on its own. Say
+        // which of the two conditions failed, so the chart can explain rather than blank.
+        refused.push(countryProven
+            ? `country=${out.country} (every row resolves to the same country - nothing to place apart)`
+            : `country=${out.country} (values are not country identifiers)`);
+    }
+
+    const any = !!(out.city || out.state || out.zip || countryCanPlace || (out.lat && out.lon));
     return { bind: any ? out : null, backfilled, refused };
 }

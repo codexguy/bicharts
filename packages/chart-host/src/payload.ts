@@ -112,7 +112,16 @@ export function buildRenderPayload(
         rolesBackfilled = res.backfilled;
         rolesRefused = res.refused;
     }
-    const hasPointBind = !!bind && !!(bind.city || bind.state || bind.zip || (bind.lat && bind.lon));
+    // COUNTRY is a PLACEABLE role, not merely a matching constraint. It was only the latter
+    // when this gate was written; the COUNTRY precision tier (shape-core 0.4.2, "COUNTRY
+    // precision tier + the world basemap kind") made country-alone a real placement — "the
+    // coarsest honest answer" — and this line was never updated alongside it. The effect was
+    // silent and total: a World point map over country-only data took this branch as false,
+    // never called buildGeoPointColumns, appended no __geoLat__/__geoLon__, and the chart
+    // drew its own "no coordinate data" empty state — while the resolver was perfectly
+    // capable of placing every row. Seen on dev LLMLogID 38905 (world_country_metrics,
+    // 44 countries, server binding {"country":"Country"}).
+    const hasPointBind = !!bind && !!(bind.city || bind.state || bind.zip || bind.country || (bind.lat && bind.lon));
     if (hasPointBind) {
         const p = bind!;
         const built = buildGeoPointColumns(rowObjs.map(r => ({

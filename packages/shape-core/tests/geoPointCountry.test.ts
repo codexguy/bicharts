@@ -164,10 +164,36 @@ describe("the country ROLE", () => {
         expect(r.bind?.country).toBe("Country");
     });
 
-    it("does not treat a country column alone as a placeable binding", () => {
+    // REVERSED 2026-08-02 (Joel). This asserted "country alone is never placeable", which was
+    // correct when written at 0.1.7 — country could only narrow a city match. The 0.4.2
+    // COUNTRY precision tier made country-alone a real placement and this assertion was left
+    // behind, which is why World (Bubbles) over country-only data drew an empty state from the
+    // day that tier shipped. Joel: "you can certainly use country alone - as long as the
+    // detection proves there IS a true country column", and "World types yes, North America,
+    // yes, USA - no." Both conditions are asserted here.
+    it("treats a DETECTED country column alone as placeable", () => {
         const only = [{ Country: "US" }, { Country: "CA" }];
         const r = resolvePointRoles(["Country"], only, {});
+        expect(r.bind?.country).toBe("Country");
+    });
+
+    it("will not place from a country column that names only one country", () => {
+        // The "USA - no" case, gated on the structural trait rather than a map-type list:
+        // every row lands on the same centroid, so the map is one stacked dot saying nothing.
+        const oneCountry = [{ Country: "US" }, { Country: "USA" }, { Country: "United States" }];
+        const r = resolvePointRoles(["Country"], oneCountry, {});
         expect(r.bind).toBeNull();
+        expect(r.refused.join()).toMatch(/same country/);
+    });
+
+    it("will not place from an unverified country HINT", () => {
+        // The hint is carried without checking its values — harmless while country could only
+        // narrow. Now that it can place, a wrong hint must not open the gate and append a
+        // column of nulls that tells the chart it has a map.
+        const notCountries = [{ Thing: "Widget" }, { Thing: "Gadget" }];
+        const r = resolvePointRoles(["Thing"], notCountries, { country: "Thing" });
+        expect(r.bind).toBeNull();
+        expect(r.refused.join()).toMatch(/not country identifiers/);
     });
 
     it("never adopts a state column as the country", () => {
@@ -175,5 +201,42 @@ describe("the country ROLE", () => {
         const r = resolvePointRoles(["City", "State"], us, { city: "City" });
         expect(r.bind?.country).toBeUndefined();
         expect(r.bind?.state).toBe("State");
+    });
+});
+
+// The gazetteer is global; the MAP decides which readings are live (Joel 2026-08-02:
+// "detection ought to be global… same code base, but different filters depending on chart
+// type. the gazette is 'true' no matter the chart, though.").
+//
+// This matters because going global exploded the state/country collision set. It used to be
+// exactly one token — "CA", Canada vs California. Against all 195 countries it is ~17: IL is
+// Illinois AND Israel, IN India, DE Germany, LA Laos, PA Panama, MD Moldova... Treating every
+// one of those as undecidable everywhere silently cost placements, because a cross-filtered
+// subset whose only state value is "IL" would stop resolving the state role at all.
+describe("a country reading only competes when the map can show that country", () => {
+    // One distinct state value, so the single-value ambiguity rule is what decides.
+    const oneState = [{ City: "Springfield", ST: "IL" }, { City: "Chicago", ST: "IL" }];
+
+    it("NORTH AMERICA: 'IL' is Illinois, because Israel is not on this map", () => {
+        const r = resolvePointRoles(["City", "ST"], oneState, { city: "City" });
+        expect(r.bind?.state).toBe("ST");
+        expect(r.backfilled.join()).toMatch(/state=ST/);
+    });
+
+    it("WORLD: 'IL' stays undecidable, because Israel IS on this map", () => {
+        const r = resolvePointRoles(["City", "ST"], oneState, { city: "City" }, "world");
+        expect(r.bind?.state).toBeUndefined();
+    });
+
+    it("'CA' is undecidable in BOTH scopes — Canada is on either map", () => {
+        const ca = [{ City: "Irvine", ST: "CA" }, { City: "Fresno", ST: "CA" }];
+        expect(resolvePointRoles(["City", "ST"], ca, { city: "City" }).bind?.state).toBeUndefined();
+        expect(resolvePointRoles(["City", "ST"], ca, { city: "City" }, "world").bind?.state).toBeUndefined();
+    });
+
+    it("an unambiguous state code resolves in both scopes", () => {
+        const tx = [{ City: "Plano", ST: "TX" }, { City: "Austin", ST: "TX" }];
+        expect(resolvePointRoles(["City", "ST"], tx, { city: "City" }).bind?.state).toBe("ST");
+        expect(resolvePointRoles(["City", "ST"], tx, { city: "City" }, "world").bind?.state).toBe("ST");
     });
 });
