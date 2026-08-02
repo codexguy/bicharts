@@ -36,7 +36,12 @@
 // writes it without the letter, æ→ae and œ→oe likewise.
 const LATIN_FOLD: Record<string, string> = {
     "ø": "o", "œ": "oe", "æ": "ae", "ß": "ss", "ł": "l", "đ": "d", "ð": "d",
-    "þ": "th", "ı": "i", "ħ": "h", "ŧ": "t", "ŋ": "n", "ə": "e", "ĸ": "k",
+    "þ": "th", "ı": "i", "ħ": "h", "ŧ": "t", "ŋ": "n", "ĸ": "k",
+    // Schwa has TWO code points in real place data — U+0259 and U+01DD (turned e).
+    // Azerbaijani names carry both ("Gəncə" / "Gǝncǝ"); the second one reached the table
+    // when the world set was uncapped and the generated-table invariant test caught it.
+    "ə": "e", "ǝ": "e",
+    "ĳ": "ij", "ŀ": "l", "ſ": "s",
 };
 
 export function normalizePlaceName(s: string): string {

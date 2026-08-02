@@ -10,26 +10,42 @@
 //   • multiple survivors = AMBIGUOUS -> not plotted, reported as info. No population
 //     tie-break, anywhere, any more.
 //
-// The W set is "pop >= 250k or 1000 entries, whichever is less" — the cap bites around
-// ~450k, so mid-size NA cities (London ON, 422k) are N-only. Assertions here follow the
-// BUILT table, not the aspiration; regenerating with different caps will move some.
+// The W set is EVERY city with pop >= 250k, worldwide and uncapped (Joel 2026-08-02 — the
+// original 1000-row cap bit at 576k and could not place Lisbon, Antwerp or Nuremberg by
+// name). Assertions here follow the BUILT table, not the aspiration; re-capping will move
+// some. Uncapping made exactly 16 world names newly ambiguous while making 2,708 newly
+// reachable, and the 16 are all real collisions between two cities of the same name.
 import { describe, it, expect } from "vitest";
 import { resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, cityMatchPct } from "../src/geoPoint";
 
 const place = (args: any) => resolveGeoPoint(args) as any;
 
 describe("map-kind scope — the same name against two different candidate sets", () => {
-    it("bare 'London' is Ontario on the NA map and the real one on the world map", () => {
+    it("bare 'London' is Ontario on the NA map, and a CALL-OUT on the world map", () => {
         // NA scope: only London ON carries the N flag -> single candidate, city tier.
-        // World scope: London ON misses the W cap (422k < the ~450k the 1000-row cap
-        // lands at), so London GB is the single W candidate. Same word, two maps, two
-        // honest answers — and neither is a guess, because each scope has ONE candidate.
+        // World scope changed when the 250k set was uncapped (2026-08-02): London ON (422k)
+        // now clears the bar too, so the world map has TWO real Londons and refuses rather
+        // than guessing — the same answer it already gave for Barcelona and Hyderabad. The
+        // scope still matters, it just no longer decides this one by accident of a cap.
         const na = place({ city: "London" });
         expect(na.precision).toBe("city");
         expect(na.lon).toBeCloseTo(-81.2, 0);                              // Ontario
-        const world = place({ city: "London", mapKind: "world" });
-        expect(world.precision).toBe("city");
-        expect(world.lon).toBeCloseTo(-0.13, 0);                           // the Thames one
+        expect(isGeoPointAmbiguity(resolveGeoPoint({ city: "London", mapKind: "world" }))).toBe(true);
+        // ...and a country column resolves it, which is what the call-out asks for.
+        const gb = place({ city: "London", country: "United Kingdom", mapKind: "world" });
+        expect(gb.precision).toBe("city");
+        expect(gb.lon).toBeCloseTo(-0.13, 0);                              // the Thames one
+    });
+
+    it("places the cities the old 1000-row cap could not reach", () => {
+        // The point of uncapping: these are ordinary Western BI rows, and every one of them
+        // used to fall through to a country centroid.
+        for (const [city, lon] of [["Lisbon", -9.1], ["Antwerp", 4.4], ["Nuremberg", 11.1],
+                                   ["Bristol", -2.6], ["Florence", 11.3], ["Bordeaux", -0.6]] as Array<[string, number]>) {
+            const r = place({ city, mapKind: "world" });
+            expect(r.precision, city).toBe("city");
+            expect(r.lon, city).toBeCloseTo(lon, 0);
+        }
     });
 
     it("a real cross-country collision is REFUSED bare and resolved by country", () => {
