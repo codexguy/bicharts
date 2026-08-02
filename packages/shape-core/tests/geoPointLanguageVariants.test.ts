@@ -14,7 +14,7 @@
 // foreign-language dataset would contain reaches the right city.
 import { describe, it, expect } from "vitest";
 import { resolveGeoPoint, isGeoPointAmbiguity } from "../src/geoPoint";
-import { CITY_PACKED } from "../src/geoPointTables.generated";
+import { CITY_PACKED } from "../src/geoPointCities.generated";
 
 const place = (args: any) => resolveGeoPoint(args) as any;
 

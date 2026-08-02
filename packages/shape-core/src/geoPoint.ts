@@ -35,7 +35,7 @@
 // Data: geoPointTables.generated.ts (GeoNames CC BY 4.0 — attribution ships in the EULA;
 // ZIP-3 + admin1 centroids derive from geometry the visual already bundles).
 
-import { CITY_PACKED, ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.generated";
+import { CITY_DETECT_PACKED, ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.generated";
 import { countryIso3, iso2ToIso3 } from "./geoCountryNames";
 
 export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state" | "country";
@@ -78,10 +78,65 @@ type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: numb
 // v2 record: name|a1|cc|lon|lat|popK|kinds|alt1;alt2 — ALT keys (Latin-script exonyms
 // like "Munich"/"Londres" that diacritic folding cannot reach) index onto the SAME row,
 // so a variant is just another door to one place, never a second place.
+// ── The BUNDLED/FETCHED split (Joel 2026-08-02) ────────────────────────────────
+// The gazetteer serves two jobs with different requirements, so it ships as two pieces:
+//
+//   DETECTION (bundled, CITY_DETECT_PACKED)  isKnownCity / cityMatchPct answer "is this
+//     column full of city names?". detectGeo calls them SYNCHRONOUSLY inside the profiler,
+//     for every column of every dataset, and the answer decides which chart types are
+//     OFFERED. Making that wait on a network fetch would change offerability for non-geo
+//     data — the one thing the geo work has never done — so the name+scope index stays in
+//     the bundle. 34 KB gz.
+//
+//   PLACEMENT (registered, CITY_PACKED)  resolveGeoPoint turning a name into a coordinate.
+//     Only a rendering point map needs it, which is the same condition the geometry fetch
+//     already engages on. 93 KB gz, and the Power BI visual fetches it; every other host
+//     imports @bicharts/shape-core/geoPointCities and registers it at startup.
+//
+// Until something registers the placement table the city TIER is skipped: lookups fall
+// through to ZIP-3 / state / country and report that coarser precision, which is the same
+// honest degradation a row with no city column already gets. Nothing silently guesses.
+let _cityPacked = "";
+
+// DETECTION index: normalized name -> scope flags ("N" | "W" | "NW"). Bare records in the
+// packed string are North-America-only (the common case, so it costs nothing); "|W" and
+// "|B" carry the other two. Built lazily like every other table here.
+let _detect: Map<string, string> | null = null;
+function detectIndex(): Map<string, string> {
+    if (_detect) return _detect;
+    const m = new Map<string, string>();
+    for (const rec of CITY_DETECT_PACKED.split(",")) {
+        const bar = rec.indexOf("|");
+        if (bar < 0) m.set(rec, "N");
+        else {
+            const f = rec.slice(bar + 1);
+            m.set(rec.slice(0, bar), f === "W" ? "W" : "NW");
+        }
+    }
+    _detect = m;
+    return m;
+}
+
+/** Hand the placement table to the resolver (see the split note above). Idempotent;
+ *  re-registering a different table rebuilds the index. */
+export function registerCityTable(packed: string): void {
+    if (packed === _cityPacked) return;
+    _cityPacked = packed || "";
+    _cities = null;
+    _cityAlias = null;
+}
+
+/** True once a placement table is registered — i.e. the city tier can produce coordinates.
+ *  False means city lookups degrade to the coarser tiers, NOT that they fail. */
+export function isCityTableLoaded(): boolean {
+    return _cityPacked.length > 0;
+}
+
 let _cities: Map<string, CityHit[]> | null = null;
 function cityIndex(): Map<string, CityHit[]> {
     if (_cities) return _cities;
     const m = new Map<string, CityHit[]>();
+    const CITY_PACKED = _cityPacked;
     const add = (key: string, row: CityRow, primary: boolean) => {
         if (!key) return;
         const cur = m.get(key);
@@ -492,6 +547,12 @@ export type GeoPointColumns = {
     ambiguousExamples: string[];
     matchedRows: number;
     totalRows: number;
+    /** True when rows carried a CITY but no placement table was registered, so those rows
+     *  resolved at a coarser tier than they could have (see the bundled/fetched split).
+     *  Diagnostic, not a failure: the coarser precision is already reported honestly. It
+     *  exists so "why is my map suddenly state-level?" has an answer in the log instead of
+     *  requiring someone to guess that a fetch failed. */
+    cityTableMissing?: true;
 };
 
 const PRECISION_RANK: Record<GeoPointPrecision, number> = { latlon: 0, city: 1, zip3: 2, state: 3, country: 4 };
@@ -564,8 +625,11 @@ export function buildGeoPointColumns(
             }
         }
     }
+    const cityTableMissing = !isCityTableLoaded()
+        && rows.some(r => r.city !== null && r.city !== undefined && String(r.city).trim() !== "");
     return { lat, lon, precision: coarsest, precisionCounts, coarseExamples,
-             unmatched, ambiguousRows, ambiguousExamples, matchedRows, totalRows: rows.length };
+             unmatched, ambiguousRows, ambiguousExamples, matchedRows, totalRows: rows.length,
+             ...(cityTableMissing ? { cityTableMissing: true as const } : {}) };
 }
 
 /** The most specific thing the row offered, so an annotation names something the user
@@ -590,11 +654,16 @@ export function isKnownCity(normalizedName: string, mapKind?: GeoMapKind | null)
     // verifier, so widening its default to the world rows would silently change which
     // COLUMNS classify as cities — and with it, which charts old data shapes are offered.
     // World callers opt in with mapKind="world".
+    //
+    // Answered from the BUNDLED detection index, NEVER from the placement table: this
+    // runs inside the profiler and its answer decides offerability, so it must give the
+    // same result whether or not a placement table has been fetched. (Verified by
+    // geoPointSplit.test.ts, which asserts detection is identical with the table absent.)
     if (!normalizedName) return false;
-    const rows = cityRowsFor(normalizedName);
-    if (!rows) return false;
+    const flags = detectIndex().get(normalizedName);
+    if (flags === undefined) return false;
     const flag = KIND_FLAG[(mapKind as GeoMapKind) || "north-america"] ?? "N";
-    return rows.some(h => h.row.kinds.includes(flag));
+    return flags.includes(flag);
 }
 
 /** Share of DISTINCT values that are known city names, 0..100 (one decimal). NOTE:

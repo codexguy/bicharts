@@ -12,6 +12,12 @@ export {
     loadGeo, geoFromCache, registerGeo, registerGeoAsset, geoAssetFor, clearGeoCache,
     type GeoAssetName,
 } from "./geoLazy";
+// The city PLACEMENT table follows the SAME bundle-or-register shape as the geometry: it is
+// no longer inside the resolver, because package size is the constraint in a Power BI visual
+// and 93 KB of coordinates is only needed when a point map actually draws. DETECTION stays
+// bundled in shape-core so offerability never waits on a fetch.
+// Bundle it via "@bicharts/chart-host/geo/point-cities", or fetch the JSON and register.
+export { registerCityTable, isCityTableLoaded } from "@bicharts/shape-core";
 export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./payload";
 // requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):
 // ask BEFORE rendering, explain AFTER a failure. Both belong on the public surface — a host

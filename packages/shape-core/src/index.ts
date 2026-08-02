@@ -50,6 +50,10 @@ export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
 export {
     resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, resolveAdmin1, zipToPrefix3, zipPrefixCandidates,
     normalizePlaceName, cityMatchPct, normalizeCountry,
+    // The city PLACEMENT table is REGISTERED, not bundled here: detection stays in the
+    // package (it decides offerability and runs in the profiler) while the coordinates
+    // can be fetched. See the split note in geoPoint.ts.
+    registerCityTable, isCityTableLoaded,
 } from "./geoPoint";
 export type { GeoPointPrecision, GeoPointResult, GeoPointColumns, GeoPointAmbiguity, GeoMapKind } from "./geoPoint";
 // Which COLUMN plays which place role. The codegen response names them, but that answer

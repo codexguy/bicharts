@@ -67,6 +67,8 @@ const result = await build({
         "geo-world": join(here, "src/geo-world.ts"),
         "geo-us-states": join(here, "src/geo-us-states.ts"),
         "geo-us-zip3": join(here, "src/geo-us-zip3.ts"),
+        // Not geometry - the city PLACEMENT table, same bundle-or-register choice.
+        "geo-point-cities": join(here, "src/geo-point-cities.ts"),
     },
     bundle: true,
     splitting: true,

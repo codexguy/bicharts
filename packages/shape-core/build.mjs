@@ -66,6 +66,10 @@ await build({
         models: join(here, "src/models.ts"),
         geoDetector: join(here, "src/geoDetector.ts"),
         geoPoint: join(here, "src/geoPoint.ts"),
+        // The city PLACEMENT table as its own entry: hosts where 93 KB is irrelevant
+        // (the MCP server, a React app, tests) import it and call registerCityTable();
+        // the Power BI visual fetches the equivalent JSON instead of bundling it.
+        geoPointCities: join(here, "src/geoPointCities.generated.ts"),
         ordinalDetector: join(here, "src/ordinalDetector.ts"),
         formatDetector: join(here, "src/formatDetector.ts"),
         monthNames: join(here, "src/monthNames.ts"),
