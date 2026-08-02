@@ -92,6 +92,40 @@ describe("a city's own name outranks another city's translation of it", () => {
     });
 });
 
+describe("renamed cities keep their old name as a door", () => {
+    it("places pre-rename spellings a warehouse full of old rows still uses", () => {
+        // GeoNames marks these historic because the city renamed. Historic is exactly what
+        // aging data contains, so they are kept — ranked below current names, so a current
+        // name never loses a slot to one. (The 2026-08-02 probe found all of these dead.)
+        for (const [old, lon] of [["Bombay", 72.9], ["Calcutta", 88.4], ["Madras", 80.3],
+                                  ["Saigon", 106.6], ["Rangoon", 96.2]] as Array<[string, number]>) {
+            const r = place({ city: old, mapKind: "world" });
+            expect(r.precision, old).toBe("city");
+            expect(r.lon, old).toBeCloseTo(lon, 0);
+        }
+    });
+});
+
+describe("a shorthand cannot be deleted by someone else's variant", () => {
+    it("bare 'Salt Lake' is still Salt Lake City", () => {
+        // REGRESSION, found by the 0.5.0 -> 0.5.1 corpus replay (the only "moved" result in
+        // 8,038 names): "salt lake" arrived as a variant key on a Honolulu-area row, which
+        // made the "<X> City" shorthand index skip Salt Lake City entirely — bare "Salt
+        // Lake" jumped 4,000 km to Hawaii. The shorthand is now suppressed only by a
+        // PRIMARY name, and it competes as a primary door, so precedence settles it.
+        const r = place({ city: "Salt Lake" });
+        expect(r.precision).toBe("city");
+        expect(r.lon).toBeCloseTo(-111.9, 0);
+        expect(r.lat).toBeCloseTo(40.8, 0);
+    });
+
+    it("still yields to a real city that IS called the bare name", () => {
+        // The shorthand rule's own condition, unchanged: "New York" is New York City, but a
+        // bare form that is some other city's actual name keeps that meaning.
+        expect(place({ city: "New York" }).lon).toBeCloseTo(-74.0, 0);
+    });
+});
+
 describe("the generated variant column", () => {
     it("stores normalized keys only — no accents, no case, no punctuation", () => {
         // The table's own invariant, and the reason it got SMALLER while gaining doors.

@@ -131,8 +131,14 @@ function cityAliasIndex(): Map<string, CityHit[]> {
     for (const [key, hits] of cityIndex()) {
         if (!key.endsWith(" city")) continue;
         const bare = key.slice(0, -5);
-        // A bare form that is ALREADY a city name of its own keeps that meaning.
-        if (!bare || cityIndex().has(bare)) continue;
+        // A bare form that is ALREADY a city NAME of its own keeps that meaning — and
+        // "name" means a PRIMARY name, not merely a variant some other city answers to.
+        // Found by the 0.5.0 -> 0.5.1 corpus replay: "salt lake" became a variant key of a
+        // Honolulu-area row, which suppressed the Salt Lake City shorthand entirely and
+        // moved bare "Salt Lake" 4,000 km. Richer variant data must not be able to delete
+        // a shorthand; it can only compete with it, and it loses that competition to a
+        // primary name below.
+        if (!bare || cityIndex().get(bare)?.some(h => h.primary)) continue;
         if (hits[0].row.pop < CITY_SUFFIX_ALIAS_MIN_POP) continue;   // rows are pop-descending
         m.set(bare, hits);
     }
@@ -144,7 +150,17 @@ function cityAliasIndex(): Map<string, CityHit[]> {
  *  "<name> City" shorthand when that city is dominant enough to be what was meant. */
 function cityRowsFor(key: string): CityHit[] | undefined {
     if (!key) return undefined;
-    return cityIndex().get(key) ?? cityAliasIndex().get(key);
+    const direct = cityIndex().get(key);
+    // A direct PRIMARY hit is the meaning of the word — no shorthand needed.
+    if (direct?.some(h => h.primary)) return direct;
+    const alias = cityAliasIndex().get(key);
+    if (!alias) return direct;
+    // Otherwise the shorthand competes with whatever variants answer to the same key. It
+    // enters as a PRIMARY door (it IS the city's own name, minus a suffix people omit), so
+    // the precedence rule in the city tier settles it: "Salt Lake" is Salt Lake City, not
+    // the row that merely lists it as a variant.
+    const asPrimary = alias.map(h => ({ row: h.row, primary: true }));
+    return direct ? [...asPrimary, ...direct] : asPrimary;
 }
 
 // COUNTRY centroids, ISO-3 keyed. Coarsest tier of the cascade and the one a WORLD point
