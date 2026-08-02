@@ -40,7 +40,7 @@ export type {
 // Column-detail helpers.
 // The gazetteer-quality knob and the "what counts as blank" rule, exported so a host or a
 // sibling classifier tunes ONE constant rather than keeping its own copy.
-export { GAZETTEER_MATCH_PCT, isBlankLike } from "./matchQuality";
+export { ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 export { detectOrdinalDomain, safeDistinctValuesToShip, isOrdinalFriendlyName } from "./ordinalDetector";
 export { detectFormatSignature } from "./formatDetector";
 // isJoinGeoKind is PUBLIC because a host must distinguish a region-JOIN kind from a

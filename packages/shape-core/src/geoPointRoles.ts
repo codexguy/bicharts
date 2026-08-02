@@ -37,7 +37,7 @@
 
 import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
 import { countryIso3 } from "./geoCountryNames";
-import { GAZETTEER_MATCH_PCT, isBlankLike } from "./matchQuality";
+import { ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 
 /** The place parts a coordinate can be resolved from. Any subset. */
 export type PointBind = {
@@ -60,26 +60,21 @@ export type PointRoleResolution = {
     refused: string[];
 };
 
-// Share of DISTINCT values a column must match before a role is claimed for it. Mirrors
-// geoDetector's THRESHOLD_PCT: high enough that a column of something else cannot claim
-// a role by accident, loose enough to tolerate the blanks and typos real data carries.
-const THRESHOLD_PCT = 85;
+// Every role-identification threshold is ROLE_MATCH_PCT (matchQuality.ts) - ONE number,
+// tunable in one place, covering city/state/ZIP/country alike.
 // A role BACKFILLED from the data (no hint) additionally needs this many distinct
 // matches — geoDetector's roster guard. One matching value is a coincidence, not a
 // column: a lone "CA" is far likelier to be Canada than a single-state California table.
 const MIN_DISTINCT_BACKFILL = 2;
-// ZIP is held to a HIGHER bar than the name roles, because its classifier is pure digit
-// shape and measures are digits too: a Revenue column carrying 54300 / 48900 / 33700
-// reads as a perfectly good run of 5-digit ZIPs. Callers are expected to keep measures
-// out of the candidate list, but that is one `isMeasure` flag away from failing open, and
-// a measure silently adopted as the ZIP column would relocate every point on the map. A
-// real ZIP column is ALL ZIPs, so demand exactly that.
-const ZIP_THRESHOLD_PCT = 100;
+// ZIP used to sit at 100 because it is classified on digit shape alone and a 5-digit Revenue
+// column reads as a clean run of ZIPs. That was never what the 100 bought: a revenue column
+// scores 100 too. The real protection is that callers pass DIMENSIONS ONLY, which is still
+// true, so ZIP now shares the one threshold like every other role.
 // Classification reads DISTINCT values, so a wide column costs no more than a narrow
 // one; this only bounds a pathological all-unique text column.
 const MAX_DISTINCT_SCAN = 400;
 // The gazetteer-quality bar lives in matchQuality.ts so it is tunable in ONE place; see
-// GAZETTEER_MATCH_PCT there for why the looser name roles deliberately do not use it.
+// ROLE_MATCH_PCT there for the identification-versus-matching distinction it encodes.
 
 /**
  * Is this normalized token a country identifier?
@@ -148,7 +143,7 @@ export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     // country column disqualified the whole column and silently cost the map its country
     // role. 97% keeps that from being a cliff while staying far too strict for a column of
     // something else to claim the role by accident.
-    if (countryMatchPct(values) < GAZETTEER_MATCH_PCT) return false;
+    if (countryMatchPct(values) < ROLE_MATCH_PCT) return false;
 
     // AN AMBIGUOUS TOKEN IS SETTLED BY THE COMPANY IT KEEPS (Joel, same note): "CA" should
     // read as Canada beside US/DE/IT, and as California beside CO/FL/WA. Count only the
@@ -277,7 +272,7 @@ function distinctRawMatches(values: Array<unknown>, pred: (v: string) => boolean
  * those names, `hint` whatever the codegen response named (may be null).
  *
  * `columns` MUST exclude measures. A place is a dimension; a measure that wandered into
- * this list can be adopted as the ZIP column on digit shape alone (see ZIP_THRESHOLD_PCT)
+ * this list can be adopted as the ZIP column on digit shape alone (see ROLE_MATCH_PCT)
  * and would move every point on the map.
  *
  * A role is only ever REFUSED for a positive reason (the column is countries; the column
@@ -325,7 +320,7 @@ export function resolvePointRoles(
             // country, which is most of the value the state would have provided.
             refused.push(`state=${hintedState} (every value is a country, not a state)`);
             if (!out.country) out.country = hintedState;
-        } else if (admin1MatchPct(vals) < THRESHOLD_PCT) {
+        } else if (admin1MatchPct(vals) < ROLE_MATCH_PCT) {
             refused.push(`state=${hintedState} (only ${admin1MatchPct(vals)}% of values are states/provinces)`);
         } else {
             out.state = hintedState;
@@ -343,7 +338,7 @@ export function resolvePointRoles(
             const vals = valuesOf(c);
             if (looksLikeCountryColumn(vals)) continue;      // never a state
             const pct = admin1MatchPct(vals);
-            if (pct < THRESHOLD_PCT) continue;
+            if (pct < ROLE_MATCH_PCT) continue;
             // The roster guard, relaxed for UNAMBIGUOUS evidence. A cross-filter can shrink
             // any column to one distinct value, and demanding two flatly would drop the
             // state role on every single-row subset — degrading precision for no reason. One
@@ -365,7 +360,7 @@ export function resolvePointRoles(
             if (taken.has(c)) continue;
             const vals = valuesOf(c);
             const pct = zipMatchPct(vals);
-            if (pct < ZIP_THRESHOLD_PCT) continue;
+            if (pct < ROLE_MATCH_PCT) continue;
             if (distinctRawMatches(vals, v => zipPrefixCandidates(v).length > 0) < MIN_DISTINCT_BACKFILL) continue;
             out.zip = c;
             taken.add(c);
@@ -395,7 +390,7 @@ export function resolvePointRoles(
             if (taken.has(c)) continue;
             const vals = valuesOf(c);
             const pct = cityPct(vals, mapKind);
-            if (pct < THRESHOLD_PCT) continue;
+            if (pct < ROLE_MATCH_PCT) continue;
             if (distinctMatches(vals, v => isKnownCity(v, mapKind)) < MIN_DISTINCT_BACKFILL) continue;
             if (!best || pct > best.pct) best = { name: c, pct };
         }

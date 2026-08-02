@@ -40,6 +40,7 @@
 // only asks "is this a known city?" to emit the city-name KIND. One-directional —
 // geoPoint never imports geoDetector — so there is no import cycle.
 import { isKnownCity } from "./geoPoint";
+import { ROLE_MATCH_PCT } from "./matchQuality";
 // The country tables + the shared normalizer moved to geoCountryNames when the World
 // point map needed them too — geoPoint could not import them back without a cycle.
 import {
@@ -181,7 +182,8 @@ export type GeoDetectionResult = {
 
 // Emit the signal only above this match rate. The client REPORTS the measured
 // pct; the server gate re-checks against sysparm LLMGeoMinMatchPct (Phase 1).
-const THRESHOLD_PCT = 85;
+// Shared with every other role-identification decision - see ROLE_MATCH_PCT.
+const THRESHOLD_PCT = ROLE_MATCH_PCT;
 // Dictionary-word kinds (country/state NAMES) collide with person/place names
 // (Chad, Georgia, Jordan). Require either a decent number of matched distinct
 // values OR a geo-ish column name, so a 3-name roster doesn't read as countries.
