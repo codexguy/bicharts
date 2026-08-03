@@ -474,6 +474,20 @@ export function resolveGeoPoint(args: {
     // trust. The common cause is a country value sitting in the state slot: "CA" resolves
     // to California, so a Canadian row would otherwise be dragged into the US. Dropping
     // the state here leaves the country narrowing below to do the work.
+    //
+    // "the work" here means the STATE TIER only, and that reading is deliberate — I tried the
+    // other one (2026-08-02) and backed it out. Letting the city tier also ignore a discredited
+    // state would place {Burnaby, CA, Canada} at city precision instead of on Canada's
+    // centroid, which is more precise and looks like an improvement, but it contradicts the v2
+    // matching rule directly: a non-blank source attribute that matches nothing EXCLUDES the
+    // row. Two tests pin that on purpose (geoPointCountry, geoPointWorldTier) and the reasoning
+    // holds — when the state and the country disagree, ONE of them is wrong and nothing here
+    // knows which, so the honest answer is the coarse one both agree on.
+    //
+    // Nothing is lost in production: a country column parked in the state slot is refused at
+    // COLUMN level by resolvePointRoles before this ever runs, and the row then places at city
+    // precision with the bad slot gone. Column-level evidence can tell which field is wrong;
+    // a single row cannot.
     if (a1 && iso3 && admin1Iso3(a1) !== iso3) a1 = null;
 
     // 2. City — the v2 COMMON matching rules (Joel 2026-08-02), identical for every
