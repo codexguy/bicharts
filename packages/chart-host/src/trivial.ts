@@ -1,6 +1,6 @@
 // DETERMINISTIC CHARTS FOR SHAPES THAT HAVE EXACTLY ONE DEFENSIBLE ANSWER.
 //
-// Some datasets do not need a language model. A single value is a Card. One categorical
+// Some datasets do not need a language model. A single value is a card. One categorical
 // column with repeats is a frequency bar chart. One numeric column is a histogram. There is
 // no creative decision left in any of those, so spending a generation on them costs money
 // and latency to arrive somewhere a template already knew.
@@ -10,6 +10,15 @@
 // were single-row, which is the case that matters most. Those users get one generation, and
 // they were spending it to be told that one row contains one value. A deterministic answer
 // is instant, costs nothing, and leaves their generation unspent for real data.
+//
+// THIS EMITS SOURCE, NOT A CLOSURE, and that is the load-bearing design decision. A host
+// persists the chart's code and re-renders it on reopen, shares it inside a report, and may
+// open it on an OLDER build than the one that made it. A plan that existed only as a live
+// function would vanish on save/reopen and could not travel; a plan that is ordinary
+// `function render(container, data, options)` source goes down the same pipeline as
+// generated code and renders anywhere that can render a chart at all — including builds
+// that predate this module. `render` below is that exact source, compiled, so what the
+// tests exercise is what ships.
 //
 // SCOPE IS DELIBERATELY NARROW. This module only claims shapes where every reasonable
 // analyst would draw the same picture. It returns null for everything else — including
@@ -22,14 +31,12 @@
 // asked for something specific and a template cannot honour it. Callers own that gate; this
 // function only answers "does this shape have one right answer?".
 //
-// No d3. These render with plain DOM so they work before any chart library has loaded,
-// which is most of the point: the round-trip is what we are removing.
+// The emitted source uses plain DOM — no d3 — so it renders before any chart library has
+// loaded, and it carries the host's own interaction grammar so cross-filter behaves exactly
+// as it does for generated charts.
 
-import type { RenderOptions } from "./contract";
-import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
-// TYPE-ONLY, so this stays runtime-free: the plans must be usable interchangeably with
-// generated code, which means sharing its exact signature rather than declaring a lookalike.
 import type { RenderFn } from "./host";
+import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
 
 /** Columns the host synthesises; never part of the user's data shape. */
 const META_COLUMNS = new Set(["__rowIdx__", "__geoIso__", "__geoLat__", "__geoLon__"]);
@@ -52,7 +59,10 @@ export interface TrivialPlan {
     reason: string;
     /** Index of the single data column this plan reads. */
     columnIndex: number;
-    /** Same signature as generated code, so a host can treat the two identically. */
+    /** Self-contained `function render(container, data, options)` source. Feed it through
+     *  the same path as generated code: persist it, compile it, share it. */
+    source: string;
+    /** The same source, compiled. Convenience for a host that wants to draw immediately. */
     render: RenderFn;
 }
 
@@ -65,32 +75,36 @@ function columnName(c: any): string {
     return typeof c === "string" ? c : String(c?.name ?? "");
 }
 
-function isNumericColumn(col: any, rows: any[][], idx: number): boolean {
-    // Trust the declared flag when it is a real measure, but VERIFY against values:
-    // a host can mark a text column as a measure (a "First" aggregation over a string),
-    // and drawing a histogram of words would be worse than not drawing at all.
+function isNumericColumn(rows: any[][], idx: number): boolean {
+    // Trust nothing declared — VERIFY against values. A host can mark a text column as a
+    // measure (a "First" aggregation over a string), and a histogram of words is worse than
+    // no chart at all.
     let seen = 0;
     for (let r = 0; r < rows.length && seen < 50; r++) {
         const v = rows[r]?.[idx];
         if (v === null || v === undefined || v === "") continue;
         seen++;
         if (typeof v === "number") { if (!isFinite(v)) return false; continue; }
-        const n = Number(v);
-        if (!isFinite(n) || String(v).trim() === "") return false;
+        if (String(v).trim() === "" || !isFinite(Number(v))) return false;
     }
     return seen > 0;
 }
 
+/** JS string literal, safe to embed in emitted source. */
+function lit(s: string): string {
+    return JSON.stringify(String(s));
+}
+
 /**
- * Decide whether a dataset has exactly one defensible chart, and return a ready-to-call
- * render function when it does. Returns null whenever there is a real choice to make.
+ * Decide whether a dataset has exactly one defensible chart, and return its source when it
+ * does. Returns null whenever there is a real choice to make.
  */
 export function planTrivialChart(data: DataLike | null | undefined): TrivialPlan | null {
     const allCols = Array.isArray(data?.columns) ? data!.columns! : [];
     const rows = Array.isArray(data?.rows) ? data!.rows! : [];
     if (!allCols.length || !rows.length) return null;
 
-    // Index into the ORIGINAL column array — render functions receive the untouched
+    // Index into the ORIGINAL column array — the emitted code receives the untouched
     // payload, metadata columns and all.
     const dataCols: number[] = [];
     for (let i = 0; i < allCols.length; i++) {
@@ -100,280 +114,249 @@ export function planTrivialChart(data: DataLike | null | undefined): TrivialPlan
     const idx = dataCols[0];
     const name = columnName(allCols[idx]) || "Value";
 
-    // ---- one column, one row -> a Card. There is nothing else to draw.
+    const finish = (kind: TrivialShapeKind, reason: string, source: string): TrivialPlan => ({
+        kind, reason, columnIndex: idx, source, render: compileTrivialSource(source),
+    });
+
+    // ---- one column, one row -> a card. There is nothing else to draw.
     if (rows.length === 1) {
-        return {
-            kind: "card",
-            columnIndex: idx,
-            reason: `One row of one column has a single value, so this is a card. `
-                  + `No generation was needed and none was used.`,
-            render: makeCardRender(idx, name),
-        };
+        return finish("card",
+            "One row of one column holds a single value, so this is a card. "
+            + "No generation was needed and none was used.",
+            cardSource(idx, name));
     }
 
-    const numeric = isNumericColumn(allCols[idx], rows, idx);
-
-    // ---- one numeric column, many rows -> a histogram of its distribution.
-    if (numeric) {
+    // ---- one numeric column, many rows -> the distribution of its values.
+    if (isNumericColumn(rows, idx)) {
         if (rows.length < MIN_HISTOGRAM_ROWS) return null;
-        return {
-            kind: "histogram",
-            columnIndex: idx,
-            reason: `A single numeric column has one defensible chart: the distribution of `
-                  + `its values. No generation was needed and none was used.`,
-            render: makeHistogramRender(idx, name),
-        };
+        return finish("histogram",
+            "A single numeric column has one defensible chart: the distribution of its "
+            + "values. No generation was needed and none was used.",
+            histogramSource(idx, name));
     }
 
     // ---- one categorical column, many rows -> how often each value occurs.
     // Only when values actually REPEAT: all-distinct values make every bar 1, which tells
     // the reader nothing and is a worse answer than asking for a real chart.
-    const counts = new Map<string, number[]>();
+    const distinct = new Set<string>();
     for (let r = 0; r < rows.length; r++) {
         const raw = rows[r]?.[idx];
-        const key = raw === null || raw === undefined || raw === "" ? "(blank)" : String(raw);
-        const bucket = counts.get(key);
-        if (bucket) bucket.push(r); else counts.set(key, [r]);
+        distinct.add(raw === null || raw === undefined || raw === "" ? "(blank)" : String(raw));
     }
-    if (counts.size < 2 || counts.size >= rows.length) return null;
-    if (counts.size > MAX_FREQUENCY_CATEGORIES) return null;
+    if (distinct.size < 2 || distinct.size >= rows.length) return null;
+    if (distinct.size > MAX_FREQUENCY_CATEGORIES) return null;
 
-    return {
-        kind: "frequency-bar",
-        columnIndex: idx,
-        reason: `A single categorical column has one defensible chart: how often each value `
-              + `occurs. No generation was needed and none was used.`,
-        render: makeFrequencyRender(idx, name),
-    };
+    return finish("frequency-bar",
+        "A single categorical column has one defensible chart: how often each value "
+        + "occurs. No generation was needed and none was used.",
+        frequencySource(idx, name));
 }
 
-// ---------------------------------------------------------------- shared drawing helpers
+/** Compile emitted source the same way a host compiles generated code. */
+export function compileTrivialSource(source: string): RenderFn {
+    const factory = new Function(
+        "container", "data", "options",
+        source + "\n; return typeof render === 'function' ? render : null;");
+    const fn = factory(null, null, null);
+    if (typeof fn !== "function") throw new Error("trivial template did not define render()");
+    return fn as RenderFn;
+}
 
-function fg(o: RenderOptions): string { return o.themeFg || "#333333"; }
-function bg(o: RenderOptions): string { return o.backgroundColor || "transparent"; }
-function accent(o: RenderOptions): string {
-    return (Array.isArray(o.palette) && o.palette.length ? o.palette[0] : "#3182bd") as string;
-}
-/** Chrome font size derived from the viewport, matching the archetypes' CF convention so a
- *  deterministic chart does not look foreign beside a generated one. */
-function chromeFont(o: RenderOptions): number {
-    return Math.max(9, Math.min(14, Math.round(Math.min(o.width, o.height) / 55)));
-}
-function fmtNumber(v: number, culture?: string): string {
-    try { return new Intl.NumberFormat(culture || undefined).format(v); }
-    catch { return String(v); }
-}
-/** Compact form for axis/labels — full thousands separators eat width a small tile cannot spare. */
-function fmtCompact(v: number, culture?: string): string {
-    const a = Math.abs(v);
-    if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
-    if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
-    if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "K";
-    return fmtNumber(Math.round(v * 100) / 100, culture);
-}
-function el(tag: string, style?: Partial<CSSStyleDeclaration>): HTMLElement {
-    const n = document.createElement(tag);
-    if (style) Object.assign(n.style, style);
+// ---------------------------------------------------------------- emitted source
+//
+// Shared preamble. Kept inside each template rather than hoisted into a runtime import,
+// because the whole point is that the emitted artifact stands alone.
+
+const PRELUDE = `
+  var W = options.width, H = options.height;
+  var FG = options.themeFg || '#333333';
+  var BG = options.backgroundColor || 'transparent';
+  var ACCENT = (options.palette && options.palette.length ? options.palette[0] : '#3182bd');
+  // Chrome font from the viewport, matching the archetypes' CF convention so a
+  // deterministic chart does not look foreign beside a generated one.
+  var CF = Math.max(9, Math.min(14, Math.round(Math.min(W, H) / 55)));
+  var rows = (data && data.rows) || [];
+  function fmt(v) {
+    try { return new Intl.NumberFormat(options.cultureCode || undefined).format(v); }
+    catch (e) { return String(v); }
+  }
+  function compact(v) {
+    var a = Math.abs(v);
+    if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1) + 'B';
+    if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
+    if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1) + 'K';
+    return fmt(Math.round(v * 100) / 100);
+  }
+  function svgEl(tag, attrs) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, String(attrs[k]));
     return n;
-}
-function svgEl(tag: string, attrs: Record<string, string | number>): SVGElement {
-    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    for (const k of Object.keys(attrs)) n.setAttribute(k, String(attrs[k]));
-    return n;
-}
+  }
+  container.replaceChildren();
+`;
 
-// ---------------------------------------------------------------- card
+function cardSource(idx: number, name: string): string {
+    return `function render(container, data, options) {${PRELUDE}
+  var raw = rows[0] ? rows[0][${idx}] : null;
+  var blank = (raw === null || raw === undefined || raw === '');
+  var isNum = !blank && (typeof raw === 'number' || (String(raw).trim() !== '' && isFinite(Number(raw))));
+  var shown = blank ? '(blank)' : (isNum ? fmt(Number(raw)) : String(raw));
 
-function makeCardRender(idx: number, name: string): RenderFn {
-    return (container, data, options) => {
-        container.replaceChildren();
-        const raw = data?.rows?.[0]?.[idx];
-        const isNum = typeof raw === "number" || (raw !== "" && raw !== null && raw !== undefined && isFinite(Number(raw)));
-        const shown = raw === null || raw === undefined || raw === ""
-            ? "(blank)"
-            : (isNum ? fmtNumber(Number(raw), options.cultureCode) : String(raw));
+  var root = document.createElement('div');
+  root.style.width = W + 'px'; root.style.height = H + 'px';
+  root.style.display = 'flex'; root.style.flexDirection = 'column';
+  root.style.alignItems = 'center'; root.style.justifyContent = 'center';
+  root.style.boxSizing = 'border-box'; root.style.padding = '8px';
+  root.style.overflow = 'hidden'; root.style.fontFamily = 'sans-serif';
+  root.style.color = FG; root.style.background = BG;
 
-        const root = el("div", {
-            width: options.width + "px", height: options.height + "px",
-            display: "flex", flexDirection: "column", alignItems: "center",
-            justifyContent: "center", boxSizing: "border-box", padding: "8px",
-            overflow: "hidden", fontFamily: "sans-serif",
-            color: fg(options), background: bg(options),
-        });
+  // The value sizes to BOTH the space and the string, so a long text value shrinks to fit
+  // instead of overflowing a card measured for a short number.
+  var budget = Math.max(1, W - 24);
+  var byWidth = budget / Math.max(1, shown.length * 0.62);
+  var size = Math.max(14, Math.min(H * 0.42, byWidth, 96));
 
-        // The value sizes to the SPACE AND THE STRING, so a long text value shrinks to fit
-        // rather than overflowing a card that was measured for a short number.
-        const budget = Math.max(1, options.width - 24);
-        const byWidth = budget / Math.max(1, shown.length * 0.62);
-        const size = Math.max(14, Math.min(options.height * 0.42, byWidth, 96));
+  var value = document.createElement('div');
+  value.style.fontSize = Math.round(size) + 'px'; value.style.fontWeight = '700';
+  value.style.lineHeight = '1.1'; value.style.maxWidth = '100%';
+  value.style.textAlign = 'center'; value.style.wordBreak = 'break-word';
+  value.textContent = shown;
 
-        const value = el("div", {
-            fontSize: Math.round(size) + "px", fontWeight: "700", lineHeight: "1.1",
-            maxWidth: "100%", textAlign: "center", wordBreak: "break-word",
-        });
-        value.textContent = shown;
+  var label = document.createElement('div');
+  label.style.fontSize = CF + 'px'; label.style.opacity = '0.75';
+  label.style.marginTop = '6px'; label.style.textAlign = 'center';
+  label.style.maxWidth = '100%'; label.style.overflow = 'hidden';
+  label.style.textOverflow = 'ellipsis'; label.style.whiteSpace = 'nowrap';
+  label.textContent = ${lit(name)};
 
-        const label = el("div", {
-            fontSize: chromeFont(options) + "px", opacity: "0.75",
-            marginTop: "6px", textAlign: "center", maxWidth: "100%",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        });
-        label.textContent = name;
-
-        root.appendChild(value);
-        root.appendChild(label);
-        container.appendChild(root);
-    };
+  root.appendChild(value); root.appendChild(label);
+  container.appendChild(root);
+}`;
 }
 
-// ---------------------------------------------------------------- frequency bars
+function frequencySource(idx: number, name: string): string {
+    return `function render(container, data, options) {${PRELUDE}
+  var counts = new Map();
+  for (var r = 0; r < rows.length; r++) {
+    var raw = rows[r] ? rows[r][${idx}] : null;
+    var key = (raw === null || raw === undefined || raw === '') ? '(blank)' : String(raw);
+    var b = counts.get(key);
+    if (b) b.push(r); else counts.set(key, [r]);
+  }
+  var entries = Array.from(counts.entries()).sort(function (a, b) { return b[1].length - a[1].length; });
+  var max = entries.length ? entries[0][1].length : 1;
 
-function makeFrequencyRender(idx: number, name: string): RenderFn {
-    return (container, data, options) => {
-        container.replaceChildren();
-        const rows: any[][] = data?.rows ?? [];
-        const counts = new Map<string, number[]>();
-        for (let r = 0; r < rows.length; r++) {
-            const raw = rows[r]?.[idx];
-            const key = raw === null || raw === undefined || raw === "" ? "(blank)" : String(raw);
-            const b = counts.get(key);
-            if (b) b.push(r); else counts.set(key, [r]);
-        }
-        const entries = [...counts.entries()].sort((a, b) => b[1].length - a[1].length);
-        const max = entries.length ? entries[0][1].length : 1;
+  var svg = svgEl('svg', { width: W, height: H });
+  var padL = Math.min(Math.max(70, W * 0.22), W * 0.4);
+  var padR = 52, padT = CF + 12, padB = 8;
+  var plotW = Math.max(10, W - padL - padR);
+  var bandH = Math.max(8, (H - padT - padB) / entries.length);
+  var barH = Math.min(bandH - 3, 26);
 
-        const CF = chromeFont(options);
-        const svg = svgEl("svg", { width: options.width, height: options.height });
-        const padL = Math.min(Math.max(70, options.width * 0.22), options.width * 0.4);
-        const padR = 52, padT = CF + 12, padB = 8;
-        const plotW = Math.max(10, options.width - padL - padR);
-        const bandH = Math.max(8, (options.height - padT - padB) / entries.length);
-        const barH = Math.min(bandH - 3, 26);
+  var title = svgEl('text', { x: 8, y: CF + 2, 'font-size': CF, 'font-weight': '700', fill: FG });
+  title.textContent = ${lit(name)} + ' \\u2014 count of ' + fmt(rows.length) + ' rows';
+  svg.appendChild(title);
 
-        const title = svgEl("text", {
-            x: 8, y: CF + 2, "font-size": CF, "font-weight": "700", fill: fg(options),
-        });
-        title.textContent = `${name} — count of ${fmtNumber(rows.length, options.cultureCode)} rows`;
-        svg.appendChild(title);
+  entries.forEach(function (e, i) {
+    var key = e[0], idxs = e[1];
+    var y = padT + i * bandH;
+    var w = Math.max(1, (idxs.length / max) * plotW);
 
-        entries.forEach(([key, idxs], i) => {
-            const y = padT + i * bandH;
-            const w = Math.max(1, (idxs.length / max) * plotW);
+    // A PAINTED, full-band hit target: the row is clickable across its whole width, not
+    // only where the bar reaches. Same grammar as generated charts, so cross-filter
+    // behaves identically whether or not a model was involved.
+    var hit = svgEl('rect', { x: 0, y: y, width: W, height: bandH, fill: 'transparent' });
+    hit.setAttribute('class', ${lit(MARK_CLASS)});
+    hit.setAttribute(${lit(ROW_IDX_ATTR)}, idxs.join(','));
+    hit.style.cursor = 'pointer';
+    svg.appendChild(hit);
 
-            // A PAINTED, full-band hit target: the row is clickable across its whole width,
-            // not only where the bar happens to reach. Same grammar as generated charts, so
-            // cross-filter behaves identically whether or not a model was involved.
-            const hit = svgEl("rect", {
-                x: 0, y, width: options.width, height: bandH,
-                fill: "transparent", class: MARK_CLASS, [ROW_IDX_ATTR]: idxs.join(","),
-            });
-            (hit as SVGElement & { style: CSSStyleDeclaration }).style.cursor = "pointer";
-            svg.appendChild(hit);
+    var label = svgEl('text', { x: padL - 6, y: y + barH / 2 + CF * 0.36,
+      'text-anchor': 'end', 'font-size': CF - 1, fill: FG });
+    label.setAttribute('pointer-events', 'none');
+    var budget = Math.max(4, Math.floor((padL - 10) / (CF * 0.58)));
+    label.textContent = key.length > budget ? key.slice(0, budget - 1) + '\\u2026' : key;
+    svg.appendChild(label);
 
-            const label = svgEl("text", {
-                x: padL - 6, y: y + barH / 2 + CF * 0.36, "text-anchor": "end",
-                "font-size": CF - 1, fill: fg(options),
-            });
-            label.setAttribute("pointer-events", "none");
-            const budget = Math.max(4, Math.floor((padL - 10) / (CF * 0.58)));
-            label.textContent = key.length > budget ? key.slice(0, budget - 1) + "…" : key;
-            svg.appendChild(label);
+    var bar = svgEl('rect', { x: padL, y: y, width: w, height: barH,
+      fill: ACCENT, 'fill-opacity': 0.85 });
+    bar.setAttribute('pointer-events', 'none');
+    svg.appendChild(bar);
 
-            const bar = svgEl("rect", {
-                x: padL, y, width: w, height: barH, fill: accent(options), "fill-opacity": 0.85,
-            });
-            bar.setAttribute("pointer-events", "none");
-            svg.appendChild(bar);
+    var val = svgEl('text', { x: padL + w + 6, y: y + barH / 2 + CF * 0.36,
+      'font-size': CF - 1, fill: FG });
+    val.setAttribute('pointer-events', 'none');
+    val.textContent = fmt(idxs.length);
+    svg.appendChild(val);
+  });
 
-            const val = svgEl("text", {
-                x: padL + w + 6, y: y + barH / 2 + CF * 0.36,
-                "font-size": CF - 1, fill: fg(options),
-            });
-            val.setAttribute("pointer-events", "none");
-            val.textContent = fmtNumber(idxs.length, options.cultureCode);
-            svg.appendChild(val);
-        });
-
-        container.appendChild(svg);
-    };
+  container.appendChild(svg);
+}`;
 }
 
-// ---------------------------------------------------------------- histogram
+function histogramSource(idx: number, name: string): string {
+    return `function render(container, data, options) {${PRELUDE}
+  var vals = [];
+  for (var r = 0; r < rows.length; r++) {
+    var raw = rows[r] ? rows[r][${idx}] : null;
+    if (raw === null || raw === undefined || raw === '') continue;
+    var n = Number(raw);
+    if (isFinite(n)) vals.push({ v: n, r: r });
+  }
+  var svg = svgEl('svg', { width: W, height: H });
+  if (!vals.length) { container.appendChild(svg); return; }
 
-function makeHistogramRender(idx: number, name: string): RenderFn {
-    return (container, data, options) => {
-        container.replaceChildren();
-        const rows: any[][] = data?.rows ?? [];
-        const vals: Array<{ v: number; r: number }> = [];
-        for (let r = 0; r < rows.length; r++) {
-            const raw = rows[r]?.[idx];
-            if (raw === null || raw === undefined || raw === "") continue;
-            const n = Number(raw);
-            if (isFinite(n)) vals.push({ v: n, r });
-        }
-        const CF = chromeFont(options);
-        const svg = svgEl("svg", { width: options.width, height: options.height });
+  var lo = vals[0].v, hi = vals[0].v;
+  for (var i = 0; i < vals.length; i++) { if (vals[i].v < lo) lo = vals[i].v; if (vals[i].v > hi) hi = vals[i].v; }
+  // A constant column has no distribution to show; one full bar is the honest picture.
+  var span = hi - lo;
+  var binCount = span === 0 ? 1 : Math.max(4, Math.min(24, Math.round(Math.sqrt(vals.length))));
+  var binW = span === 0 ? 1 : span / binCount;
 
-        if (!vals.length) { container.appendChild(svg); return; }
+  var bins = [];
+  for (var b = 0; b < binCount; b++) bins.push([]);
+  for (var j = 0; j < vals.length; j++) {
+    var k = span === 0 ? 0 : Math.floor((vals[j].v - lo) / binW);
+    if (k >= binCount) k = binCount - 1;          // the maximum lands in the last bin
+    if (k < 0) k = 0;
+    bins[k].push(vals[j].r);
+  }
+  var maxCount = 1;
+  for (var m = 0; m < bins.length; m++) if (bins[m].length > maxCount) maxCount = bins[m].length;
 
-        let lo = vals[0].v, hi = vals[0].v;
-        for (const x of vals) { if (x.v < lo) lo = x.v; if (x.v > hi) hi = x.v; }
-        // A constant column has no distribution to show; one full bar is the honest picture.
-        const span = hi - lo;
-        const binCount = span === 0 ? 1
-            : Math.max(4, Math.min(24, Math.round(Math.sqrt(vals.length))));
-        const binW = span === 0 ? 1 : span / binCount;
+  var padL = 8, padR = 8, padT = CF + 12, padB = CF + 14;
+  var plotW = Math.max(10, W - padL - padR);
+  var plotH = Math.max(10, H - padT - padB);
+  var bw = plotW / binCount;
 
-        const bins: number[][] = Array.from({ length: binCount }, () => []);
-        for (const x of vals) {
-            let b = span === 0 ? 0 : Math.floor((x.v - lo) / binW);
-            if (b >= binCount) b = binCount - 1;          // the maximum lands in the last bin
-            if (b < 0) b = 0;
-            bins[b].push(x.r);
-        }
-        const maxCount = bins.reduce((m, b) => Math.max(m, b.length), 1);
+  var title = svgEl('text', { x: padL, y: CF + 2, 'font-size': CF, 'font-weight': '700', fill: FG });
+  title.textContent = ${lit(name)} + ' \\u2014 distribution of ' + fmt(vals.length) + ' values';
+  svg.appendChild(title);
 
-        const padL = 8, padR = 8, padT = CF + 12, padB = CF + 14;
-        const plotW = Math.max(10, options.width - padL - padR);
-        const plotH = Math.max(10, options.height - padT - padB);
-        const bw = plotW / binCount;
+  bins.forEach(function (idxs, i) {
+    var h = (idxs.length / maxCount) * plotH;
+    var x = padL + i * bw;
+    var hit = svgEl('rect', { x: x, y: padT, width: Math.max(1, bw), height: plotH, fill: 'transparent' });
+    hit.setAttribute('class', ${lit(MARK_CLASS)});
+    hit.setAttribute(${lit(ROW_IDX_ATTR)}, idxs.join(','));
+    hit.style.cursor = 'pointer';
+    svg.appendChild(hit);
+    if (idxs.length) {
+      var bar = svgEl('rect', { x: x + 1, y: padT + plotH - h,
+        width: Math.max(1, bw - 2), height: h, fill: ACCENT, 'fill-opacity': 0.85 });
+      bar.setAttribute('pointer-events', 'none');
+      svg.appendChild(bar);
+    }
+  });
 
-        const title = svgEl("text", {
-            x: padL, y: CF + 2, "font-size": CF, "font-weight": "700", fill: fg(options),
-        });
-        title.textContent = `${name} — distribution of ${fmtNumber(vals.length, options.cultureCode)} values`;
-        svg.appendChild(title);
+  // Endpoints only: a deterministic chart should not pretend to a tick strategy it has not
+  // earned, and two honest numbers beat a crowded axis.
+  var loT = svgEl('text', { x: padL, y: H - 4, 'font-size': CF - 1, fill: FG });
+  loT.textContent = compact(lo);
+  var hiT = svgEl('text', { x: W - padR, y: H - 4, 'text-anchor': 'end', 'font-size': CF - 1, fill: FG });
+  hiT.textContent = compact(hi);
+  svg.appendChild(loT); svg.appendChild(hiT);
 
-        bins.forEach((idxs, i) => {
-            const h = (idxs.length / maxCount) * plotH;
-            const x = padL + i * bw;
-            const hit = svgEl("rect", {
-                x, y: padT, width: Math.max(1, bw), height: plotH,
-                fill: "transparent", class: MARK_CLASS, [ROW_IDX_ATTR]: idxs.join(","),
-            });
-            (hit as SVGElement & { style: CSSStyleDeclaration }).style.cursor = "pointer";
-            svg.appendChild(hit);
-            if (idxs.length) {
-                const bar = svgEl("rect", {
-                    x: x + 1, y: padT + plotH - h, width: Math.max(1, bw - 2), height: h,
-                    fill: accent(options), "fill-opacity": 0.85,
-                });
-                bar.setAttribute("pointer-events", "none");
-                svg.appendChild(bar);
-            }
-        });
-
-        // Endpoints only: a deterministic chart should not pretend to a tick strategy it
-        // has not earned, and two honest numbers beat a crowded axis.
-        const loT = svgEl("text", { x: padL, y: options.height - 4, "font-size": CF - 1, fill: fg(options) });
-        loT.textContent = fmtCompact(lo, options.cultureCode);
-        const hiT = svgEl("text", {
-            x: options.width - padR, y: options.height - 4, "text-anchor": "end",
-            "font-size": CF - 1, fill: fg(options),
-        });
-        hiT.textContent = fmtCompact(hi, options.cultureCode);
-        svg.appendChild(loT); svg.appendChild(hiT);
-
-        container.appendChild(svg);
-    };
+  container.appendChild(svg);
+}`;
 }

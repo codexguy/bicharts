@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { JSDOM } from "jsdom";
-import { planTrivialChart } from "../src/trivial";
+import { planTrivialChart, compileTrivialSource } from "../src/trivial";
 import { MARK_CLASS, ROW_IDX_ATTR } from "../src/contract";
 
 // Deterministic charts for shapes with exactly one defensible answer.
@@ -86,6 +86,43 @@ describe("planTrivialChart — what it claims", () => {
     it("REFUSES an empty dataset", () => {
         expect(planTrivialChart({ columns: [col("X")], rows: [] })).toBeNull();
         expect(planTrivialChart(null)).toBeNull();
+    });
+});
+
+describe("planTrivialChart — the artifact it emits", () => {
+    // The emitted source is what gets persisted, shared inside a report, and possibly
+    // opened on a build older than the one that made it. It has to stand alone.
+    const ALL = [
+        planTrivialChart({ columns: [col("V")], rows: [["x"]] })!,
+        planTrivialChart({ columns: [col("Sector")], rows: [["a"], ["b"], ["a"], ["c"], ["a"]] })!,
+        planTrivialChart({ columns: [col("Amount", true)], rows: Array.from({ length: 30 }, (_, i) => [i]) })!,
+    ];
+
+    it("emits a single top-level render function, the shape every host compiles", () => {
+        for (const p of ALL) {
+            expect(p.source).toMatch(/^function render\(container, data, options\)/);
+        }
+    });
+
+    it("emits nothing that needs resolving at load time", () => {
+        // No imports, no requires, and no d3 — it must draw before any chart library has
+        // loaded and on a host that has none.
+        for (const p of ALL) {
+            expect(p.source).not.toMatch(/\bimport\s|\brequire\s*\(|\bexport\s/);
+            expect(p.source).not.toMatch(/\bd3\./);
+        }
+    });
+
+    it("the compiled plan IS the emitted source, not a parallel implementation", () => {
+        // If these ever diverge, the tests below would be certifying something the user
+        // never receives.
+        const p = ALL[0];
+        const recompiled = compileTrivialSource(p.source);
+        const a = dom.window.document.createElement("div");
+        const b = dom.window.document.createElement("div");
+        p.render(a as any, { columns: [col("V")], rows: [["x"]] }, OPTS);
+        recompiled(b as any, { columns: [col("V")], rows: [["x"]] }, OPTS);
+        expect(a.innerHTML).toBe(b.innerHTML);
     });
 });
 

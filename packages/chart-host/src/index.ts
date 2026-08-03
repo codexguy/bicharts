@@ -37,5 +37,8 @@ export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./s
 // single categorical column, a single numeric column. Returns null for everything else, so
 // a host can ask BEFORE paying for a generation and fall through the moment the answer
 // becomes a real choice. d3-free by design — these draw before any chart library loads.
-export { planTrivialChart, type TrivialPlan, type TrivialShapeKind } from "./trivial";
+// It emits SOURCE, not a closure: a host persists chart code and re-renders it on reopen,
+// shares it inside a report, and may open it on an older build — so a deterministic chart
+// has to be ordinary render() source that travels the same path as generated code.
+export { planTrivialChart, compileTrivialSource, type TrivialPlan, type TrivialShapeKind } from "./trivial";
 
