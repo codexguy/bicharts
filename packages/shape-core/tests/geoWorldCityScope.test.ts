@@ -52,6 +52,48 @@ describe("a column of world cities is recognised as cities", () => {
     });
 });
 
+describe("THE SCOPE IS THE FLOOR — no second threshold needed", () => {
+    // Joel, 2026-08-02, asked whether a basemap should need a minimum placeable share before
+    // it is offered at all: "no floor, but we should also be attentive to the chart type since
+    // it NAMES the scope... you have a column with city names from all over the world and
+    // evenly distributed over countries: that's not going to look like a city column to the
+    // North America map, is it? So it's not considered a city, so that could end up
+    // disqualifying some map chart types."
+    //
+    // That is the whole mechanism, and it costs nothing new: the role-identification bar
+    // ALREADY behaves as the floor once the classifier answers per scope. These tests are here
+    // because that is a claim about emergent behaviour, and a claim about emergent behaviour
+    // that nobody pinned is a claim that quietly stops being true.
+    const worldSpread = ["Abidjan", "Aachen", "Abeokuta", "Mumbai", "Osaka", "Lyon",
+                         "Bogota", "Nairobi", "Dhaka", "Naples"];
+
+    it("a world-spread city column is not a city column TO NORTH AMERICA", () => {
+        // Not "a city column with 90% unplaced" — not a city column for that map at all, so
+        // North America is never offered and the user never pays a generation to find out.
+        expect(detectGeo(worldSpread, "City")!.geoKind).toBe("city-name-world");
+    });
+
+    it("a couple of world cities among North American ones does NOT disqualify North America", () => {
+        // The floor has to be a share, not a veto: 8 of 10 placeable is a real North American
+        // map with two honestly-reported misses, and the two must not cost the other eight.
+        const mostlyNA = ["Boston", "Denver", "Chicago", "Austin", "Seattle", "Portland",
+                          "Toronto", "Calgary", "Mumbai", "Osaka"];
+        expect(detectGeo(mostlyNA, "City")!.geoKind).toBe("city-name");
+    });
+
+    it("the switchover is CITY_ROLE_MATCH_PCT, the same knob every other role reads", () => {
+        // Nine of ten NA (90%) clears the 80 bar; four of ten (40%) does not. One number,
+        // already tuned in matchQuality, doing the work a separate eligibility floor would
+        // have duplicated.
+        const nineOfTen = ["Boston", "Denver", "Chicago", "Austin", "Seattle", "Portland",
+                           "Toronto", "Calgary", "Phoenix", "Osaka"];
+        const fourOfTen = ["Boston", "Denver", "Chicago", "Austin",
+                           "Mumbai", "Osaka", "Lyon", "Bogota", "Nairobi", "Dhaka"];
+        expect(detectGeo(nineOfTen, "City")!.geoKind).toBe("city-name");
+        expect(detectGeo(fourOfTen, "City")!.geoKind).toBe("city-name-world");
+    });
+});
+
 describe("the scope is what settles an ambiguous name", () => {
     it("Sydney means Australia on a world map and Nova Scotia on a North America one", () => {
         const world = resolveGeoPoint({ city: "Sydney", mapKind: "world" }) as any;
