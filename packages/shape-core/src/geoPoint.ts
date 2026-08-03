@@ -40,6 +40,8 @@ import { ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.gen
 // a STATIC import, so it ships in every bundle. That is the point — see the note below.
 import { CITY_PACKED } from "./geoPointCities.generated";
 import { countryIso3, iso2ToIso3 } from "./geoCountryNames";
+// ONE notion of "this cell is empty", shared with the role classifier — see matchQuality.
+import { isBlankLike } from "./matchQuality";
 
 export type GeoPointPrecision = "latlon" | "city" | "zip3" | "state" | "country";
 
@@ -271,6 +273,11 @@ function zip3Index(): Map<string, { lon: number; lat: number }> {
     return m;
 }
 
+/** The countries the bundled ZIP-3 table actually covers — the USPS delivery area. The
+ *  territories are in it because they carry real ZIPs (Puerto Rico 006-009, Guam 969)
+ *  while resolving to their own ISO-3, so keying on "USA" alone would refuse them. */
+const ZIP_COUNTRIES = new Set(["USA", "PRI", "VIR", "GUM", "ASM", "MNP"]);
+
 /** Resolve a state/province token ("TX", "Texas", "ON", "Ontario", "Jalisco") to its
  *  canonical admin1 key. Null when unrecognized. */
 export function resolveAdmin1(value: string | null | undefined): string | null {
@@ -336,8 +343,6 @@ export function zipToPrefix3(value: string | null | undefined): string | null {
     return zipPrefixCandidates(value)[0] ?? null;
 }
 
-/** Ordered prefix interpretations, most likely first. Callers with the lookup table
- *  available should try each and take the first that exists. */
 /**
  * THE ZIP READER. One function, because a ZIP arrives in whatever shape the pipeline left it
  * and both matchers — the point cascade here and the choropleth join key in geoDetector —
@@ -522,9 +527,25 @@ export function resolveGeoPoint(args: {
     // 3. ZIP-5 / ZIP-3 -> the 3-digit prefix centroid. Try each interpretation in
     //    likelihood order so a 3-digit value that ISN'T a real prefix can still fall
     //    back to the zero-stripped reading.
-    for (const z3 of zipPrefixCandidates(args.zip)) {
-        const hit = zip3Index().get(z3);
-        if (hit) return { lat: hit.lat, lon: hit.lon, precision: "zip3" };
+    //
+    //    THE TABLE IS US-ONLY AND THE DATA MIGHT NOT BE. Five digits is not a US idea:
+    //    France 75001, Germany 10115, Spain 28013, Brazil 01310, Japan 100-0001 all read
+    //    as clean ZIPs here, and every one of them hits a real US ZIP-3 prefix — "75001"
+    //    is Paris to the user and Dallas to this table. Without the guard a world map
+    //    built from a PostalCode column scatters Europe across the American South at
+    //    zip3 precision, which is *more* confident than the country centroid it should
+    //    have fallen through to.
+    //
+    //    This is the same rule the state tier already applies two blocks up (a state
+    //    belonging to another country is dropped); the ZIP tier simply never got it,
+    //    because when it was written the only maps were North American. Territories are
+    //    listed because their ZIPs are genuine (00901 San Juan, 96910 Hagatna) and their
+    //    country identifiers are NOT "USA".
+    if (!iso3 || ZIP_COUNTRIES.has(iso3)) {
+        for (const z3 of zipPrefixCandidates(args.zip)) {
+            const hit = zip3Index().get(z3);
+            if (hit) return { lat: hit.lat, lon: hit.lon, precision: "zip3" };
+        }
     }
 
     // 4. State / province alone — population-weighted centroid.
@@ -690,18 +711,23 @@ export function isKnownCity(normalizedName: string, mapKind?: GeoMapKind | null)
     return rows.some(h => h.row.kinds.includes(flag));
 }
 
-/** Share of DISTINCT values that are known city names, 0..100 (one decimal). NOTE:
- *  production offerability does NOT ride on this — detectGeo's "city-name" kind is the
- *  gate (THRESHOLD_PCT 85, ≥2 matches, roster guard). This is the standalone measure
- *  for harness/MCP callers; keep its notion of "match" aligned with isKnownCity
- *  (including the NA-scope default — see the note there). */
+/** Share of DISTINCT NON-BLANK values that are known city names, 0..100 (one decimal).
+ *  Production offerability does NOT ride on this — detectGeo's "city-name" kind is the
+ *  gate (CITY_ROLE_MATCH_PCT, >=2 matches, roster guard). This is the standalone measure
+ *  for harness/MCP callers, so it has to AGREE with the gate: same notion of a match
+ *  (isKnownCity, including the NA-scope default), and same notion of a blank. */
 export function cityMatchPct(values: Array<string | null | undefined>, mapKind?: GeoMapKind | null): number {
     const seen = new Set<string>();
     let matched = 0;
     for (const v of values) {
         if (v === null || v === undefined) continue;
         const k = normalizePlaceName(String(v));
-        if (!k || seen.has(k)) continue;
+        // A typed placeholder is a HOLE, not a failed match, and it leaves the denominator
+        // (Joel: "my 97% is for non-blanks... '-' and 'N/A' could be interpreted as blank").
+        // This measure was written before that rule and kept counting them, so it reported a
+        // lower number than the gate it is supposed to mirror — the drift that makes a
+        // standalone measure worse than none.
+        if (isBlankLike(k) || seen.has(k)) continue;
         seen.add(k);
         if (isKnownCity(k, mapKind)) matched++;
     }

@@ -97,6 +97,58 @@ describe("a country-only point binding places rows", () => {
     });
 });
 
+describe("world_country_metrics, end to end", () => {
+    // The gate above was fixed and the map was STILL empty, because the fix was one layer
+    // short. The server names `Country` (full names), and the two deliberate junk rows put
+    // that column at 95.5% — just under the identification bar — so the hint failed
+    // verification and then OWNED the role anyway, blocking `CountryCode` beside it, which is
+    // clean ISO-3 at 100% (both junk rows leave it blank, and a blank is not a failed match).
+    // Naming a column did WORSE than naming nothing, which is the tell.
+    //
+    // These are the literal 44 rows of testharness/datasets/world_country_metrics.csv. The
+    // row COUNT is load-bearing, not decoration: at 42 of 44 the name column sits half a point
+    // under the bar, which is the whole reason this shape found the bug. A trimmed sample
+    // moves the ratio and stops testing anything.
+    const cols = [
+        { name: "Country", isMeasure: false }, { name: "CountryCode", isMeasure: false },
+        { name: "Region", isMeasure: false }, { name: "Revenue", isMeasure: true },
+    ];
+    const pairs: Array<[string, string]> = [
+        ["United States", "USA"], ["Brazil", "BRA"], ["Canada", "CAN"], ["Mexico", "MEX"],
+        ["France", "FRA"], ["Germany", "DEU"], ["United Kingdom", "GBR"], ["Spain", "ESP"],
+        ["Italy", "ITA"], ["Netherlands", "NLD"], ["Poland", "POL"], ["Sweden", "SWE"],
+        ["Japan", "JPN"], ["China", "CHN"], ["India", "IND"], ["Australia", "AUS"],
+        ["Indonesia", "IDN"], ["Singapore", "SGP"], ["South Korea", "KOR"], ["Viet Nam", "VNM"],
+        ["South Africa", "ZAF"], ["Nigeria", "NGA"], ["Kenya", "KEN"], ["Egypt", "EGY"],
+        ["United Arab Emirates", "ARE"], ["Saudi Arabia", "SAU"], ["Israel", "ISR"],
+        ["Türkiye", "TUR"], ["Chile", "CHL"], ["Argentina", "ARG"], ["Colombia", "COL"],
+        ["Norway", "NOR"], ["Switzerland", "CHE"], ["Ireland", "IRL"], ["New Zealand", "NZL"],
+        ["Philippines", "PHL"], ["Thailand", "THA"], ["Malaysia", "MYS"], ["Portugal", "PRT"],
+        ["Denmark", "DNK"], ["Freedonia", ""], ["Global (unassigned)", ""],
+        ["Greece", "GRC"], ["Iceland", "ISL"],
+    ];
+    const rows = pairs.map(([Country, CountryCode], i) =>
+        ({ Country, CountryCode, Region: "Americas", Revenue: 100 + i }));
+
+    it("draws, with the server's own binding", () => {
+        const p = buildRenderPayload(cols as any, rows as any, null,
+            { country: "Country", mapKind: "world" });
+        expect(colNames(p)).toContain("__geoLat__");
+        expect(p.geoPoint?.precision).toBe("country");
+        // Everything but the two junk rows, which come back UNPLACED and named — the honest
+        // outcome, and the one the chart already reports.
+        expect(p.geoPoint?.precisionCounts.country).toBe(pairs.length - 2);
+        expect(p.geoPoint?.unplaced).toBe(2);
+    });
+
+    it("naming the column is never worse than naming nothing", () => {
+        const hinted = buildRenderPayload(cols as any, rows as any, null,
+            { country: "Country", mapKind: "world" });
+        const blank = buildRenderPayload(cols as any, rows as any, null, { mapKind: "world" });
+        expect(hinted.geoPoint?.precisionCounts).toEqual(blank.geoPoint?.precisionCounts);
+    });
+});
+
 function row0(p: { rows: any[][] }, idx: number): number {
     return p.rows[0][idx] as number;
 }

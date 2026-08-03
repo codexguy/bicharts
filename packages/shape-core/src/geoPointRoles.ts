@@ -38,6 +38,9 @@
 import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
 import { countryIso3 } from "./geoCountryNames";
 import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
+// ONE tokenizer for "is this column NAMED like a ZIP" — geoDetector owns it and both
+// classifiers have to agree on the answer. (One-directional: geoDetector never imports back.)
+import { hasAnyToken, ZIP_NAME_TOKENS } from "./geoDetector";
 
 /** The place parts a coordinate can be resolved from. Any subset. */
 export type PointBind = {
@@ -232,13 +235,37 @@ function distinctRaw(values: Array<unknown>): string[] {
     return Array.from(seen);
 }
 
-/** Share of DISTINCT values that read as a ZIP / ZIP-prefix, 0..100 (one decimal). */
+/** Share of DISTINCT values that read as a ZIP / ZIP-prefix, 0..100 (one decimal). This is a
+ *  VALUE question — "can this be read as a ZIP" — and it stays permissive about short forms,
+ *  because a stripped leading zero really is a ZIP. Whether the COLUMN may hold the ZIP role
+ *  is a different question; see zipColumnCorroborated. */
 export function zipMatchPct(values: Array<unknown>): number {
     const d = distinctRaw(values);
     if (d.length === 0) return 0;
     let n = 0;
     for (const v of d) if (zipPrefixCandidates(v).length > 0) n++;
     return Math.round((n / d.length) * 1000) / 10;
+}
+
+/**
+ * Is there evidence that this column is POSTAL at all, beyond its digit shape?
+ *
+ * ZIP is the one role identified on shape rather than a gazetteer, and a 3-4 digit value only
+ * reads as a ZIP because integer storage ate a leading zero. That is real — the whole New
+ * England / NJ / PR 0xxxx block depends on it — but taken alone it is just a small number, and
+ * zipMatchPct rightly cannot tell the difference. Every dimension of short numeric codes (a
+ * store number, a route, a plan code, a fiscal week) scores a clean 100% there, so the ratio
+ * alone was enough to adopt one as the ZIP column and scatter the whole table across real
+ * American centroids — reporting "zip3" precision, which is a claim, not a shrug.
+ *
+ * The split is the matchQuality doctrine applied to the one role that had blurred it: the
+ * MEASURE says what the values could be, and this says whether the COLUMN has earned the role.
+ * Two escapes, the same two geoDetector allows: a genuine 5-digit ZIP somewhere in the column,
+ * or a column NAME that says postal.
+ */
+function zipColumnCorroborated(values: Array<unknown>, columnName?: string): boolean {
+    if (hasAnyToken(columnName, ZIP_NAME_TOKENS)) return true;
+    return distinctRaw(values).some(v => /^\d{5}(-\d{4})?$/.test(v.replace(/\.0+$/, "")));
 }
 
 /** Share of DISTINCT values that are known city names, 0..100 (one decimal). Scope
@@ -292,12 +319,31 @@ export function resolvePointRoles(
     const colSet = new Set(columns);
     const valuesOf = (name: string) => rows.map(r => r[name]);
 
-    // ---- 1. Carry over the hint, VERIFYING the two roles that can be catastrophically
-    // wrong. city/lat/lon are carried as given: a mis-hinted city degrades to "no match"
-    // (a visible off-map count), whereas a mis-hinted STATE actively relocates points.
-    for (const role of ["city", "zip", "lat", "lon", "country"] as const) {
+    // ---- 1. Carry over the hint, VERIFYING the roles that can be catastrophically wrong.
+    //
+    // The dividing line is what a WRONG hint does. A mis-hinted CITY degrades to "no match":
+    // the row falls to a coarser tier or shows up in the visible off-map count, and nothing
+    // is asserted that isn't true. A mis-hinted STATE or ZIP actively RELOCATES the point —
+    // both name a real centroid for whatever they resolve to — so both are checked against
+    // the values before they are trusted. State has always been; ZIP was in this carry-over
+    // loop with the harmless roles, which reads as deliberate and was not: a dimension of
+    // 3-4 digit codes (a store number, a route, a plan code) scores 100% "ZIP" on digit shape
+    // and would have scattered the map across real American cities.
+    //
+    // A refused hint is dropped from the binding, exactly like state, so the backfill below
+    // gets its turn — that is the half the country role was missing until this same pass.
+    for (const role of ["city", "lat", "lon", "country"] as const) {
         const name = hint?.[role];
         if (name && colSet.has(name)) out[role] = name;
+    }
+    const hintedZip = hint?.zip;
+    if (hintedZip && colSet.has(hintedZip)) {
+        const vals = valuesOf(hintedZip);
+        const pct = zipMatchPct(vals);
+        if (pct < ROLE_MATCH_PCT) refused.push(`zip=${hintedZip} (only ${pct}% of values read as ZIPs)`);
+        else if (!zipColumnCorroborated(vals, hintedZip))
+            refused.push(`zip=${hintedZip} (all values are 3-4 digits with nothing to say they are postal)`);
+        else out.zip = hintedZip;
     }
     const hintedState = hint?.state;
     if (hintedState && colSet.has(hintedState)) {
@@ -361,6 +407,7 @@ export function resolvePointRoles(
             const vals = valuesOf(c);
             const pct = zipMatchPct(vals);
             if (pct < ROLE_MATCH_PCT) continue;
+            if (!zipColumnCorroborated(vals, c)) continue;   // shape alone is not evidence
             if (distinctRawMatches(vals, v => zipPrefixCandidates(v).length > 0) < MIN_DISTINCT_BACKFILL) continue;
             out.zip = c;
             taken.add(c);
@@ -373,14 +420,44 @@ export function resolvePointRoles(
     // "Burlington" on a US row out of Ontario. Backfilled last among the narrowing roles
     // and only from an unambiguous all-country column, because a wrong country is worse
     // than none: it would filter every candidate away and drop the row to a coarser tier.
-    if (!out.country) {
+    //
+    // A HINTED COUNTRY COLUMN THAT DOES NOT VERIFY MUST NOT BLOCK ONE THAT DOES. The hint is
+    // carried in unchecked at step 1, which is right — as a narrowing constraint an
+    // unrecognized country costs nothing. But it also OWNED the slot, so this backfill never
+    // ran, and placement (which does require proof, see the two conditions below) had nothing
+    // to work with even when a clean country column sat in the next field over.
+    //
+    // world_country_metrics is exactly that shape and is why this was found: the server named
+    // `Country` — full names, and 42 of its 44 distinct values resolve (95.5%, half a point
+    // under the bar; the two misses are the deliberate "Freedonia" and "Global (unassigned)"
+    // rows) — while `CountryCode` beside it is clean ISO-3 at 100%, since those same two rows
+    // leave the code BLANK and a blank is not a failed match. The map placed NOTHING instead
+    // of 42 of 44, and reported only that the hint had failed.
+    //
+    // This is what the STATE role has always done — refuse what fails verification, then
+    // resolve the role from the data — and country simply was never wired the same way. If
+    // nothing verifies, the hint is left in place as a narrowing constraint, unchanged.
+    const hintedCountry = out.country;
+    if (!hintedCountry || !looksLikeCountryColumn(valuesOf(hintedCountry))) {
+        // BEST, not first-past-the-post, matching what state and city already do. With two
+        // qualifying columns the source order decided it, so a table carrying both a name
+        // column and an ISO column could be read off whichever happened to come first —
+        // arbitrary in exactly the situation where one of them is measurably cleaner.
+        let best: { name: string; pct: number } | null = null;
         for (const c of candidates) {
-            if (taken.has(c)) continue;
+            if (taken.has(c)) continue;      // `candidates` already excludes the hint itself
             if (!looksLikeCountryColumn(valuesOf(c))) continue;
-            out.country = c;
-            taken.add(c);
-            backfilled.push(`country=${c}`);
-            break;
+            const pct = countryMatchPct(valuesOf(c));
+            if (!best || pct > best.pct) best = { name: c, pct };
+        }
+        if (best) {
+            if (hintedCountry) {
+                refused.push(`country=${hintedCountry} (only ${countryMatchPct(valuesOf(hintedCountry))}% `
+                    + `of values are country identifiers; using ${best.name} instead)`);
+            }
+            out.country = best.name;
+            taken.add(best.name);
+            backfilled.push(`country=${best.name}`);
         }
     }
 
@@ -439,7 +516,28 @@ export function resolvePointRoles(
         : 0;
     const countryCanPlace = countryProven && distinctCountries >= 2;
 
-    if (out.country && !countryCanPlace && !(out.city || out.state || out.zip || (out.lat && out.lon))) {
+    // LAT/LON NEEDED CONDITION 1 TOO. The paragraph above was written for country and is just
+    // as true one slot over: two column NAMES were enough to declare the binding geocodable,
+    // with nothing checking that the columns hold coordinates. A hint naming the wrong pair —
+    // or the right pair in a table where they arrive as text, or as the 0/blank a join left
+    // behind — passed this gate, appended a full set of null __geoLat__/__geoLon__ values, and
+    // told the chart it had a map. That is the SAME empty state country-only data drew, minus
+    // even a refusal line to explain it.
+    //
+    // The bar is deliberately one row, not a ratio: unlike the name roles, a coordinate needs
+    // no gazetteer and no judgement — it either parses in range or it does not — and a table
+    // where a handful of rows carry coordinates and the rest are blank is ordinary, honest
+    // data whose misses the unplaced count already reports.
+    const latLonCanPlace = !!(out.lat && out.lon) && rows.some(r => {
+        const la = +String(r[out.lat!] ?? "").trim(), lo = +String(r[out.lon!] ?? "").trim();
+        return isFinite(la) && isFinite(lo) && la >= -90 && la <= 90 && lo >= -180 && lo <= 180
+            && String(r[out.lat!] ?? "").trim() !== "" && String(r[out.lon!] ?? "").trim() !== "";
+    });
+    if (out.lat && out.lon && !latLonCanPlace) {
+        refused.push(`lat/lon=${out.lat}/${out.lon} (no row holds a usable coordinate pair)`);
+    }
+
+    if (out.country && !countryCanPlace && !(out.city || out.state || out.zip || latLonCanPlace)) {
         // The only candidate role was country and it cannot carry the map on its own. Say
         // which of the two conditions failed, so the chart can explain rather than blank.
         refused.push(countryProven
@@ -447,6 +545,6 @@ export function resolvePointRoles(
             : `country=${out.country} (values are not country identifiers)`);
     }
 
-    const any = !!(out.city || out.state || out.zip || countryCanPlace || (out.lat && out.lon));
+    const any = !!(out.city || out.state || out.zip || countryCanPlace || latLonCanPlace);
     return { bind: any ? out : null, backfilled, refused };
 }

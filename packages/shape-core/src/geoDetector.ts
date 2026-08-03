@@ -40,12 +40,12 @@
 // only asks "is this a known city?" to emit the city-name KIND. One-directional —
 // geoPoint never imports geoDetector — so there is no import cycle.
 import { isKnownCity, normalizeZip5 } from "./geoPoint";
-import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT } from "./matchQuality";
+import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 // The country tables + the shared normalizer moved to geoCountryNames when the World
 // point map needed them too — geoPoint could not import them back without a cycle.
 import {
     ISO_3166_PAIRS, ISO2_TO_ISO3, ISO2_SET, ISO3_SET, SUPPORTED_LANGS,
-    COUNTRY_ALIAS_OVERLAY, countryNameMap, normalizePlaceName,
+    COUNTRY_ALIAS_OVERLAY, countryNameMap, normalizePlaceName, countryIso3,
 } from "./geoCountryNames";
 
 // ISO 3166-1: alpha-2 → alpha-3, the full assigned set. This is the ONLY geo
@@ -142,7 +142,7 @@ function normalizeName(s: string): string {
 // ── Column-name tokens (tiebreaker / guard, never a substitute) ─────────────
 const COUNTRY_NAME_TOKENS = new Set(["country", "countries", "nation", "nationality", "iso", "geo"]);
 const STATE_NAME_TOKENS = new Set(["state", "province", "st"]);
-const ZIP_NAME_TOKENS = new Set(["zip", "zipcode", "postal", "postcode", "plz"]);
+export const ZIP_NAME_TOKENS = new Set(["zip", "zipcode", "postal", "postcode", "plz"]);
 const COUNTY_NAME_TOKENS = new Set(["county", "fips", "borough", "parish"]);
 const CITY_NAME_TOKENS = new Set(["city", "cities", "town", "municipality", "metro", "location", "place"]);
 
@@ -154,7 +154,7 @@ function tokenizeName(name: string): string[] {
         .split(/\s+/)
         .filter(t => t.length > 0);
 }
-function hasAnyToken(columnName: string | undefined, tokens: Set<string>): boolean {
+export function hasAnyToken(columnName: string | undefined, tokens: Set<string>): boolean {
     if (!columnName) return false;
     for (const t of tokenizeName(columnName)) if (tokens.has(t)) return true;
     return false;
@@ -219,6 +219,14 @@ export function detectGeo(
         if (v === null || v === undefined) continue;
         const s = String(v).trim();
         if (s.length === 0) continue;
+        // A TYPED PLACEHOLDER IS A BLANK, and a blank leaves the denominator rather than
+        // voting against the column (Joel 2026-08-02: "my 97% is for non-blanks... '-' and
+        // 'N/A' could be interpreted as blank, as well"). That instruction was applied to the
+        // point-role classifier and not to this one, which is the half that decides whether a
+        // CHOROPLETH is offered at all — so a clean 20-country column with one "Unknown" in it
+        // scored 95% against a 96 bar and was refused a map, while the same column on a point
+        // map scored 100. Same doctrine, same helper, both classifiers.
+        if (isBlankLike(normalizeName(s))) continue;
         const key = s.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
@@ -233,6 +241,9 @@ export function detectGeo(
     const cnMap = countryNameMap();
 
     let iso3 = 0, iso2 = 0, usps = 0, cName = 0, sName = 0, zip = 0, county = 0, cityHits = 0;
+    // A country in ANY form (ISO-3, ISO-2, a name in 27 languages, an alias) — the union
+    // the three per-form counters cannot see between them. See the mixed-form note below.
+    let anyCountry = 0;
     // 4-digit values, held aside: a ZIP whose leading zero integer storage ate, or just a year.
     let zip4 = 0;
     let iso2AndUsps = 0;      // values valid as BOTH an ISO-2 and a USPS code
@@ -259,6 +270,7 @@ export function detectGeo(
         if (isCName) cName++;
         if (isSName) sName++;
         if (isCName && isSName) cNameAndSName++;
+        if (countryIso3(raw)) anyCountry++;
         if (isUsps && isSName) stateBoth++;
         if (/^\d{5}(-\d{4})?$/.test(raw) || (zipHint && /^\d{3,4}$/.test(raw))) zip++;
         // A bare 4-digit value is a ZIP whose LEADING ZERO integer storage ate - 02108
@@ -312,6 +324,24 @@ export function detectGeo(
     // the ISO-2/USPS collision handling below is untouched).
     const uspsOnly = usps - stateBoth, sNameOnly = sName - stateBoth;
     if (uspsOnly > 0 && sNameOnly > 0) add("us-state-name", usps + sName - stateBoth, 5, true);
+    // COUNTRIES NEEDED THE SAME UNION and never got it. "USA", "United Kingdom", "FR" is one
+    // concept written three ways — a perfectly ordinary hand-maintained column — and it split
+    // across country-iso3 / country-name / country-iso2 at a third each, so NO kind cleared
+    // threshold and the column detected as nothing at all. No map, no message. The state
+    // version of this bug was found and fixed; the country version sat beside it because
+    // three counters look like three different things.
+    //
+    // Only fires when the column genuinely mixes forms (the union beats every single form),
+    // so a pure ISO-2 column keeps its own candidate and the ISO-2/USPS collision handling
+    // below is untouched. The kind reported is the DOMINANT form, which is what the column
+    // mostly is; toGeoIso resolves all three identically now, so the outliers still join.
+    const domSingle = Math.max(iso3, iso2, cName);
+    if (anyCountry > domSingle) {
+        const dom: GeoKind = iso3 === domSingle ? "country-iso3"
+            : cName === domSingle ? "country-name" : "country-iso2";
+        add(dom, anyCountry, dom === "country-iso3" ? 6 : dom === "country-name" ? 5 : 3,
+            dom === "country-name");
+    }
 
     if (cands.length === 0) return null;
     cands.sort((a, b) => (b.pct - a.pct) || (b.spec - a.spec));
@@ -388,16 +418,20 @@ export function toGeoIso(value: string | null | undefined, geoKind: GeoKind): st
     const raw = String(value).trim();
     if (raw.length === 0) return null;
     switch (geoKind) {
-        case "country-iso3": {
-            const u = normalizeCode(raw);
-            return ISO3_SET.has(u) ? u : null;
-        }
-        case "country-iso2": {
-            return ISO2_TO_ISO3.get(normalizeCode(raw)) ?? null;
-        }
-        case "country-name": {
-            return countryNameMap().get(normalizeName(raw)) ?? null;
-        }
+        // ONE COUNTRY READER for all three country kinds, exactly as us-state-code and
+        // us-state-name already share one and for the identical reason stated below them:
+        // the KIND describes what the column mostly is, not what every cell is. These three
+        // branches each accepted one form and nulled the others, so a country column with a
+        // stray "UK" beside its ISO-3 codes, or a stray "DEU" beside its names, dropped that
+        // region off the map and counted it unmatched — with the tolerant resolver
+        // (countryIso3: ISO-3, then ISO-2, then names in 27 languages, then the alias
+        // overlay) sitting right there, already used by the POINT cascade over the very same
+        // values. That is the same drift the ZIP reader had: two matchers, one column, two
+        // answers. Detection still picks the kind; resolution no longer punishes the outliers.
+        case "country-iso3":
+        case "country-iso2":
+        case "country-name":
+            return countryIso3(raw);
         case "us-state-code":
         case "us-state-name": {
             // Tolerant regardless of the detected kind: try USPS code first, then the

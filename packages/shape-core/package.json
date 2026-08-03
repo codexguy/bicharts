@@ -1,7 +1,7 @@
 {
   "name": "@bicharts/shape-core",
-  "version": "0.5.11",
-  "description": "Host-agnostic data-shape profiler: ingest a dataset's rows through IValueCollection.addRow and read back the measured shape as an LLMColumnWithValue[] payload \u2014 types, cardinality, temporal/ordinal detection, geographic region and point resolution, cross-column signals. MEASUREMENT only: the policy that decides what a measured shape means for chart selection lives server-side.",
+  "version": "0.5.12",
+  "description": "Host-agnostic data-shape profiler: ingest a dataset's rows through IValueCollection.addRow and read back the measured shape as an LLMColumnWithValue[] payload — types, cardinality, temporal/ordinal detection, geographic region and point resolution, cross-column signals. MEASUREMENT only: the policy that decides what a measured shape means for chart selection lives server-side.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
