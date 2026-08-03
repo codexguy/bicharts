@@ -52,7 +52,7 @@ export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
 // as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
 export {
     resolveGeoPoint, buildGeoPointColumns, isGeoPointAmbiguity, resolveAdmin1, zipToPrefix3, zipPrefixCandidates, normalizeZip5,
-    normalizePlaceName, cityMatchPct, normalizeCountry,
+    normalizePlaceName, cityMatchPct, normalizeCountry, cityTagsFor,
     // The city PLACEMENT table is REGISTERED, not bundled here: detection stays in the
     // package (it decides offerability and runs in the profiler) while the coordinates
     // can be fetched. See the split note in geoPoint.ts.

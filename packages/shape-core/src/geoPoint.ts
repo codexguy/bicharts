@@ -70,7 +70,9 @@ import { normalizePlaceName } from "./geoCountryNames";
 export type GeoMapKind = "north-america" | "world";
 const KIND_FLAG: Record<GeoMapKind, string> = { "north-america": "N", world: "W" };
 
-type CityRow = { a1: string; cc: string; lon: number; lat: number; pop: number; kinds: string };
+type CityRow = { a1: string; cc: string; lon: number; lat: number; pop: number; kinds: string;
+    /** Free-form per-city tags ("capital", ...). See CITY TAGS below. */
+    tags?: string[] };
 /** One door onto a city row: `primary` marks the city's own name, false marks a
  *  multilingual variant. A primary match OUTRANKS an alt match at the same attribute
  *  rank, so "Santiago" means the city actually called Santiago even though another
@@ -132,6 +134,46 @@ export function isCityTableLoaded(): boolean {
     return _cityPacked.length > 0;
 }
 
+// CAPITALS, keyed by the gazetteer's own ISO-2 country code, values pre-normalized with
+// normalizePlaceName. An OVERLAY (the COUNTRY_ALIAS_OVERLAY pattern - plain data, trivial
+// for an LLM to extend), applied at parse time and inert wherever the named city is not in
+// the gazetteer - so a wrong or renamed entry can mistag nothing, it can only fail to tag.
+// Kept to the countries whose capitals are unambiguous one-liners; seats-of-government
+// subtleties are recorded where they exist rather than silently picked.
+const CAPITAL_BY_CC: Record<string, string> = {
+    US: "washington", CA: "ottawa", MX: "mexico city", GB: "london", FR: "paris",
+    DE: "berlin", IT: "rome", ES: "madrid", PT: "lisbon", NL: "amsterdam",   // (seat: The Hague)
+    BE: "brussels", CH: "bern", AT: "vienna", IE: "dublin", PL: "warsaw",
+    SE: "stockholm", NO: "oslo", DK: "copenhagen", FI: "helsinki", IS: "reykjavik",
+    CZ: "prague", SK: "bratislava", HU: "budapest", RO: "bucharest", BG: "sofia",
+    GR: "athens", TR: "ankara", UA: "kyiv", RU: "moscow", RS: "belgrade",
+    HR: "zagreb", SI: "ljubljana", EE: "tallinn", LV: "riga", LT: "vilnius",
+    JP: "tokyo", CN: "beijing", KR: "seoul", KP: "pyongyang", IN: "new delhi",
+    PK: "islamabad", BD: "dhaka", LK: "colombo",                              // (legislative: Sri Jayawardenepura Kotte)
+    TH: "bangkok", VN: "hanoi", PH: "manila", ID: "jakarta", MY: "kuala lumpur",
+    SG: "singapore", MM: "naypyidaw", KH: "phnom penh", LA: "vientiane",
+    NP: "kathmandu", AF: "kabul", IR: "tehran", IQ: "baghdad", SA: "riyadh",
+    AE: "abu dhabi", QA: "doha", KW: "kuwait city", BH: "manama", OM: "muscat",
+    JO: "amman", LB: "beirut", SY: "damascus", IL: "jerusalem", YE: "sanaa",
+    EG: "cairo", LY: "tripoli", TN: "tunis", DZ: "algiers", MA: "rabat",
+    SD: "khartoum", ET: "addis ababa", KE: "nairobi", TZ: "dodoma", UG: "kampala",
+    NG: "abuja", GH: "accra", CI: "yamoussoukro",                             // (de facto: Abidjan)
+    SN: "dakar", ML: "bamako", CM: "yaounde", CD: "kinshasa", CG: "brazzaville",
+    AO: "luanda", ZM: "lusaka", ZW: "harare", MZ: "maputo", BW: "gaborone",
+    NA: "windhoek", ZA: "pretoria",                                           // (executive; legislative Cape Town, judicial Bloemfontein)
+    AU: "canberra", NZ: "wellington", PG: "port moresby", FJ: "suva",
+    BR: "brasilia", AR: "buenos aires", CL: "santiago", PE: "lima", CO: "bogota",
+    VE: "caracas", EC: "quito", BO: "la paz",                                 // (seat; constitutional Sucre)
+    PY: "asuncion", UY: "montevideo", GY: "georgetown", SR: "paramaribo",
+    CU: "havana", DO: "santo domingo", HT: "port au prince", JM: "kingston",
+    TT: "port of spain", PA: "panama city", CR: "san jose", NI: "managua",
+    HN: "tegucigalpa", SV: "san salvador", GT: "guatemala city", BZ: "belmopan",
+    AZ: "baku", AM: "yerevan", GE: "tbilisi", KZ: "astana", UZ: "tashkent",
+    TM: "ashgabat", KG: "bishkek", TJ: "dushanbe", MN: "ulaanbaatar",
+    BY: "minsk", MD: "chisinau", AL: "tirana", MK: "skopje", BA: "sarajevo",
+    ME: "podgorica", XK: "pristina", CY: "nicosia", MT: "valletta", LU: "luxembourg",
+};
+
 let _cities: Map<string, CityHit[]> | null = null;
 function cityIndex(): Map<string, CityHit[]> {
     if (_cities) return _cities;
@@ -147,6 +189,22 @@ function cityIndex(): Map<string, CityHit[]> {
         const p = rec.split("|");
         if (p.length < 7) continue;
         const row: CityRow = { a1: p[1], cc: p[2], lon: +p[3], lat: +p[4], pop: +p[5], kinds: p[6] || "N" };
+        // CITY TAGS — field 9, optional, semicolon list ("capital;port"). The `kinds` field
+        // above is already a tag in everything but name — a per-row "which maps can use me"
+        // marker (Joel's original design: "the NA map cities have a 'map uses' tag") — and
+        // this generalizes the idea so follow-on prompt features can ask categorical
+        // questions about a city ("is this the capital?") without a schema change each time.
+        // Additive and backward compatible: every existing record has <= 8 fields.
+        if (p.length > 8 && p[8]) row.tags = p[8].split(";").filter(Boolean);
+        // ...and until the generator emits the field natively, CAPITAL comes from the
+        // overlay below, resolved at parse time by (country, normalized name). Overlay
+        // entries that match no gazetteer row simply do nothing - the tag can only ever
+        // annotate a city that actually exists in the table.
+        const capKey = CAPITAL_BY_CC[row.cc];
+        if (capKey && normalizePlaceName(p[0]) === capKey) {
+            if (!row.tags) row.tags = [];
+            if (!row.tags.includes("capital")) row.tags.push("capital");
+        }
         add(normalizePlaceName(p[0]), row, true);
         // Alt keys arrive already normalized (the generator stores the lookup key itself),
         // but normalizing again is free and keeps the table format forgiving.
@@ -796,6 +854,29 @@ function describeRow(r: { city?: any; state?: any; zip?: any; country?: any; lab
     // report could count them and never name them. `label` is matched against nothing; it
     // only answers "which row was this?". See PointRoleResolution.labelFallback.
     return r.label === null || r.label === undefined ? "" : String(r.label).trim();
+}
+
+/**
+ * The TAGS on a known city ("capital", ...), empty when it carries none or is unknown.
+ *
+ * The query surface for the per-city tag layer (Joel 2026-08-03: "having tags that can apply
+ * at the city level makes sense and can be leveraged in follow-on prompt requests"). `country`
+ * narrows to one row when the name is shared ("London" GB vs ON); without it, a name that
+ * matches several cities returns the union of their tags, which is honest about what a bare
+ * name can claim. Tags come from the packed table's field 9 plus the CAPITAL_BY_CC overlay.
+ */
+export function cityTagsFor(name: string, country?: string | null): string[] {
+    const key = normalizePlaceName(String(name ?? ""));
+    if (!key) return [];
+    const hits = cityRowsFor(key);
+    if (!hits) return [];
+    const iso3 = countryIso3(country ?? null);
+    const out = new Set<string>();
+    for (const h of hits) {
+        if (iso3 && iso2ToIso3(h.row.cc) !== iso3) continue;
+        for (const t of h.row.tags ?? []) out.add(t);
+    }
+    return Array.from(out);
 }
 
 /** Is this an ALREADY-NORMALIZED name (normalizePlaceName applied) of a known city?
