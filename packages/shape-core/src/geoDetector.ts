@@ -172,7 +172,14 @@ export type GeoKind =
     // NOT a choropleth join key — no bundled geometry is keyed by city. It marks a column
     // whose values geoPoint can turn into a COORDINATE, which is what makes a point map
     // (North America Bubbles) offerable on data that has no lat/lon columns.
-    | "city-name";
+    | "city-name"
+    // The same thing, one scope out: a city column that needs the WORLD rows of the
+    // gazetteer. Separate kind rather than a widened "city-name" because the kind IS the
+    // eligibility signal — "city-name" makes every point map offerable, and a column of
+    // Abidjan / Aachen / Abeokuta must not make NORTH AMERICA (Bubbles) offerable, whose
+    // basemap cannot show any of them. World declares this one in PointGeoKinds; NA does
+    // not, exactly as they already differ over the country kinds.
+    | "city-name-world";
 
 export type GeoDetectionResult = {
     geoKind: GeoKind;
@@ -241,6 +248,7 @@ export function detectGeo(
     const cnMap = countryNameMap();
 
     let iso3 = 0, iso2 = 0, usps = 0, cName = 0, sName = 0, zip = 0, county = 0, cityHits = 0;
+    let cityWorldHits = 0;   // the same values against the WORLD rows — see the loop below
     // A country in ANY form (ISO-3, ISO-2, a name in 27 languages, an alias) — the union
     // the three per-form counters cannot see between them. See the mixed-form note below.
     let anyCountry = 0;
@@ -279,7 +287,20 @@ export function detectGeo(
         // ZIPs, because a column of nothing but 4-digit numbers is years or counts.
         else if (/^\d{4}$/.test(raw)) zip4++;
         if (/^\d{5}$/.test(raw) && STATE_FIPS_SET.has(raw.slice(0, 2))) county++;
+        // BOTH SCOPES, because the gazetteer already knows the answer per row and this was
+        // the only place still refusing to ask it. Every row carries a kind flag (N = the
+        // North America basemap can draw it, W = the world one can, and 200 rows carry both),
+        // which is what lets ONE table serve both maps — Joel 2026-08-02: "the gazette entries
+        // name cities from across the world... makes it easy to tell what subset is right to
+        // use, depending on the map." detectGeo asked only the N question, so a column of
+        // Tokyo / Abidjan / Aachen — 2,213 W-only rows — classified as nothing at all and no
+        // point map was offered for it.
+        //
+        // The scoping is not a coverage compromise, it is what RESOLVES ambiguity: "Sydney" is
+        // Sydney NSW (5.6M, W) and Sydney NS (105k, N), and each map sees exactly one of them.
+        // Widening the default instead of adding a kind would have thrown that away.
         if (isKnownCity(nm)) cityHits++;
+        if (isKnownCity(nm, "world")) cityWorldHits++;
     }
 
     // Redeem stripped-leading-zero ZIPs only in the company of real ones.
@@ -291,11 +312,12 @@ export function detectGeo(
         const p = pct(matched);
         // city-name is open free text and takes the looser bar; every other kind is a
         // closed vocabulary held to ROLE_MATCH_PCT. See CITY_ROLE_MATCH_PCT.
-        const bar = kind === "city-name" ? CITY_ROLE_MATCH_PCT : THRESHOLD_PCT;
+        const isCity = kind === "city-name" || kind === "city-name-world";
+        const bar = isCity ? CITY_ROLE_MATCH_PCT : THRESHOLD_PCT;
         if (p < bar || matched < 2) return;
         if (guardNameKind && matched < NAME_KIND_MIN_DISTINCT) {
             const tokens = kind === "country-name" ? COUNTRY_NAME_TOKENS
-                : kind === "city-name" ? CITY_NAME_TOKENS
+                : isCity ? CITY_NAME_TOKENS
                 : STATE_NAME_TOKENS;
             if (!hasAnyToken(columnName, tokens)) return; // likely a person/place roster
         }
@@ -315,7 +337,14 @@ export function detectGeo(
     // column of those is far likelier to be the region than the city — so any region kind
     // that clears threshold outranks city. Guarded like the other dictionary kinds: a short
     // roster of proper nouns needs a city-ish column name before it reads as cities.
+    // NORTH AMERICA GETS FIRST REFUSAL, and the world kind is only reached when NA could not
+    // explain the column at all. That ordering is what makes this additive rather than a
+    // reshuffle: any column that classified as "city-name" before still does, so every chart
+    // it made offerable stays offerable, byte for byte. A column the NA rows cannot explain
+    // classifies as NOTHING today, so the new kind can only add.
+    const beforeCity = cands.length;
     add("city-name", cityHits, 2, true);
+    if (cands.length === beforeCity) add("city-name-world", cityWorldHits, 2, true);
     // A column that MIXES USPS codes with state names/abbreviations ("TX", "California",
     // "Fla.") splits between us-state-code and us-state-name, so neither kind alone clears
     // threshold. They are the SAME concept (a state) and toGeoIso resolves either form for
@@ -452,8 +481,8 @@ export function toGeoIso(value: string | null | undefined, geoKind: GeoKind): st
         case "us-county-fips": {
             return /^\d{5}$/.test(raw) && STATE_FIPS_SET.has(raw.slice(0, 2)) ? raw : null;
         }
-        // "city-name" deliberately falls through: no bundled geometry is keyed by city,
-        // so it is NOT a join kind — it feeds the geoPoint COORDINATE cascade instead.
+        // "city-name" / "city-name-world" deliberately fall through: no bundled geometry is
+        // keyed by city, so neither is a join kind — they feed the COORDINATE cascade instead.
         // Callers building a join column must gate on isJoinGeoKind first; asking this
         // function to join on city-name would null every row (a silent blank map).
         default:

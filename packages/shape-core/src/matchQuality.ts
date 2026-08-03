@@ -31,13 +31,20 @@
  * that column may claim a geographic role.
  *
  * One number for every role — city, state, ZIP, country, and the choropleth region detector
- * (Joel 2026-08-02: "I would prefer one constant, so maybe we make that 95 and apply to
- * all", revised to 96). Tune here and they all move together — except CITY, which has its own
- * looser bar below for a reason worth reading.
+ * (Joel 2026-08-02: "I would prefer one constant, so maybe we make that 95 and apply to all").
+ * Tune here and they all move together — except CITY, which has its own looser bar below for
+ * a reason worth reading.
  *
- * 96 is high enough that a column of something else cannot claim a role by accident, and
- * loose enough to survive the odd bad row. Below it the data needs cleaning, which is the
- * user's call and not something to guess through.
+ * 96 was tried first and SETTLED AT 95 the same day, on evidence rather than taste: Joel's own
+ * world_country_metrics carries 42 clean countries and two deliberate junk rows, which is
+ * 95.5% — a well-formed reference dataset landing half a point under its own bar. A cliff that
+ * a curated 44-row table falls off is in the wrong place. 95 is still far too strict for a
+ * column of something else to claim a role by accident (a wrong column scores near zero, not
+ * ninety); below it the data genuinely needs cleaning, which is the user's call.
+ *
+ * A column refused for being UNDER this bar is now said out loud rather than absorbed — see
+ * PointRoleResolution.refused — because "95.5%, so no map" is a judgement the user is entitled
+ * to see and disagree with.
  *
  * It replaced three separate numbers: 85 for the name roles, 100 for ZIP, and an implicit
  * 100 for country. The ZIP one is the notable change — it was 100 because ZIP is classified
@@ -45,7 +52,7 @@
  * That protection was always really the MEASURE EXCLUSION (callers pass dimensions only);
  * 100 vs 95 never distinguished a revenue column from a ZIP column, since both score 100.
  */
-export const ROLE_MATCH_PCT = 96;
+export const ROLE_MATCH_PCT = 95;
 
 /**
  * Normalized tokens that mean "no value here".

@@ -16,7 +16,15 @@ const src = (f: string) => readFileSync(resolve(process.cwd(), "packages/shape-c
 
 describe("the role-identification threshold has a single source", () => {
     it("is the value Joel set", () => {
-        expect(ROLE_MATCH_PCT).toBe(96);
+        // 95 (Joel 2026-08-02, after a day at 96). This assertion is the KNOB'S CONTRACT, not
+        // a behavioural guard — it exists so the number cannot drift without someone changing
+        // it here on purpose. Editing it is the intended way to move the bar; editing anything
+        // else in this file to make a failure go away is not.
+        //
+        // 96 was settled downward on evidence: world_country_metrics is 42 clean countries and
+        // two deliberate junk rows = 95.5%, so a curated reference dataset fell off its own
+        // cliff. See ROLE_MATCH_PCT's own note.
+        expect(ROLE_MATCH_PCT).toBe(95);
     });
 
     it("CITY is deliberately looser, because city names are not a closed vocabulary", () => {

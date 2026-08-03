@@ -62,6 +62,17 @@ describe("a country-only point binding places rows", () => {
         expect(p.geoPoint?.precisionCounts.country).toBe(3);
     });
 
+    it("a refusal that kills the map SAYS SO, which is the case that used to be silent", () => {
+        // Every geo diagnostic hung off the geoPoint object — which a total refusal prevents
+        // from existing — so the one outcome worth explaining explained nothing. The chart
+        // draws "no coordinate data available" and the reason has to survive alongside it.
+        const rows = [{ Ctry: "Freedonia" }, { Ctry: "Sylvania" }, { Ctry: "Ruritania" }];
+        const p = buildRenderPayload([{ name: "Ctry", isMeasure: false }] as any, rows as any,
+            null, { country: "Ctry", mapKind: "world" });
+        expect(p.geoPoint).toBeUndefined();          // nothing placed, as it should be
+        expect(p.geoPointRefused?.join(" ")).toMatch(/Ctry/);
+    });
+
     it("a binding with NO placeable role still resolves nothing", () => {
         // The gate must stay a gate. An empty binding means "this is a point map, recover the
         // roles from the data" — with no place-like column present there is nothing to find,
@@ -139,6 +150,19 @@ describe("world_country_metrics, end to end", () => {
         // outcome, and the one the chart already reports.
         expect(p.geoPoint?.precisionCounts.country).toBe(pairs.length - 2);
         expect(p.geoPoint?.unplaced).toBe(2);
+    });
+
+    it("names the rows it could not place", () => {
+        // Counting them and not naming them is the silent drop the unplaced report exists to
+        // end. The trap is one layer up from where that was written: the winning column
+        // (CountryCode) is BLANK on exactly the two rows that fail, so every bound value is
+        // empty and the row has no name — while "Freedonia" sits in the column the resolver
+        // passed over. That column is carried as a label source only, matched against nothing.
+        const p = buildRenderPayload(cols as any, rows as any, null,
+            { country: "Country", mapKind: "world" });
+        expect(p.geoPoint?.unplaced).toBe(2);
+        expect(p.geoPoint?.unplacedExamples).toContain("Freedonia");
+        expect(p.geoPoint?.unplacedExamples).toContain("Global (unassigned)");
     });
 
     it("naming the column is never worse than naming nothing", () => {

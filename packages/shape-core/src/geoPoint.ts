@@ -278,6 +278,16 @@ function zip3Index(): Map<string, { lon: number; lat: number }> {
  *  while resolving to their own ISO-3, so keying on "USA" alone would refuse them. */
 const ZIP_COUNTRIES = new Set(["USA", "PRI", "VIR", "GUM", "ASM", "MNP"]);
 
+/**
+ * The countries a NORTH AMERICA basemap can actually draw. Matches the admin1 table's own
+ * coverage — US, Canada and Mexico are exactly the countries whose states/provinces resolve.
+ *
+ * Exported because geoPointRoles needs the identical set to decide when a two-letter token is
+ * ambiguous, and two copies of a list like this drift into a bug nobody can see. (One
+ * direction only: geoPointRoles imports geoPoint, never the reverse.)
+ */
+export const NORTH_AMERICA_COUNTRIES = new Set(["USA", "CAN", "MEX"]);
+
 /** Resolve a state/province token ("TX", "Texas", "ON", "Ontario", "Jalisco") to its
  *  canonical admin1 key. Null when unrecognized. */
 export function resolveAdmin1(value: string | null | undefined): string | null {
@@ -559,7 +569,30 @@ export function resolveGeoPoint(args: {
     //    that mean "somewhere in here", not 40 places. Reached either because the data only
     //    ever named countries, or because a finer tier CONTRADICTED the country and was
     //    dropped above — in both cases this is the most precise claim the data supports.
-    if (iso3) {
+    //
+    //    SCOPED TO THE MAP, like every tier above it. This one was not, and the gap showed up
+    //    on Joel's fourth scenario: "North America Bubbles ... would fail to place Tokyo,
+    //    Japan." It did not fail — Tokyo is out of the NA city scope, so the row fell all the
+    //    way through to here and was placed on JAPAN'S CENTROID, at 137E on a map of North
+    //    America. Worse than the off-canvas dot is the bookkeeping: the row counted as PLACED,
+    //    so `unplaced` read zero and the chart's "N rows not shown" annotation had nothing to
+    //    say. A silent drop wearing a coordinate.
+    //
+    //    The rule is the one the city tier has always followed and the ZIP tier gained the
+    //    same day — a tier may only place what the map on screen can draw. A country the
+    //    basemap does not contain is not a coarser answer, it is no answer, and the honest
+    //    outcome is an unplaced row the user can see and act on.
+    //
+    //    IT FILTERS ONLY WHEN A SCOPE IS DECLARED, and that asymmetry with the city tier is
+    //    deliberate. `mapKind` means "the basemap on screen"; ABSENT means no basemap was
+    //    declared, and inventing North America for a caller who never said so would quietly
+    //    delete every non-NA country for the MCP client, the React host, and anyone else
+    //    calling buildRenderPayload without a map in mind. The city tier defaults to NA for
+    //    compatibility reasons documented at isKnownCity — a wart worth keeping there, not
+    //    worth spreading here. The Power BI visual states its scope explicitly (ctxRender), so
+    //    the map that has a basemap gets the filter and the caller that has none keeps the
+    //    gazetteer whole.
+    if (iso3 && (args.mapKind !== "north-america" || NORTH_AMERICA_COUNTRIES.has(iso3))) {
         const row = countryIndex().get(iso3);
         if (row) return { lat: row.lat, lon: row.lon, precision: "country" };
     }
@@ -620,7 +653,9 @@ const COARSE_EXAMPLE_CAP = 8;
  * for the user should be built from the counts.
  */
 export function buildGeoPointColumns(
-    rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any; country?: any }>,
+    /** `label` is NEVER matched — it only names a row whose bound place values are all
+     *  blank, so an unplaced row can be reported by name. See describeRow. */
+    rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any; country?: any; label?: any }>,
     mapKind?: GeoMapKind | null,
 ): GeoPointColumns {
     const lat: (number | null)[] = new Array(rows.length);
@@ -684,15 +719,22 @@ export function buildGeoPointColumns(
 
 /** The most specific thing the row offered, so an annotation names something the user
  *  recognizes ("Nowhereville, TX" rather than "row 37"). */
-function describeRow(r: { city?: any; state?: any; zip?: any; country?: any }): string {
+function describeRow(r: { city?: any; state?: any; zip?: any; country?: any; label?: any }): string {
     // COUNTRY included since the World point map: on country-only data it is the row's
     // ONLY identifier, and without it an unplaced row is counted but never named — the
     // annotation would say "3 rows could not be placed" and be unable to say which,
     // which is precisely the silent-drop behaviour the unmatched report exists to end.
-    return [r.city, r.state, r.zip, r.country]
+    const named = [r.city, r.state, r.zip, r.country]
         .filter(v => v !== null && v !== undefined && String(v).trim() !== "")
         .map(v => String(v).trim())
         .join(", ");
+    if (named) return named;
+    // ...and when every BOUND value is blank, the row still has a name somewhere — it is just
+    // in the column the resolver passed over. That is not hypothetical: the rows that fail a
+    // swapped country binding are usually the exact rows whose code cell is empty, so the
+    // report could count them and never name them. `label` is matched against nothing; it
+    // only answers "which row was this?". See PointRoleResolution.labelFallback.
+    return r.label === null || r.label === undefined ? "" : String(r.label).trim();
 }
 
 /** Is this an ALREADY-NORMALIZED name (normalizePlaceName applied) of a known city?

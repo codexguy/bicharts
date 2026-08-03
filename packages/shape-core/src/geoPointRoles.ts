@@ -61,6 +61,22 @@ export type PointRoleResolution = {
     backfilled: string[];
     /** Roles the hint named that were REFUSED, with why ("state=Country (country column)"). */
     refused: string[];
+    /**
+     * THE COLUMN THAT LOST, kept so an unplaced row can still be NAMED.
+     *
+     * This is the whole of "a new field on a published API", and it exists because of a real
+     * hole: when the resolver swaps `Country` (names) for `CountryCode` (ISO-3), the two rows
+     * that fail are exactly the ones whose CODE is blank — so every value in the bound column
+     * is empty for them, describeRow has nothing to work with, and the chart reports "2 rows
+     * could not be placed" while being unable to say which two. That is precisely the silent
+     * drop the unplaced report exists to end, reintroduced one layer up.
+     *
+     * The refusal STRINGS above cannot serve: a caller would have to parse prose to recover a
+     * column name, and a parser over a human-readable message is a bug waiting for the day
+     * someone rewords it. So the loser is kept structurally. It is a LABEL SOURCE ONLY and is
+     * never matched against the gazetteer — it failed verification, which is why it is here.
+     */
+    labelFallback?: PointBind;
 };
 
 // Every role-identification threshold is ROLE_MATCH_PCT (matchQuality.ts) - ONE number,
@@ -163,15 +179,15 @@ export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     return soleCountry >= 1 && soleCountry >= soleState;
 }
 
-/**
- * The countries the NORTH-AMERICA scope can draw. This is a FILTER, not gazetteer truth:
- * the gazetteer knows every country regardless of which map is on screen, and a map decides
- * which of those readings are live for it (Joel 2026-08-02: "detection ought to be global…
- * same code base, but different filters depending on chart type. the gazette is 'true' no
- * matter the chart, though."). It matches the admin1 table's own coverage — US, Canada and
- * Mexico are exactly the countries whose states/provinces resolve.
- */
-const NORTH_AMERICA_COUNTRIES = new Set(["USA", "CAN", "MEX"]);
+// The countries the NORTH-AMERICA scope can draw. A FILTER, not gazetteer truth: the
+// gazetteer knows every country regardless of which map is on screen, and a map decides which
+// of those readings are live for it (Joel 2026-08-02: "detection ought to be global… same code
+// base, but different filters depending on chart type. the gazette is 'true' no matter the
+// chart, though."). Defined in geoPoint and imported, not redeclared — the placement cascade
+// needs the same set to decide which countries it may place on which map, and a second copy of
+// a three-item list is exactly the kind of duplicate that drifts silently.
+export { NORTH_AMERICA_COUNTRIES } from "./geoPoint";
+import { NORTH_AMERICA_COUNTRIES } from "./geoPoint";
 
 /**
  * A token that could be read EITHER as a state/province or as a country the map can show.
@@ -316,6 +332,7 @@ export function resolvePointRoles(
     const backfilled: string[] = [];
     const refused: string[] = [];
     const out: PointBind = {};
+    const labelFallback: PointBind = {};
     const colSet = new Set(columns);
     const valuesOf = (name: string) => rows.map(r => r[name]);
 
@@ -454,6 +471,10 @@ export function resolvePointRoles(
             if (hintedCountry) {
                 refused.push(`country=${hintedCountry} (only ${countryMatchPct(valuesOf(hintedCountry))}% `
                     + `of values are country identifiers; using ${best.name} instead)`);
+                // Keep the loser as a LABEL source: it is usually the human-readable column
+                // ("Freedonia"), and the winner is usually the code column that is blank on
+                // exactly the rows that fail. See PointRoleResolution.labelFallback.
+                labelFallback.country = hintedCountry;
             }
             out.country = best.name;
             taken.add(best.name);
@@ -546,5 +567,9 @@ export function resolvePointRoles(
     }
 
     const any = !!(out.city || out.state || out.zip || countryCanPlace || latLonCanPlace);
-    return { bind: any ? out : null, backfilled, refused };
+    return {
+        bind: any ? out : null, backfilled, refused,
+        // Omitted entirely when nothing was displaced, so the common case adds no bytes.
+        ...(Object.keys(labelFallback).length ? { labelFallback } : {}),
+    };
 }

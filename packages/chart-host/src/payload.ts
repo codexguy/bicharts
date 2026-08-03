@@ -80,6 +80,20 @@ export interface RenderPayload {
         rolesBackfilled?: string[];
         rolesRefused?: string[];
     };
+    /**
+     * WHY THERE IS NO MAP — the refusals that survive when nothing could be placed.
+     *
+     * `geoPoint.rolesRefused` above only exists when a binding resolved, so the one case where
+     * an explanation is worth most — the resolver rejected every candidate and the chart is
+     * about to draw its own empty state — reported NOTHING. That is how "no coordinate data
+     * available" over a table full of countries cost a day: the classifier had a precise
+     * reason ("only 95.5% of values are country identifiers") and no way to say it.
+     *
+     * Present whenever a point binding was attempted and something was refused, whether or not
+     * a map came out of it. Joel 2026-08-02: "be sure to provide feedback in the output that
+     * helps call out exceptions / decisions like this, if possible."
+     */
+    geoPointRefused?: string[];
 }
 
 export function buildRenderPayload(
@@ -105,12 +119,19 @@ export function buildRenderPayload(
     let bind: GeoPointBinding | null = point ?? null;
     let rolesBackfilled: string[] = [];
     let rolesRefused: string[] = [];
+    // The column the resolver passed over, kept ONLY so an unplaced row can be named. When a
+    // country hint is swapped for a cleaner column, the rows that then fail are typically the
+    // ones whose value in the WINNING column is blank — so without this the report can count
+    // them and not say which they are, which is the silent drop it exists to prevent.
+    let labelCol: string | undefined;
     if (bind) {
         const dims = cols.filter(c => !c.isMeasure).map(c => c.name);
         const res = resolvePointRoles(dims, rowObjs, bind, point?.mapKind);
         bind = res.bind;
         rolesBackfilled = res.backfilled;
         rolesRefused = res.refused;
+        const lf = res.labelFallback;
+        labelCol = lf && (lf.country || lf.city || lf.state || lf.zip);
     }
     // COUNTRY is a PLACEABLE role, not merely a matching constraint. It was only the latter
     // when this gate was written; the COUNTRY precision tier (shape-core 0.4.2, "COUNTRY
@@ -131,6 +152,7 @@ export function buildRenderPayload(
             state: p.state ? r[p.state] : null,
             zip: p.zip ? r[p.zip] : null,
             country: p.country ? r[p.country] : null,
+            label: labelCol ? r[labelCol] : null,
         })), point?.mapKind);
         pLat = built.lat; pLon = built.lon;
         geoPoint = {
@@ -203,6 +225,11 @@ export function buildRenderPayload(
     if (pLat) colsOut.push(
         { name: "__geoLat__", dataType: "Double", isMeasure: false, modelDesc: "" },
         { name: "__geoLon__", dataType: "Double", isMeasure: false, modelDesc: "" });
-    return { columns: colsOut as any[], rows: out, geoUnmatched, geoUnmatchedDistinct, geoPoint };
+    return {
+        columns: colsOut as any[], rows: out, geoUnmatched, geoUnmatchedDistinct, geoPoint,
+        // Survives a refusal that placed nothing — see geoPointRefused. Omitted when empty so
+        // the ordinary case adds no bytes.
+        ...(rolesRefused.length ? { geoPointRefused: rolesRefused } : {}),
+    };
 }
 
