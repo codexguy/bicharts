@@ -33,4 +33,9 @@ export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./
 // host applies, or the two paths disagree about what a valid chart artifact is.
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure, type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
 export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./selection";
+// Deterministic charts for shapes with exactly one defensible answer: a single value, a
+// single categorical column, a single numeric column. Returns null for everything else, so
+// a host can ask BEFORE paying for a generation and fall through the moment the answer
+// becomes a real choice. d3-free by design — these draw before any chart library loads.
+export { planTrivialChart, type TrivialPlan, type TrivialShapeKind } from "./trivial";
 

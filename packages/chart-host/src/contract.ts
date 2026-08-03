@@ -21,7 +21,12 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.2.0";
+export const HOST_CONTRACT_VERSION = "1.3.0";
+// 1.3.0 (2026-08-03): planTrivialChart. Additive - a host can now ask whether a dataset
+// has exactly one defensible chart (a single value, a single categorical column, a single
+// numeric column) and render it locally instead of paying for a generation. Nothing
+// existing changes; the version moves so a caller pinning the contract can tell whether
+// the API is present.
 
 // The coarsest geocoding tier a point map used. Declared HERE, not imported from
 // @bicharts/shape-core, because this type is part of chart-host's PUBLIC surface: shape-core
