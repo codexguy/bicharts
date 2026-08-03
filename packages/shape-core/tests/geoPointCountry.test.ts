@@ -118,7 +118,16 @@ describe("country changes NOTHING when absent or unrecognized", () => {
         const paris = resolveGeoPoint({ city: "Paris", country: "France" });
         expect(paris!.precision).toBe("country");
         expect(paris!.lon).toBeGreaterThan(0);          // Europe, not Ontario (-80)
-        expect(paris!.lat).toBeCloseTo(47.3, 0);
+        // 48.85 = PARIS. The country tier's point became the country's LARGEST CITY
+        // (Joel 2026-08-03); it was 47.3, a population-weighted centroid. This assertion
+        // pinned the old rule's coordinate, so moving it IS the change - see countryIndex
+        // for why one stateable rule beat a centroid-that-sometimes-snaps.
+        //
+        // A happy accident worth noting rather than relying on: for France the coarse tier
+        // now lands on the city the row actually named. It is still reported as `country`
+        // precision, because the tier is what was resolved, not what it happens to coincide
+        // with - claiming city precision here would be a lie the next row exposes.
+        expect(paris!.lat).toBeCloseTo(48.85, 1);
 
         // …and a country that names no NA city at all still places, which is the whole
         // point of the tier for a world map.

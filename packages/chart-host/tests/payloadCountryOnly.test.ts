@@ -47,9 +47,11 @@ describe("a country-only point binding places rows", () => {
             expect(typeof row[lat]).toBe("number");
             expect(typeof row[lon]).toBe("number");
         }
-        // France is the first row; a country centroid, not a null and not 0/0.
-        expect(row0(p, lat)).toBeCloseTo(47.3, 0);
-        expect(row0(p, lon)).toBeCloseTo(2.9, 0);
+        // France is the first row: a real coordinate, not a null and not 0/0. The value is
+        // PARIS (48.85, 2.35) since the country tier became "the country's largest city"
+        // (Joel 2026-08-03); it was 47.3/2.9, a population-weighted centroid.
+        expect(row0(p, lat)).toBeCloseTo(48.85, 1);
+        expect(row0(p, lon)).toBeCloseTo(2.35, 1);
 
         expect(p.geoPoint?.precision).toBe("country");
         expect(p.geoPoint?.precisionCounts.country).toBe(3);

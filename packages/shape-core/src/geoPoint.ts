@@ -23,9 +23,10 @@
 //            to its prefix — the honest limit of the geometry we bundle)
 //   "state"  population-weighted centroid of the state/province (very coarse; every row
 //            in a state lands on ONE point)
-//   "country" population-weighted centroid of the country (coarsest; every row in a
-//            country lands on ONE point — the tier a WORLD point map leans on when the
-//            data names nations rather than places inside them)
+//   "country" the country's LARGEST CITY (coarsest; every row in a country lands on ONE
+//            point — the tier a WORLD point map leans on when the data names nations
+//            rather than places inside them). Stated that way because it is checkable by
+//            whoever reads the map; see countryIndex for why it is not a centroid.
 //
 // AMBIGUITY is reported, never hidden. 9% of North American city names collide (8
 // Springfields, 6 Burlingtons). With a state column they disambiguate exactly; without
@@ -119,6 +120,10 @@ export function registerCityTable(packed: string): void {
     _cityPacked = packed || "";
     _cities = null;
     _cityAlias = null;
+    // The COUNTRY tier is now DERIVED from this table (largest city), so it is downstream of
+    // this swap. Leaving it cached would answer the new gazetteer's questions with the old
+    // one's cities — and silently, since both return a plausible coordinate.
+    _countries = null;
 }
 
 /** True when a gazetteer is available to the city tier. Always true with the bundled table;
@@ -213,20 +218,61 @@ function cityRowsFor(key: string): CityHit[] | undefined {
     return direct ? [...asPrimary, ...direct] : asPrimary;
 }
 
-// COUNTRY centroids, ISO-3 keyed. Coarsest tier of the cascade and the one a WORLD point
-// map leans on: data that names nations has nothing finer to resolve. Population-weighted
-// for the same reason ADMIN1 is, and it matters more at this scale — a landmass centre
-// puts Russia in empty Siberia and Canada in Nunavut. (The generator additionally SNAPS to
-// the largest city whenever the weighted mean falls outside the country's own polygons,
-// which is what keeps Indonesia out of the Java Sea and Canada out of Michigan.)
+// COUNTRY POINTS — THE LARGEST CITY (Joel 2026-08-03: "switch to use largest city if it's
+// known in the gazette, otherwise augment the gazette. we will document it as 'largest city'").
+//
+// This replaced a population-weighted centroid that SNAPPED to the largest city whenever the
+// weighted mean fell outside the country's own polygons. Both halves of that were defensible
+// and the combination was not explainable: the rule produced a centre for 140 countries and a
+// city for 13, with no way for a viewer to tell which they were looking at.
+//
+// CANADA is the case that surfaced it. Its population is a ~4,800 km ribbon along the southern
+// border (Vancouver -135 to St. John's -52.7), so the weighted mean lands at 46.5N -88.7W —
+// the middle of LAKE SUPERIOR, off Michigan. The snap then moved it to Toronto, ~500 km
+// south-east of anything a viewer would call Canada's centre and sitting on the US border,
+// while the chart's own caption still said "country centres". A rule you cannot state in one
+// sentence is a rule that will surprise someone.
+//
+// "The country's largest city" is that sentence, and it is checkable by the person reading the
+// map. It is also the better answer for THIS chart specifically: a bubble map is read as where
+// the activity is, and for Canada, Australia, Brazil and the US the capital deliberately is not
+// that. (Joel: "it could also have been the capital city" — true, and equally defensible for a
+// political map; this one is not political.)
+//
+// DERIVED FROM THE CITY TABLE, not stored: the gazetteer already knows every city's population
+// and country, so a second table saying which is biggest could only ever drift away from it.
+// COUNTRY_PACKED survives as the FALLBACK for the ~96 entries with no city row — mostly small
+// island states and territories, whose stored point is already at or beside their largest city
+// (Greenland is Nuuk exactly, the Bahamas is Nassau exactly). Augmenting the gazetteer for
+// those, which needs the GeoNames source the generator reads, upgrades them automatically.
 let _countries: Map<string, { lon: number; lat: number }> | null = null;
 function countryIndex(): Map<string, { lon: number; lat: number }> {
     if (_countries) return _countries;
     const m = new Map<string, { lon: number; lat: number }>();
+    // Fallback first, so a country the gazetteer does not reach still places.
     for (const rec of COUNTRY_PACKED.split(",")) {
         const p = rec.split("|");
         if (p.length < 3) continue;
         m.set(p[0], { lon: +p[1], lat: +p[2] });
+    }
+    // ...then the largest city overrides it wherever the gazetteer has one. Read through
+    // cityIndex rather than re-parsing CITY_PACKED: one parser, so "the city tier's Toronto"
+    // and "Canada's point" cannot become two different Torontos. A row is reached under
+    // several keys (its own name plus any exonyms), which costs a few redundant comparisons
+    // and cannot change a maximum.
+    const bestPop = new Map<string, number>();
+    for (const hits of cityIndex().values()) {
+        for (const h of hits) {
+            const iso3 = iso2ToIso3(h.row.cc);
+            if (!iso3) continue;
+            const cur = bestPop.get(iso3);
+            // Strict >, so an exact population tie keeps the first row in table order rather
+            // than depending on which key happened to be visited first.
+            if (cur === undefined || h.row.pop > cur) {
+                bestPop.set(iso3, h.row.pop);
+                m.set(iso3, { lon: h.row.lon, lat: h.row.lat });
+            }
+        }
     }
     _countries = m;
     return m;
@@ -578,9 +624,10 @@ export function resolveGeoPoint(args: {
         if (row) return { lat: row.lat, lon: row.lon, precision: "state" };
     }
 
-    // 5. COUNTRY alone — the coarsest honest answer. Every row in a country lands on ONE
-    //    point, which is why the tier is reported: a world map of 40 countries is 40 dots
-    //    that mean "somewhere in here", not 40 places. Reached either because the data only
+    // 5. COUNTRY alone — the coarsest honest answer, and the point is the country's LARGEST
+    //    CITY (see countryIndex). Every row in a country lands on ONE point, which is why the
+    //    tier is reported: a world map of 40 countries is 40 dots that mean "somewhere in
+    //    this country", not 40 places. Reached either because the data only
     //    ever named countries, or because a finer tier CONTRADICTED the country and was
     //    dropped above — in both cases this is the most precise claim the data supports.
     //

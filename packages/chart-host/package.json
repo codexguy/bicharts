@@ -1,6 +1,6 @@
 {
   "name": "@bicharts/chart-host",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "Run a BIC-generated D3 chart in any web host: compiles the generated render() function, applies the shared option defaults, resolves mark clicks (through tooltip overlays), owns the selection affordance, and translates row indices between cross-filtered charts. The same contract the BIC Power BI visual implements, minus Power BI. React bindings at @bicharts/chart-host/react.",
   "license": "Apache-2.0",
   "type": "module",
