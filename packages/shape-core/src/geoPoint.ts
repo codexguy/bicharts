@@ -70,6 +70,36 @@ import { normalizePlaceName } from "./geoCountryNames";
 export type GeoMapKind = "north-america" | "world";
 const KIND_FLAG: Record<GeoMapKind, string> = { "north-america": "N", world: "W" };
 
+/**
+ * May this basemap draw this gazetteer row?
+ *
+ * A WORLD MAP MAY DRAW EVERY CITY WE HAVE (Joel 2026-08-04: "every single city in the
+ * gazette should be accessible by the world map - I mean, why not?"). The row flags exist
+ * to keep a REGIONAL map's candidate set tight, which is a real constraint for North
+ * America — its canvas cannot show Oslo, so offering Oslo as a candidate could only ever
+ * produce a mark off the edge or a wrong match. A world canvas has no such limit, so
+ * refusing a row purely because it was generated for the regional table was an artefact
+ * of how the tables are built, not a property of the map.
+ *
+ * It was costing real placements. The two thresholds are asymmetric by 10x — the "N" rows
+ * are US/CA/MX at pop >= 25,000 while "W" is worldwide at pop >= 250,000 — so a world map
+ * refused Boise (235k), Asheville (95k) and Kelowna (144k) while carrying all three in its
+ * own bundle, and fell back to the country tier, stacking them on New York and Toronto.
+ *
+ * SCOPE IS A PREFERENCE, NOT A FILTER — and that distinction is load-bearing. Widening the
+ * world set outright made bare "Sydney" AMBIGUOUS (Sydney NSW and Sydney, Nova Scotia), so a
+ * name that had always resolved to Australia started refusing to plot at all. Trading a
+ * correct placement for a refusal is not an improvement. So: use the rows tagged for THIS
+ * map when there are any, and fall through to the rest of the bundle only when there are
+ * none. Sydney keeps Australia because a W row exists; Boise resolves because no W row does.
+ * North America never widens — its canvas genuinely cannot draw Oslo.
+ */
+function candidatesFor(all: CityHit[], mapKind?: GeoMapKind | null): CityHit[] {
+    const inKind = all.filter(h => h.row.kinds.includes(KIND_FLAG[(mapKind as GeoMapKind) || "north-america"]));
+    if (inKind.length) return inKind;
+    return ((mapKind as GeoMapKind) || "north-america") === "world" ? all : inKind;
+}
+
 type CityRow = { a1: string; cc: string; lon: number; lat: number; pop: number; kinds: string;
     /** Free-form per-city tags ("capital", ...). See CITY TAGS below. */
     tags?: string[] };
@@ -607,9 +637,9 @@ export function resolveGeoPoint(args: {
     //        side of the very question the refusal exists to surface.
     if (args.city !== undefined && args.city !== null) {
         const key = normalizePlaceName(String(args.city));
-        const scope = KIND_FLAG[(args.mapKind as GeoMapKind) || "north-america"] ?? "N";
-        const all = cityRowsFor(key);
-        if (all) {
+        const allRows = cityRowsFor(key);
+        const all = allRows ? candidatesFor(allRows, args.mapKind) : null;
+        if (all && all.length) {
             const stateRaw = args.state === undefined || args.state === null ? "" : String(args.state).trim();
             const stateKey = stateRaw ? normalizePlaceName(stateRaw) : "";
             const stateCode = stateRaw ? resolveAdmin1(stateRaw) : null;   // "Texas"/"Ontario" → code
@@ -617,7 +647,6 @@ export function resolveGeoPoint(args: {
             let bestRank = -1;
             for (const h of all) {
                 const r = h.row;
-                if (!r.kinds.includes(scope)) continue;
                 let rank = 0;
                 if (stateRaw) {
                     if (r.a1 === "") { /* blank lookup attribute passes, not explicit */ }
@@ -724,6 +753,18 @@ export type GeoPointColumns = {
     /** Per-row coordinates, aligned 1:1 with the input; null where unresolved. */
     lat: (number | null)[];
     lon: (number | null)[];
+    /** WHICH TIER PLACED EACH ROW, aligned 1:1; null where the row is unplaced.
+     *
+     *  Without this a chart can only ever say "22 of 117 positions approximated" — true,
+     *  but it cannot say WHICH 22, so it draws every mark as though it were exact. A reader
+     *  hovering Inverness got "Inverness, United Kingdom" over LONDON's coordinates, with
+     *  nothing to distinguish it from the London row stacked underneath (Joel 2026-08-04).
+     *
+     *  The counts above are a summary OF this array and remain the right input for a
+     *  caption. This is what lets a mark disclose its own precision — style it differently,
+     *  say so in its tooltip, aggregate it, or leave it undrawn while still counting it in
+     *  every total. */
+    precisions: (GeoPointPrecision | null)[];
     /** COARSEST precision actually used, so the caller can annotate honestly. */
     precision: GeoPointPrecision | null;
     /** HOW MANY rows landed on each tier. The scalar above is a WORST CASE and says
@@ -779,6 +820,9 @@ export function buildGeoPointColumns(
 ): GeoPointColumns {
     const lat: (number | null)[] = new Array(rows.length);
     const lon: (number | null)[] = new Array(rows.length);
+    // Aligned 1:1 with the rows so a mark can disclose its OWN precision, not just the
+    // map's worst case. null = this row was not placed at all.
+    const precisions: (GeoPointPrecision | null)[] = new Array(rows.length);
     const unmatchedSeen = new Set<string>();
     const unmatched: string[] = [];
     const coarseSeen = new Set<string>();
@@ -800,7 +844,7 @@ export function buildGeoPointColumns(
             // annotation, so an ambiguous row reads as "not shown" there too, just without
             // the richer why. Deliberately NOT folded into `unmatched`: "we found nothing"
             // and "we found several" call for different user action.
-            lat[i] = null; lon[i] = null;
+            lat[i] = null; lon[i] = null; precisions[i] = null;
             ambiguousRows++;
             const label = describeRow(r);
             if (label && !ambiguousSeen.has(label.toLowerCase())) {
@@ -808,7 +852,7 @@ export function buildGeoPointColumns(
                 if (ambiguousExamples.length < COARSE_EXAMPLE_CAP) ambiguousExamples.push(label);
             }
         } else if (hit) {
-            lat[i] = hit.lat; lon[i] = hit.lon;
+            lat[i] = hit.lat; lon[i] = hit.lon; precisions[i] = hit.precision;
             matchedRows++;
             precisionCounts[hit.precision]++;
             if (coarsest === null || PRECISION_RANK[hit.precision] > PRECISION_RANK[coarsest])
@@ -821,7 +865,7 @@ export function buildGeoPointColumns(
                 }
             }
         } else {
-            lat[i] = null; lon[i] = null;
+            lat[i] = null; lon[i] = null; precisions[i] = null;
             const label = describeRow(r);
             if (label && !unmatchedSeen.has(label.toLowerCase())) {
                 unmatchedSeen.add(label.toLowerCase());
@@ -831,7 +875,7 @@ export function buildGeoPointColumns(
     }
     const cityTableMissing = !isCityTableLoaded()
         && rows.some(r => r.city !== null && r.city !== undefined && String(r.city).trim() !== "");
-    return { lat, lon, precision: coarsest, precisionCounts, coarseExamples,
+    return { lat, lon, precisions, precision: coarsest, precisionCounts, coarseExamples,
              unmatched, ambiguousRows, ambiguousExamples, matchedRows, totalRows: rows.length,
              ...(cityTableMissing ? { cityTableMissing: true as const } : {}) };
 }
@@ -891,8 +935,9 @@ export function isKnownCity(normalizedName: string, mapKind?: GeoMapKind | null)
     if (!normalizedName) return false;
     const rows = cityRowsFor(normalizedName);
     if (!rows) return false;
-    const flag = KIND_FLAG[(mapKind as GeoMapKind) || "north-america"] ?? "N";
-    return rows.some(h => h.row.kinds.includes(flag));
+    // The NA default is untouched (see above); rowInScope only widens the WORLD scope,
+    // which callers opt into explicitly.
+    return candidatesFor(rows, mapKind).length > 0;
 }
 
 /** Share of DISTINCT NON-BLANK values that are known city names, 0..100 (one decimal).
