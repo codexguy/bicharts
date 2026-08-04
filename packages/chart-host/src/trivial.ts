@@ -39,7 +39,7 @@ import type { RenderFn } from "./host";
 import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
 
 /** Columns the host synthesises; never part of the user's data shape. */
-const META_COLUMNS = new Set(["__rowIdx__", "__geoIso__", "__geoLat__", "__geoLon__"]);
+const META_COLUMNS = new Set(["__rowIdx__", "__geoIso__", "__geoLat__", "__geoLon__", "__geoPrecision__"]);
 
 /** Above this many distinct categories a frequency bar chart stops being readable, and the
  *  choice of what to do instead (top-N, group to other, a different mark) is a real

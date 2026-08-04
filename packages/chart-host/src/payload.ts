@@ -110,6 +110,10 @@ export function buildRenderPayload(
     // entirely when the caller supplied no point binding, so non-map charts pay nothing.
     let pLat: (number | null)[] | null = null;
     let pLon: (number | null)[] | null = null;
+    // Aligned 1:1 with pLat/pLon so a MARK can disclose its own precision. The aggregate
+    // counts below can only ever say "19 of 117 approximated" - true, and useless to the
+    // reader hovering one bubble, who gets a city name over a DIFFERENT city's coordinates.
+    let pPrec: (string | null)[] | null = null;
     let geoPoint: RenderPayload["geoPoint"];
     // The caller's binding is a HINT, not the last word. The codegen response names these
     // roles and can leave one out — a production point map named the city, not the state, so
@@ -154,7 +158,7 @@ export function buildRenderPayload(
             country: p.country ? r[p.country] : null,
             label: labelCol ? r[labelCol] : null,
         })), point?.mapKind);
-        pLat = built.lat; pLon = built.lon;
+        pLat = built.lat; pLon = built.lon; pPrec = built.precisions;
         geoPoint = {
             precision: built.precision,
             precisionCounts: built.precisionCounts,
@@ -198,7 +202,7 @@ export function buildRenderPayload(
     // shape predictable for the LLM. DateTime cells come straight off the index;
     // coerce to ISO so the contract in PromptPreable holds. Trailing columns:
     // __rowIdx__ [+ __geoIso__].
-    const extra = 1 + (geoIso ? 1 : 0) + (pLat ? 2 : 0);
+    const extra = 1 + (geoIso ? 1 : 0) + (pLat ? 3 : 0);
     const out: any[][] = new Array(rowObjs.length);
     for (let r = 0; r < rowObjs.length; r++) {
         const row = rowObjs[r];
@@ -217,14 +221,18 @@ export function buildRenderPayload(
         let k = cols.length;
         a[k++] = r;
         if (geoIso) a[k++] = geoIso[r];
-        if (pLat && pLon) { a[k++] = pLat[r]; a[k++] = pLon[r]; }
+        if (pLat && pLon) { a[k++] = pLat[r]; a[k++] = pLon[r]; a[k++] = pPrec ? pPrec[r] : null; }
         out[r] = a;
     }
     const colsOut = [...cols, { name: "__rowIdx__", dataType: "Integer", isMeasure: false, modelDesc: "" }];
     if (geoIso) colsOut.push({ name: "__geoIso__", dataType: "String", isMeasure: false, modelDesc: "" });
     if (pLat) colsOut.push(
         { name: "__geoLat__", dataType: "Double", isMeasure: false, modelDesc: "" },
-        { name: "__geoLon__", dataType: "Double", isMeasure: false, modelDesc: "" });
+        { name: "__geoLon__", dataType: "Double", isMeasure: false, modelDesc: "" },
+        // Host metadata like the two above: which TIER placed this row ("latlon" | "city" |
+        // "zip3" | "state" | "country"), null when it was not placed. Never a dimension,
+        // never a label, never a colour grouping.
+        { name: "__geoPrecision__", dataType: "String", isMeasure: false, modelDesc: "" });
     return {
         columns: colsOut as any[], rows: out, geoUnmatched, geoUnmatchedDistinct, geoPoint,
         // Survives a refusal that placed nothing — see geoPointRefused. Omitted when empty so
