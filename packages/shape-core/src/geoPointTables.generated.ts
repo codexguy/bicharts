@@ -8,7 +8,7 @@
 //          See geo/README.md; the credit also ships in the visual's help text.
 //          Fields: asciiName|admin1Key|ccISO2|lon|lat|popThousands|mapKinds|alts
 //          mapKinds: N = North America (Bubbles) candidate (US/CA/MX, pop >= 25,000);
-//                    W = World (Bubbles) candidate — EVERY city with pop >= 250,000,
+//                    W = World (Bubbles) candidate — EVERY city with pop >= 130,000,
 //                        worldwide, uncapped (Joel 2026-08-02: the earlier 1000-row cap bit at
 //                        576k and dropped Lisbon, Antwerp, Nuremberg, The Hague and Bristol);
 //                        a row may carry both.
