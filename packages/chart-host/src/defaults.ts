@@ -13,6 +13,7 @@
 import {
     type RenderOptions,
     ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX,
+    ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
 } from "./contract";
@@ -21,6 +22,13 @@ import {
 export type ResolveOptionsInput = { [K in keyof RenderOptions]?: any };
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+// For knobs where 0 is a MEANINGFUL value: the usual `Number(raw) || DEFAULT`
+// idiom would silently turn an explicit 0 into the default. Default only when
+// the value is absent, blank, or not a number.
+const numberOr = (raw: unknown, dflt: number) => {
+    const n = raw == null || raw === "" ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : dflt;
+};
 
 export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
     return {
@@ -62,6 +70,13 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         animAutoPlay: !!p.animAutoPlay,
         // Math.max(250, Math.min(5000, Number(raw) || 1000))
         animPlaySpeedMs: clamp(Number(p.animPlaySpeedMs) || ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX),
+        // Loop-restart delay (seconds on the overview between auto-play passes).
+        // Floored at 0, deliberately NO upper clamp (huge = play once per viewing),
+        // and 0 must survive as 0 — hence numberOr, not `|| DEFAULT`. This field was
+        // MISSING from the resolve list when the assembly moved here, so callers
+        // that passed it saw it dropped: the scrubber read undefined -> 0 -> every
+        // pass restarted instantly and resumed-state auto-play lost its pacing.
+        animLoopDelaySec: Math.max(ANIM_LOOP_DELAY_MIN, numberOr(p.animLoopDelaySec, ANIM_LOOP_DELAY_DEFAULT)),
         // Math.max(3, Math.min(500, Number(raw) || 60))
         animMaxIdealFrames: clamp(Number(p.animMaxIdealFrames) || ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX),
         animStopAtEnd: !!p.animStopAtEnd,

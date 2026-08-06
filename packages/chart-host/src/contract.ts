@@ -90,6 +90,11 @@ export const DIM_OPACITY_DEFAULT = 0.25;
 export const ANIM_PLAY_SPEED_DEFAULT = 1000;
 export const ANIM_PLAY_SPEED_MIN = 250;
 export const ANIM_PLAY_SPEED_MAX = 5000;
+// Loop-restart delay: seconds resting on the overview between auto-play passes.
+// 0 is a meaningful value ("restart immediately") and a very large value means
+// "play once per viewing" — both documented behaviors, hence a floor but no cap.
+export const ANIM_LOOP_DELAY_DEFAULT = 3;
+export const ANIM_LOOP_DELAY_MIN = 0;
 export const ANIM_MAX_IDEAL_FRAMES_DEFAULT = 60;
 export const ANIM_MAX_IDEAL_FRAMES_MIN = 3;
 export const ANIM_MAX_IDEAL_FRAMES_MAX = 500;
@@ -190,6 +195,10 @@ export interface RenderOptions {
     // Animation.
     animAutoPlay?: boolean;
     animPlaySpeedMs?: number;
+    // Seconds resting on the overview between auto-play passes; also paces the
+    // delayed auto-play re-engage when a chart resumes with saved view-state.
+    // 0 = restart immediately; very large = effectively play once per viewing.
+    animLoopDelaySec?: number;
     animMaxIdealFrames?: number;
     animStopAtEnd?: boolean;
     filtersDuringPlay?: boolean;

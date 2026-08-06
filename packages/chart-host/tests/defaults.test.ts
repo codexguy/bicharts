@@ -51,6 +51,26 @@ describe("resolveOptions — normalized knobs match the original inline math", (
         expect(resolveOptions({ animPlaySpeedMs: 1500 }).animPlaySpeedMs).toBe(1500);
     });
 
+    it("loop-restart delay: absent/junk -> 3, explicit 0 SURVIVES, floor 0, no upper clamp", () => {
+        // Regression lock: this field was missing from the resolve list entirely, so a
+        // caller passing it saw it dropped (undefined downstream -> treated as 0 ->
+        // instant loop restarts). Absent defaults to 3...
+        expect(resolveOptions({}).animLoopDelaySec).toBe(3);
+        expect(resolveOptions({ animLoopDelaySec: undefined }).animLoopDelaySec).toBe(3);
+        expect(resolveOptions({ animLoopDelaySec: null }).animLoopDelaySec).toBe(3);
+        expect(resolveOptions({ animLoopDelaySec: "" }).animLoopDelaySec).toBe(3);
+        expect(resolveOptions({ animLoopDelaySec: "junk" }).animLoopDelaySec).toBe(3);
+        // ...but 0 means "restart immediately" and must NOT default away —
+        // the one anim numeric where the `|| DEFAULT` idiom would be wrong.
+        expect(resolveOptions({ animLoopDelaySec: 0 }).animLoopDelaySec).toBe(0);
+        expect(resolveOptions({ animLoopDelaySec: "0" }).animLoopDelaySec).toBe(0);
+        expect(resolveOptions({ animLoopDelaySec: 5 }).animLoopDelaySec).toBe(5);
+        expect(resolveOptions({ animLoopDelaySec: "12" }).animLoopDelaySec).toBe(12);
+        expect(resolveOptions({ animLoopDelaySec: -4 }).animLoopDelaySec).toBe(0);
+        // Huge = "play once per viewing" is documented behavior, so no upper clamp.
+        expect(resolveOptions({ animLoopDelaySec: 1000000 }).animLoopDelaySec).toBe(1000000);
+    });
+
     it("max-ideal-frames: falsy -> 60, clamps to [3,500]", () => {
         expect(resolveOptions({ animMaxIdealFrames: 0 }).animMaxIdealFrames).toBe(60);
         expect(resolveOptions({ animMaxIdealFrames: "" }).animMaxIdealFrames).toBe(60);
