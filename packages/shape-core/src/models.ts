@@ -454,10 +454,27 @@ export type LLMRequestCode =
 // prune + small-viewport) with NO top-X trim, NO LLM call, NO credit cost.
 // Shown in the "What fits my data?" modal; qualifying names also decorate the
 // chart-type dropdowns.
+//
+// ORDER IS MEANINGFUL (2026-08-07): the list arrives sorted by the picker's own
+// deterministic chart-type score, best first — not alphabetically — so the first
+// entries are the types the auto-picker most favours for this data. Render it in
+// the order given. A trailing group may carry no rank: those qualify on data shape
+// but have no auto-pick lane, and are still explicitly choosable.
 export type LLMQualifyResult =
     {
         errorMessage?: string,
-        charts?: { name?: string, description?: string }[],
+        charts?: {
+            name?: string,
+            description?: string,
+            // 1 = best fit. Absent for the unranked tail described above.
+            rank?: number,
+            // 0..100 relative weight, top-ranked chart = 100. Not a probability.
+            score?: number,
+            // Only on a renderer- or language-scoped qualify; absent when the caller
+            // named neither, since the renderer is chosen at generation time.
+            renderer?: string,
+            language?: string,
+        }[],
     }
 
 export type LLMRequestCodeResult =
