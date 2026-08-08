@@ -273,8 +273,20 @@ export function classifyAdditivity(args: {
 
     // --- additive vs intensive_rate (proxy) ---
     const agg = hostAggHint(measureName);
+    // avg/min/max are a DELIBERATE aggregation choice → real evidence the quantity is
+    // intensive. Assert it.
     if (agg === "avg" || agg === "min" || agg === "max") return { additivity: "intensive_rate" };
-    if (agg === "sum" || agg === "count") return { additivity: "additive" };
+    // sum/count are NOT evidence: Power BI applies Sum BY DEFAULT to every numeric column
+    // dropped in a measure well, so "Sum of LatencyMs" tells us what the host did, not what
+    // the quantity is. Asserting "additive" here made a default outrank the one real signal
+    // about the quantity — its NAME — because the server trusts a client flag over its own
+    // name test (LLMLog 48991: latency stayed stackable, so Streamgraph ranked #1 on a
+    // measure nobody would ever total). Return "unknown" and let the server decide: it owns
+    // the intensive-name list, so there is no second copy here to drift out of sync, and its
+    // fallback still lands on Additive for the ordinary "Sum of Revenue" case — identical
+    // behaviour everywhere except where the name says otherwise. (2026-08-08)
+    if (agg === "count") return { additivity: "additive" };   // COUNT of rows is additive by construction
+    if (agg === "sum") return { additivity: "unknown" };
     // Bare DAX measure (no host prefix): a value range pinned to [0,1] is almost
     // certainly a rate/proportion → intensive. OTHERWISE we are NOT confident
     // additive-vs-intensive from data alone (a 0-100 column could be a count OR a
