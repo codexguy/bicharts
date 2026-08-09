@@ -50,9 +50,10 @@ claude mcp add --scope user bic-chart -- npx -y @bicharts/chart-mcp
 It exposes three tools. `assess_data_shape` profiles a dataset **entirely locally** with the
 `@bicharts/shape-core` package in this repo — no account, no network call, nothing leaves the
 machine. `list_eligible_charts` asks the backend which chart types actually suit that shape,
-which is the authoritative answer rather than a local guess; it costs no credits, and its
-credential requirements are documented in that package's own README. `generate_chart` writes
-the `render(container, data, options)` function and a sample payload into a directory you name.
+which is the authoritative answer rather than a local guess; it is free within a generous
+allowance, and its credential requirements are documented in that package's own README.
+`generate_chart` writes the `render(container, data, options)` function and a sample payload
+into a directory you name.
 
 Generating needs a BIC account. **Running the result does not** — no key, no network call, no
 per-render cost.
