@@ -1,5 +1,10 @@
 # @bicharts/shape-core
 
+> **Make Generative AI for Charts *Better*.**
+
+That is what **RegiaBI** is for; this package is the part that measures your data so the
+rest of it can be honest about what your data will actually support.
+
 A **host-agnostic data-shape profiler**. Feed it a dataset's rows through the
 `IValueCollection.addRow` seam; read back the measured shape as an
 `LLMColumnWithValue[]` payload — the exact contract the
