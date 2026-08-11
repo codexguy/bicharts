@@ -332,6 +332,18 @@ export type LLMClientHints =
         // applies even to an explicit chart-type pick, since it bounds mark count, not
         // aesthetics. Undefined on older clients → server falls back to its own default.
         maxMapPoints?: number,
+        // LEVEL OF DETAIL (2.2 item 72): "High" | "Medium" | "Low", or absent for "Leave to
+        // visual". How much of the data the viewer wants to SEE - every observation as its own
+        // mark, the distribution, or one mark per category.
+        //
+        // A STRONG NUDGE, never a gate: the server applies it as a scoring multiplier that can
+        // only demote, so it reorders charts that already fit and can never make one impossible.
+        // An explicitly picked chart type still wins outright.
+        //
+        // Typed as a plain string rather than a union ON PURPOSE - an unrecognised value must be
+        // ignored by the server (it maps to multiplier 1.0), so the wire stays forgiving across
+        // client/server version skew in both directions.
+        levelOfDetail?: string,
     };
 
 export type LLMRequestCode =
