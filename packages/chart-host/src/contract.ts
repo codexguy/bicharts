@@ -203,6 +203,18 @@ export interface RenderOptions {
     animStopAtEnd?: boolean;
     filtersDuringPlay?: boolean;
     animTimelineStyle?: TimelineStyle;
+    // Card decks (the flippable multi-card). Deliberately NOT folded into the animation
+    // knobs above: a deck pages through FACES, not time, so animPlaySpeedMs — ms per PERIOD
+    // on a time axis a deck does not have, clamped 250..5000 — is the wrong dial.
+    //   flipSync       — true (the default) advances every card together, and the deck carries
+    //                    ONE control strip; false gives every card its own controls and its own
+    //                    face, so a reader can park one card while paging another.
+    //   flipIntervalMs — 0 (the default) is MANUAL ONLY, so a deck never moves unless someone
+    //                    asks it to; a non-zero value is clamped chart-side to 500..120000.
+    // BOTH ARE BOOLEAN/NUMBER VALUES, never callbacks — a generated chart that treats flipSync
+    // as a subscription hook has misread this contract (dev 49020 did exactly that).
+    flipSync?: boolean;
+    flipIntervalMs?: number;
     // Optional selection callback some non-animated charts invoke (the DOM event +
     // data-row-idx bridge is the primary mechanism; see the interaction grammar).
     onSelect?: (rowIdxs: number[]) => void;

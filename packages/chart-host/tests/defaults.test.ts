@@ -169,4 +169,36 @@ describe("resolveOptions — host fields pass through by identity", () => {
         expect(r.allowTooltips).toBe(false);
         expect(r.noDataText).toBe("no data");
     });
+
+    // THE SAME BUG AS animLoopDelaySec ABOVE, SECOND OCCURRENCE (2026-08-13). Both card-deck
+    // knobs were absent from the resolve list, so the visual passed them, the generated chart
+    // read them, and this function dropped them in between. The symptoms were exactly what the
+    // two defaults produce downstream - which is why both defaults are pinned here rather than
+    // just the pass-through.
+    it("deck flipSync: ABSENT MEANS SYNCED, and only an explicit false switches it", () => {
+        // The dangerous direction is a missing value reading as "independent": every card would
+        // then grow its own control strip. Absent must be true.
+        expect(resolveOptions({}).flipSync).toBe(true);
+        expect(resolveOptions({ flipSync: undefined }).flipSync).toBe(true);
+        expect(resolveOptions({ flipSync: null }).flipSync).toBe(true);
+        expect(resolveOptions({ flipSync: true }).flipSync).toBe(true);
+        // ...and false must SURVIVE - dropping it is what made "Flip Cards Together = Off" do
+        // nothing at all, because the chart reads .
+        expect(resolveOptions({ flipSync: false }).flipSync).toBe(false);
+    });
+
+    it("deck flipIntervalMs: absent/junk -> 0 (manual only), explicit 0 survives, floor 0", () => {
+        expect(resolveOptions({}).flipIntervalMs).toBe(0);
+        expect(resolveOptions({ flipIntervalMs: undefined }).flipIntervalMs).toBe(0);
+        expect(resolveOptions({ flipIntervalMs: "" }).flipIntervalMs).toBe(0);
+        expect(resolveOptions({ flipIntervalMs: "junk" }).flipIntervalMs).toBe(0);
+        expect(resolveOptions({ flipIntervalMs: 0 }).flipIntervalMs).toBe(0);
+        expect(resolveOptions({ flipIntervalMs: -5 }).flipIntervalMs).toBe(0);
+        // A real interval must arrive INTACT: the chart-side clamp (500..120000) is the only
+        // clamp, deliberately. Two clamps in two repositories is how they end up disagreeing.
+        expect(resolveOptions({ flipIntervalMs: 1000 }).flipIntervalMs).toBe(1000);
+        expect(resolveOptions({ flipIntervalMs: "250" }).flipIntervalMs).toBe(250);
+        expect(resolveOptions({ flipIntervalMs: 999999 }).flipIntervalMs).toBe(999999);
+    });
+
 });

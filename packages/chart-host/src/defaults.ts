@@ -82,5 +82,23 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         animStopAtEnd: !!p.animStopAtEnd,
         filtersDuringPlay: !!p.filtersDuringPlay,
         animTimelineStyle: (p.animTimelineStyle || "").toString() as RenderOptions["animTimelineStyle"],
+        // ---- card deck ----
+        // SECOND OCCURRENCE OF THE animLoopDelaySec BUG, six lines above (2026-08-13). The
+        // visual passed both of these, the generated code read both correctly, and this
+        // function — a whitelist that returns a NEW object — dropped them in between. Symptoms
+        // were exactly what the two defaults produce: flipSync undefined -> `!== false` -> true
+        // -> always synced, so "Flip Cards Together = Off" did nothing and the deck kept its
+        // shared strip; flipIntervalMs undefined -> `+(undefined || 0)` -> 0 -> the timer branch
+        // never ran, so a 1000 ms interval produced no flips. Two dead knobs, one omission.
+        //
+        // flipSync DEFAULTS TRUE, so it cannot use `!!p.flipSync` — that would read a missing
+        // value as "independent" and hand every deck twelve control strips. Absent means
+        // synced; only an explicit false switches it.
+        flipSync: p.flipSync === undefined || p.flipSync === null ? true : !!p.flipSync,
+        // 0 is MEANINGFUL here (manual only) and is the default, so numberOr — not
+        // `|| DEFAULT` — for the same reason animLoopDelaySec uses it. Clamping stays
+        // chart-side: the archetype already clamps 500..120000 and two clamps in two
+        // repositories is how they end up disagreeing.
+        flipIntervalMs: Math.max(0, numberOr(p.flipIntervalMs, 0)),
     };
 }
