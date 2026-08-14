@@ -16,6 +16,7 @@ import {
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
+    FLIP_MODE_DEFAULT,
 } from "./contract";
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
@@ -95,10 +96,33 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // value as "independent" and hand every deck twelve control strips. Absent means
         // synced; only an explicit false switches it.
         flipSync: p.flipSync === undefined || p.flipSync === null ? true : !!p.flipSync,
+        // WHERE the controls live, which is a different question from whether the cards move
+        // together (Joel 2026-08-13: "the ability to flip individual cards shouldn't necessarily
+        // stop being able to flip all together too"). Resolution order matters and is the whole
+        // back-compat story:
+        //   1. an explicit, recognised flipMode wins;
+        //   2. otherwise DERIVE from flipSync, so a chart generated before this option existed
+        //      behaves exactly as it did - true -> "all", false -> "single";
+        //   3. and a caller that sends neither gets the default.
+        // Deriving rather than defaulting is the point: a cached chart must not change behaviour
+        // because a newer client shipped, and "both" would have done exactly that to every deck
+        // already in a report.
+        flipMode: ((): RenderOptions["flipMode"] => {
+            const m = (p.flipMode == null ? "" : String(p.flipMode)).toLowerCase();
+            if (m === "single" || m === "all" || m === "both") return m as RenderOptions["flipMode"];
+            if (p.flipSync === false) return "single";
+            if (p.flipSync === true) return "all";
+            return FLIP_MODE_DEFAULT;
+        })(),
         // 0 is MEANINGFUL here (manual only) and is the default, so numberOr — not
         // `|| DEFAULT` — for the same reason animLoopDelaySec uses it. Clamping stays
         // chart-side: the archetype already clamps 500..120000 and two clamps in two
         // repositories is how they end up disagreeing.
         flipIntervalMs: Math.max(0, numberOr(p.flipIntervalMs, 0)),
+        // `raw || undefined`, the same idiom as the colour-scale endpoints and the map fills:
+        // blank must arrive as ABSENT, not as an empty string, because the chart's fallback is
+        // `options.cardBackgroundColor || <its own choice>` and "" would satisfy a truthiness
+        // test in some hands while painting nothing in others.
+        cardBackgroundColor: p.cardBackgroundColor || undefined,
     };
 }

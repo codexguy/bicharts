@@ -201,4 +201,32 @@ describe("resolveOptions — host fields pass through by identity", () => {
         expect(resolveOptions({ flipIntervalMs: 999999 }).flipIntervalMs).toBe(999999);
     });
 
+
+    // flipMode answers WHERE the controls live, which turned out to be a different question
+    // from whether the cards move together. The back-compat rule is the interesting part: a
+    // deck generated before this option existed must keep behaving exactly as it did, so an
+    // absent flipMode DERIVES from flipSync rather than taking the new default.
+    it("flipMode: an explicit mode wins, and junk falls back rather than throwing", () => {
+        expect(resolveOptions({ flipMode: "single" }).flipMode).toBe("single");
+        expect(resolveOptions({ flipMode: "all" }).flipMode).toBe("all");
+        expect(resolveOptions({ flipMode: "both" }).flipMode).toBe("both");
+        expect(resolveOptions({ flipMode: "BOTH" }).flipMode).toBe("both");   // case-insensitive
+        expect(resolveOptions({ flipMode: "sideways" }).flipMode).toBe("both");
+    });
+
+    it("flipMode: absent DERIVES from flipSync, so cached decks do not change behaviour", () => {
+        // This is the whole reason the legacy boolean is still read. Defaulting these to "both"
+        // would silently add a control strip to every deck already sitting in a report.
+        expect(resolveOptions({ flipSync: true }).flipMode).toBe("all");
+        expect(resolveOptions({ flipSync: false }).flipMode).toBe("single");
+        // ...and an explicit mode still outranks the legacy flag when both are sent.
+        expect(resolveOptions({ flipSync: true, flipMode: "single" }).flipMode).toBe("single");
+        expect(resolveOptions({ flipSync: false, flipMode: "both" }).flipMode).toBe("both");
+    });
+
+    it("flipMode: neither sent -> the default, and flipSync keeps its own default", () => {
+        expect(resolveOptions({}).flipMode).toBe("both");
+        expect(resolveOptions({}).flipSync).toBe(true);
+    });
+
 });

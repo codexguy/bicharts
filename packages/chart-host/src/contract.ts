@@ -110,6 +110,11 @@ export const COLOR_SCALE_SELF_CLAMP_PCT_MIN = 50;
 export const COLOR_SCALE_SELF_CLAMP_PCT_MAX = 100;
 
 export type TimelineStyle = "" | "line" | "boxes";
+// Card-deck flip controls. "" means "not specified", which is what a client too old to send
+// the option looks like — resolveOptions derives it from the legacy flipSync boolean so a
+// cached chart keeps behaving exactly as it did. See RenderOptions.flipMode.
+export type FlipMode = "" | "single" | "all" | "both";
+export const FLIP_MODE_DEFAULT: FlipMode = "both";
 // Colour Scale Scope for animated continuous scales: "" = ONE global domain over
 // every period (default; a colour means the same value in every frame); "frame" =
 // re-scale each keyframe to its own min-max (in-frame contrast lens; the chart must
@@ -215,6 +220,24 @@ export interface RenderOptions {
     // as a subscription hook has misread this contract (dev 49020 did exactly that).
     flipSync?: boolean;
     flipIntervalMs?: number;
+    // WHERE THE FLIP CONTROLS LIVE, which turned out to be a different question from whether
+    // the cards move together (Joel 2026-08-13: "the ability to flip individual cards shouldn't
+    // necessarily stop being able to flip all together too"). flipSync conflated the two, so
+    // gaining per-card arrows meant losing the deck-wide ones.
+    //   "all"    — one control strip for the deck; every card shows the same face (the old true).
+    //   "single" — per-card controls only; each card holds its own face (the old false).
+    //   "both"   — per-card controls AND the deck strip; the strip moves every card to one face,
+    //              a card's own control moves only that card. The default.
+    // flipSync is RETAINED and still honoured: generations that predate this option read only
+    // that, and a cached chart must not change behaviour because a newer client shipped. When
+    // both are present flipMode wins; when flipMode is absent it derives from flipSync.
+    flipMode?: FlipMode;
+    // Explicit fill behind each card. Blank/undefined = the chart decides, which is what every
+    // deck does today (normally the visual background, so cards read as part of the canvas).
+    // A live-restyle knob like the colour-scale endpoints: changing it re-renders, never
+    // regenerates. The chart still owns its TEXT colours, so a dark card must still produce
+    // legible labels — supplying a background is not permission to leave text unreadable.
+    cardBackgroundColor?: string;
     // Optional selection callback some non-animated charts invoke (the DOM event +
     // data-row-idx bridge is the primary mechanism; see the interaction grammar).
     onSelect?: (rowIdxs: number[]) => void;
