@@ -183,6 +183,29 @@ export function stripEsmExports(code: string): string {
         .replace(ESM_EXPORT_DECL, "$1");
 }
 
+// A generated chart INSTALLS the shared helpers it calls. The generator prepends the source of
+// any `d3.llmX` helper the code uses but does not define, so the artifact self-installs it with
+// `d3.llmX = function (...) {}` on whatever d3 this host hands it — no client asset required.
+//
+// `import * as d3 from "d3"` yields an ES module NAMESPACE object, which is non-extensible by
+// specification. The compile below is `new Function`, i.e. SLOPPY mode, where adding a property
+// to a non-extensible object does not throw — it silently does nothing. So the install evaporates
+// and the chart dies a few lines later on `d3.llmTooltip is not a function`: an error that names
+// the helper and gives no hint that the cause is one word in the caller's import statement.
+//
+// A host that reaches d3 through a script tag or a bundler that emits a plain object never sees
+// this, which is how it survives verification and then fails in the field.
+//
+// So take a copy when the original will not take a property. The same reasoning covers plugins:
+// the diagnostic above tells callers to `Object.assign(d3, { sankey })`, and that advice is
+// likewise inert against a namespace object.
+function writableD3(d3: any): any {
+    if (d3 == null || typeof d3 !== "object") return d3;
+    // Extensible already — hand it straight back, so a caller who augments d3 later still wins.
+    if (Object.isExtensible(d3)) return d3;
+    return { ...d3 };
+}
+
 export function compileRenderFn(code: string, win: any, doc: any, d3: any): RenderFn {
     // Same compile the preview/exec-gate use: the code must define a top-level render().
     const body = stripEsmExports(code) + "\n;return (typeof render === 'function') ? render : null;";
@@ -206,7 +229,7 @@ export function compileRenderFn(code: string, win: any, doc: any, d3: any): Rend
                 : ".") +
             " Original error: " + msg);
     }
-    const fn = factory.call(null, null, null, null, win, doc, d3);
+    const fn = factory.call(null, null, null, null, win, doc, writableD3(d3));
     if (typeof fn !== "function") throw new Error("generated code did not define render(container, data, options)");
     return fn as RenderFn;
 }
