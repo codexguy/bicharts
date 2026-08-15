@@ -48,6 +48,13 @@ export { detectFormatSignature } from "./formatDetector";
 // __geoIso__ from it nulls every row, so the map draws empty.
 export { detectGeo, toGeoIso, buildGeoIsoColumn, isJoinGeoKind } from "./geoDetector";
 export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
+// WHERE the data sits, as distinct from WHETHER it is geographic. Detecting geo and choosing a
+// map FRAME are different questions: a table of European cities passes every geo test and is
+// still the wrong data for a North America basemap. Numbers only — percentages and quantiles —
+// so this is the same privacy class as GeoKind, which is what makes it shippable at all: the
+// server never sees the coordinates these are measured from.
+export { summarizeGeoExtent, summarizeCountryRegions, countryRegion, registerIso3Regions } from "./geoExtent";
+export type { GeoRegion, GeoExtentSummary, CountryRegionSummary } from "./geoExtent";
 // Point geocoding — a COORDINATE for a row that has none (City+State / ZIP / State),
 // as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
 export {
