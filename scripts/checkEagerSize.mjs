@@ -13,8 +13,13 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 
+// The default is a TRIPWIRE for geometry reaching the eager path, not a size target. Most of
+// the closure is the place-name gazetteer, which is eager by design and grows as the tables
+// improve; the smallest map asset is ~228 KB, so any ceiling below (closure + 228) still
+// catches one being statically imported. Keep the headroom generous — a budget that goes red
+// on ordinary growth stops being read, and a gate nobody reads catches nothing.
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 400);
+const limitKB = Number(process.argv[3] ?? 560);
 
 if (!existsSync(entry)) {
     console.error(`no build at ${entry} — run \`npm run build\` first`);

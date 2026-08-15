@@ -121,5 +121,19 @@ jobs:
       # of this job. Checking dist/index.mjs's own size would prove nothing: it is a
       # 1.8 KB re-export shim in front of the chunks. This walks the static-import
       # closure and stops at dynamic import(), which is what geoLazy.ts relies on.
+      #
+      # THE BUDGET IS NOT A SIZE TARGET — it is a tripwire for map geometry landing in the
+      # eager path, and the number only has to be low enough to catch that. The bulk of
+      # today's closure is the place-name gazetteer, which IS eager by design (the point
+      # cascade needs it on every point map) and which grows as the tables improve. The
+      # smallest geo asset is ~228 KB, so any ceiling below (current + 228) still fails the
+      # moment one is statically imported.
+      #
+      # Raised 400 -> 560 on 2026-08-15. 400 was set when the closure fit under it; the
+      # gazetteer then grew past it and the check went red on every push from ~2026-08-11,
+      # which is worse than no check at all — a permanently red gate stops being read, and
+      # this one had already stopped being read. 560 leaves ~130 KB of ordinary headroom
+      # and still trips on the smallest asset. If it goes red again, find out WHICH file
+      # grew before touching this number.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 400
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 560
