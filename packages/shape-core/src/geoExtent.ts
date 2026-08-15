@@ -17,6 +17,8 @@
 // exist. p5/p95 answers "where is the bulk of this data" and shrugs off the tail, which is the
 // question a frame choice actually turns on.
 
+import { ISO2_TO_ISO3, countryIso3 } from "./geoCountryNames";
+
 /** Coarse world regions, chosen for FRAME selection rather than geographic doctrine. */
 export type GeoRegion =
     | "north-america" | "south-america" | "europe" | "africa" | "asia" | "oceania" | "antarctica";
@@ -171,18 +173,35 @@ const REGION_BY_CODE: Map<string, GeoRegion> = (() => {
     return m;
 })();
 
-/** Register ISO-3 aliases from the caller's own ISO2->ISO3 table, so the two never drift. */
+/** Register ISO-3 aliases from an ISO2->ISO3 table. Called once at module load below, so a
+ *  caller never has to remember to — a forgotten registration would degrade ISO-3 lookups
+ *  silently, which is the whole failure mode this signal exists to remove. Kept exported for a
+ *  caller with its own table. */
 export function registerIso3Regions(iso2ToIso3: ReadonlyMap<string, string>): void {
     for (const [a2, a3] of iso2ToIso3) {
         const r = REGION_BY_CODE.get(a2);
         if (r && !REGION_BY_CODE.has(a3)) REGION_BY_CODE.set(a3, r);
     }
 }
+registerIso3Regions(ISO2_TO_ISO3);
 
-/** The region a country code belongs to, or null when the code is not one we know. */
+/**
+ * The region a country belongs to, or null when the value is not a country we know.
+ *
+ * Accepts whatever form the column actually holds — ISO-2, ISO-3, or a NAME. That last one is
+ * not a nicety: a `country-name` column holds "United States", not "US", so a code-only lookup
+ * resolves nothing and the region summary comes back empty for the most common country column
+ * there is. Names go through the same normaliser the rest of the geo layer uses, so the
+ * alias/spelling handling stays in one place instead of being half-reimplemented here.
+ */
 export function countryRegion(code: string | null | undefined): GeoRegion | null {
     if (!code) return null;
-    return REGION_BY_CODE.get(String(code).trim().toUpperCase()) ?? null;
+    const raw = String(code).trim().toUpperCase();
+    if (!raw) return null;
+    const direct = REGION_BY_CODE.get(raw);
+    if (direct) return direct;
+    const iso3 = countryIso3(String(code));
+    return iso3 ? REGION_BY_CODE.get(iso3) ?? null : null;
 }
 
 /**
@@ -199,13 +218,30 @@ export function summarizeCountryRegions(
     values: ReadonlyArray<string | null | undefined>,
     minCountries = 2,
 ): CountryRegionSummary | null {
+    return summarizeCountryRegionsWeighted(values.map(v => [v, 1] as const), minCountries);
+}
+
+/**
+ * As above, over DISTINCT values with their row counts.
+ *
+ * Weighting by rows matters and is not a detail: forty US rows and one Japanese row is a US
+ * dataset, while counting distinct values alone calls it 50/50 global and frames it as a world
+ * map with one bubble in Asia. Callers that already have a value->count map (the shape scanner
+ * does) should use this and never expand it back into a flat array — a million-row column would
+ * materialise a million strings to answer a question about a dozen.
+ */
+export function summarizeCountryRegionsWeighted(
+    entries: ReadonlyArray<readonly [string | null | undefined, number]>,
+    minCountries = 2,
+): CountryRegionSummary | null {
     const counts = new Map<GeoRegion, number>();
     let n = 0;
-    for (const v of values) {
+    for (const [v, w] of entries) {
         const r = countryRegion(v);
         if (!r) continue;
-        counts.set(r, (counts.get(r) ?? 0) + 1);
-        n++;
+        const c = typeof w === "number" && isFinite(w) && w > 0 ? w : 1;
+        counts.set(r, (counts.get(r) ?? 0) + c);
+        n += c;
     }
     if (n < minCountries || !counts.size) return null;
     let best: GeoRegion = "europe", bestN = -1;

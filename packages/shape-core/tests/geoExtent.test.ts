@@ -156,8 +156,19 @@ describe("countryRegion", () => {
         expect(countryRegion("AU")).toBe("oceania");
     });
 
-    it("maps ISO-3 once the alias table is registered, and the two never disagree", () => {
-        registerIso3Regions(ISO2_TO_ISO3);
+    it("maps country NAMES, which is the form a country-name column actually holds", () => {
+        // A code-only lookup returns nothing for the most common country column there is,
+        // and the region summary then comes back empty with no sign anything went wrong.
+        expect(countryRegion("United States")).toBe("north-america");
+        expect(countryRegion("Brazil")).toBe("south-america");
+        expect(countryRegion("Germany")).toBe("europe");
+        expect(countryRegion("Japan")).toBe("asia");
+        expect(countryRegion("Australia")).toBe("oceania");
+        expect(countryRegion("Kenya")).toBe("africa");
+    });
+
+    it("maps ISO-3 without the caller registering anything, and the two never disagree", () => {
+        registerIso3Regions(ISO2_TO_ISO3);   // idempotent; the module already did this
         expect(countryRegion("USA")).toBe("north-america");
         expect(countryRegion("DEU")).toBe("europe");
         expect(countryRegion("JPN")).toBe("asia");

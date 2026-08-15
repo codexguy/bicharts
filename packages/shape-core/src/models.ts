@@ -261,6 +261,21 @@ export type LLMColumnWithValue =
         geoKind?: string
         geoMatchPct?: number
         geoAmbiguous?: boolean
+        // WHICH MAP FITS, as opposed to whether the column is geographic at all. Set only on
+        // country-kind columns, ROW-WEIGHTED over the distinct values: forty US rows and one
+        // Japanese row is a US dataset, and counting distinct values alone would call it
+        // 50/50 global. Answers the case where a country column clears the world-choropleth
+        // floor and then draws a world that is grey everywhere except one continent — legal,
+        // and the regional frame would have been better.
+        //   dominantGeoRegion:    "north-america" | "south-america" | "europe" | "africa"
+        //                         | "asia" | "oceania" | "antarctica"
+        //   dominantGeoRegionPct: share of resolved rows in that region, 0..100
+        //   geoRegionCount:       distinct regions present — 1 is the grey-world case, and a
+        //                         spread of four is a genuinely global dataset
+        // Absent on older clients ⇒ no signal ⇒ today's behaviour, so this fails open.
+        dominantGeoRegion?: string
+        dominantGeoRegionPct?: number
+        geoRegionCount?: number
     }
 
 // Raw setting/viewport/shape state shipped on every Generate. Server's
@@ -332,6 +347,21 @@ export type LLMClientHints =
         // applies even to an explicit chart-type pick, since it bounds mark count, not
         // aesthetics. Undefined on older clients → server falls back to its own default.
         maxMapPoints?: number,
+        // WHERE THE COORDINATES ACTUALLY SIT — a cross-column signal, so it rides here rather
+        // than on any one column. Present only when the data carries a latitude/longitude pair
+        // the client could measure; absent ⇒ no signal ⇒ today's behaviour.
+        //
+        // It exists because the lat/lon gate is a NAME heuristic with no idea where the points
+        // land: a table of European cities with coordinates satisfies it and is then offered a
+        // North America basemap, with every point off the map or piled at its edge. pctUsa and
+        // pctNa answer that; the p5/p95 envelope describes the bulk of the data without letting
+        // one null-island row rewrite it; and n is carried because a percentage from three rows
+        // is not the same claim as one from three thousand.
+        geoExtent?: {
+            pctUsa: number, pctNa: number,
+            latP5: number, latP95: number, lonP5: number, lonP95: number,
+            n: number,
+        },
         // LEVEL OF DETAIL: "High" | "Medium" | "Low", or absent for "Leave to
         // visual". How much of the data the viewer wants to SEE - every observation as its own
         // mark, the distribution, or one mark per category.

@@ -13,6 +13,7 @@
 import { LLMColumnWithValue } from "./models";
 import { detectOrdinalDomain, safeDistinctValuesToShip, isOrdinalFriendlyName } from "./ordinalDetector";
 import { detectGeo } from "./geoDetector";
+import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } from "./geoExtent";
 
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
@@ -350,6 +351,8 @@ export interface IValueCollection {
     reset(): void;
     getRowCount(): number;
     getLeafCardinality(): number;
+    getGeoExtent(): { pctUsa: number, pctNa: number, latP5: number, latP95: number,
+                      lonP5: number, lonP95: number, n: number } | null;
     getCSVAsync(forSample: boolean): Promise<string>;
     getCSVHeaderLine(): string;
     getColumnsWithStats(privacyLevel: string, locale?: string): LLMColumnWithValue[];
@@ -905,18 +908,45 @@ export class IndexedText implements IValueCollection {
                         }
                     }
                 }
-                // GEO detection (geo/choropleth Phase 0). Runs UNCONDITIONALLY —
-                // unlike the ordinal/safe-value shipping above it emits only a
-                // summary (geoKind enum + match percent + ambiguity bool), never
-                // raw values, so it isn't gated to pl>=20 (same privacy class as
-                // isTemporal). Matches the full distinct set against ISO / USPS /
-                // ZIP / FIPS vocabularies; the column name breaks code collisions.
-                // Signal is inert until the Phase 1 ChartFilter gate reads it.
+                // GEO detection. Emits only a SUMMARY (geoKind enum + match percent +
+                // ambiguity bool), never raw values — the same privacy class as
+                // isTemporal. Matches the full distinct set against ISO / USPS / ZIP /
+                // FIPS vocabularies; the column name breaks code collisions.
+                //
+                // CORRECTED 2026-08-15 — this comment used to claim the detection "runs
+                // UNCONDITIONALLY ... so it isn't gated to pl>=20". It is not
+                // unconditional: this whole function is inside `if (pl >= 20)`, so at
+                // privacy levels 0 and 10 NO geoKind is emitted, the server's geo gates
+                // never fire, and no map is offered at all — silently, because nothing
+                // reports a signal that was never computed. 20 is the product default so
+                // most users are unaffected, but a user who TIGHTENS privacy loses every
+                // map and is told nothing.
+                //
+                // Whether the detection should move out of the gate is a privacy decision
+                // rather than a code cleanup — the emitted summary is enum-only, which is
+                // the argument for moving it, but "share less" plausibly means "offer
+                // fewer inferences" too. Left as-is deliberately; the comment now
+                // describes what the code does instead of what it was meant to do.
                 const geo = detectGeo(topcatEntries.map(e => e[0]), col.name, locale);
                 if (geo !== null) {
                     col.geoKind = geo.geoKind;
                     col.geoMatchPct = geo.geoMatchPct;
                     if (geo.geoAmbiguous) col.geoAmbiguous = true;
+                    // WHICH MAP FITS, for a country column. Same privacy class as the kind
+                    // above — a region enum and a percentage, never a value — and computed
+                    // here because this is the only place that already holds every distinct
+                    // value WITH its row count. The weighting is the point: forty US rows and
+                    // one Japanese row is a US dataset, and counting distinct values alone
+                    // would call it 50/50 global and frame it as a world map.
+                    if (geo.geoKind.indexOf("country") === 0) {
+                        const reg = summarizeCountryRegionsWeighted(
+                            topcatEntries as ReadonlyArray<readonly [string, number]>);
+                        if (reg) {
+                            col.dominantGeoRegion = reg.dominantGeoRegion;
+                            col.dominantGeoRegionPct = reg.dominantGeoRegionPct;
+                            col.geoRegionCount = reg.regionCount;
+                        }
+                    }
                 }
             }
             if (sorted.length >= 8 && (col.dataType === "Integer" || col.dataType === "Decimal")) {
@@ -985,6 +1015,62 @@ export class IndexedText implements IValueCollection {
         return this._leafCardinality;
     }
     private _leafCardinality: number | null = null;
+
+    // GEO EXTENT — WHERE the coordinates sit, which is a different question from whether the
+    // data is geographic, and the one nothing answered. The lat/lon eligibility gate is a NAME
+    // heuristic with no idea where the points land, so a table of European cities WITH
+    // coordinates satisfies it and is then offered a North America basemap: every point off the
+    // map or piled against its edge.
+    //
+    // Cross-column by nature (a latitude means nothing without its longitude), so it lives here
+    // beside leaf cardinality rather than on any one column, and ships on the hints bag.
+    //
+    // The COUNTRY column is passed through when there is one, because a bounding box cannot
+    // resolve the US/Canada border — southern Ontario sits below Boston, so Toronto and
+    // Montreal fall inside any rectangle drawn around the contiguous US. Coordinates alone
+    // answer the coarse question; the country makes the fine one right.
+    //
+    // Null when the data carries no coordinate pair, which is the common case and costs nothing:
+    // the scan below is over column NAMES until a pair is actually found.
+    public getGeoExtent(): { pctUsa: number, pctNa: number, latP5: number, latP95: number,
+                             lonP5: number, lonP95: number, n: number } | null {
+        if (this._geoExtentComputed) return this._geoExtent;
+        this._geoExtentComputed = true;
+        this._geoExtent = null;
+
+        const tok = (n: string) => String(n || "")
+            .replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/);
+        let latIdx = -1, lonIdx = -1, countryIdx = -1;
+        this._cols.forEach((c, i) => {
+            const t = tok(c.name);
+            // Coordinates may arrive as a measure or a dimension, so IsMeasure is not filtered;
+            // a string-typed column is never a coordinate.
+            const numericish = c.dataType === "Integer" || c.dataType === "Decimal";
+            if (numericish && latIdx < 0 && t.some(x => x === "lat" || x === "latitude")) latIdx = i;
+            else if (numericish && lonIdx < 0 && t.some(x => x === "lon" || x === "lng" || x === "long" || x === "longitude")) lonIdx = i;
+            if (countryIdx < 0 && !c.isMeasure && typeof c.geoKind === "string"
+                && c.geoKind.indexOf("country") === 0) countryIdx = i;
+        });
+        if (latIdx < 0 || lonIdx < 0) return null;
+
+        const pts: Array<{ lat: number | null, lon: number | null, country?: string | null }> = [];
+        for (const row of this._rows) {
+            const la = row[latIdx], lo = row[lonIdx];
+            // Null/blank BEFORE coercion: +null is 0, and a phantom (0,0) would be counted as a
+            // real point in the open Atlantic and drag the envelope toward the equator.
+            const lat = (la === null || la === undefined || la === "") ? null : Number(la);
+            const lon = (lo === null || lo === undefined || lo === "") ? null : Number(lo);
+            pts.push({
+                lat, lon,
+                country: countryIdx >= 0 && countryRegion(this.STR(row[countryIdx])) ? this.STR(row[countryIdx]) : null,
+            });
+        }
+        this._geoExtent = summarizeGeoExtent(pts);
+        return this._geoExtent;
+    }
+    private _geoExtent: { pctUsa: number, pctNa: number, latP5: number, latP95: number,
+                          lonP5: number, lonP95: number, n: number } | null = null;
+    private _geoExtentComputed: boolean = false;
 
     private obfuscateString(input: string): string {
         const lowers = 'abcdefghijklmnopqrstuvwxyz';
