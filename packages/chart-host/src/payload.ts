@@ -40,6 +40,37 @@ export interface GeoPointBinding {
     mapKind?: GeoMapKind;
 }
 
+/** What a point binding's resolution ACHIEVED, so the chart can annotate honestly rather
+ *  than implying a precision it does not have. Named (rather than inlined on RenderPayload)
+ *  because an origin-destination map carries TWO of them, and the two must be the same
+ *  contract — see `geoPointDest`. */
+export interface GeoPointReport {
+    precision: GeoPointPrecision | null;
+    // Rows per tier. `precision` alone is a CEILING and reads the same for 1-of-42
+    // and 42-of-42 coarse rows, so a caption written from it can be false for almost
+    // the whole map; these counts are what the chart should annotate from.
+    precisionCounts: Record<GeoPointPrecision, number>;
+    // The rows a coarse-tier caption is actually about, named and capped.
+    coarseExamples: string[];
+    unplaced: number;
+    unplacedExamples: string[];
+    ambiguousRows: number;
+    // The rows behind ambiguousRows, named so the chart's info call-out can tell the
+    // user WHAT to disambiguate (add a state/country column). ADDITIVE + optional —
+    // absent on older hosts, and old generated code needs nothing from it: ambiguous
+    // rows carry null coordinates, so its own off-map counting already covers them.
+    ambiguousExamples?: string[];
+    // What the ROLE resolution did to the caller's binding, so the chart can say when
+    // its coordinates rest on something other than what was asked for. Both are
+    // ADDITIVE and optional: a host on an older contract simply ignores them.
+    //   backfilled — roles the binding omitted, resolved from the data
+    //                ("state=StateCode (100% states/provinces)")
+    //   refused    — roles the binding named that were rejected, with why
+    //                ("state=Country (every value is a country, not a state)")
+    rolesBackfilled?: string[];
+    rolesRefused?: string[];
+}
+
 export interface RenderPayload {
     columns: any[];
     rows: any[][];
@@ -54,32 +85,7 @@ export interface RenderPayload {
     // COARSEST tier any row needed; `ambiguousRows` counts rows whose name matched
     // MULTIPLE places and were therefore NOT plotted (v2 matching, 2026-08-02 — refusal
     // replaced the old largest-city tie-break).
-    geoPoint?: {
-        precision: GeoPointPrecision | null;
-        // Rows per tier. `precision` alone is a CEILING and reads the same for 1-of-42
-        // and 42-of-42 coarse rows, so a caption written from it can be false for almost
-        // the whole map; these counts are what the chart should annotate from.
-        precisionCounts: Record<GeoPointPrecision, number>;
-        // The rows a coarse-tier caption is actually about, named and capped.
-        coarseExamples: string[];
-        unplaced: number;
-        unplacedExamples: string[];
-        ambiguousRows: number;
-        // The rows behind ambiguousRows, named so the chart's info call-out can tell the
-        // user WHAT to disambiguate (add a state/country column). ADDITIVE + optional —
-        // absent on older hosts, and old generated code needs nothing from it: ambiguous
-        // rows carry null coordinates, so its own off-map counting already covers them.
-        ambiguousExamples?: string[];
-        // What the ROLE resolution did to the caller's binding, so the chart can say when
-        // its coordinates rest on something other than what was asked for. Both are
-        // ADDITIVE and optional: a host on an older contract simply ignores them.
-        //   backfilled — roles the binding omitted, resolved from the data
-        //                ("state=StateCode (100% states/provinces)")
-        //   refused    — roles the binding named that were rejected, with why
-        //                ("state=Country (every value is a country, not a state)")
-        rolesBackfilled?: string[];
-        rolesRefused?: string[];
-    };
+    geoPoint?: GeoPointReport;
     /**
      * WHY THERE IS NO MAP — the refusals that survive when nothing could be placed.
      *
@@ -94,16 +100,40 @@ export interface RenderPayload {
      * helps call out exceptions / decisions like this, if possible."
      */
     geoPointRefused?: string[];
+    /**
+     * The SECOND endpoint's resolution report (origin-destination flow map, 2026-08-15).
+     * Identical in shape to `geoPoint` because it is produced by the identical function —
+     * the two ends of a route must be placed by the same rules or the arc between them is a
+     * line drawn to the wrong place.
+     *
+     * Present ONLY when a destination binding was given, which keeps every other chart's
+     * options object byte-identical. A flow map annotates from BOTH: "12 of 40 origins" and
+     * "31 of 40 destinations positioned at the largest city in each country" are separate
+     * facts, and a single blended count would hide which end of the route is the coarse one.
+     */
+    geoPointDest?: GeoPointReport;
 }
 
-export function buildRenderPayload(
+/** One resolved point channel — the coordinate arrays plus the metadata a chart annotates
+ *  from. Factored out of buildRenderPayload so an ORIGIN and a DESTINATION endpoint resolve
+ *  through BYTE-IDENTICAL code (2026-08-15, the origin-destination flow map). Two endpoints
+ *  that placed places by different rules would draw an arc between two different geographies:
+ *  the same city name landing at its gazetteer coordinate at one end of a route and at its
+ *  country's anchor at the other is not a subtle error, it is a line drawn to the wrong place.
+ *  Sharing the function is what makes that impossible rather than merely unlikely. */
+interface PointChannel {
+    lat: (number | null)[] | null;
+    lon: (number | null)[] | null;
+    prec: (string | null)[] | null;
+    geoPoint: GeoPointReport | undefined;
+    rolesRefused: string[];
+}
+
+function resolvePointChannel(
     cols: Array<{ name: string } & Record<string, any>>,
     rowObjs: Array<Record<string, any>>,
-    geo?: { column: string; kind: string } | null,
-    point?: GeoPointBinding | null,
-): RenderPayload {
-    const colNames = cols.map(c => c.name);
-
+    point: GeoPointBinding | null | undefined,
+): PointChannel {
     // POINT geocoding: resolve each row to a coordinate from whatever place parts it has
     // (City+State -> ZIP -> State) and append __geoLat__/__geoLon__. This is what lets a
     // point map draw from city NAMES alone, with no lat/lon columns in the data. Skipped
@@ -114,7 +144,7 @@ export function buildRenderPayload(
     // counts below can only ever say "19 of 117 approximated" - true, and useless to the
     // reader hovering one bubble, who gets a city name over a DIFFERENT city's coordinates.
     let pPrec: (string | null)[] | null = null;
-    let geoPoint: RenderPayload["geoPoint"];
+    let geoPoint: GeoPointReport | undefined;
     // The caller's binding is a HINT, not the last word. The codegen response names these
     // roles and can leave one out — a production point map named the city, not the state, so
     // City+State never engaged and 8 marks landed on the wrong same-named city. Verify
@@ -179,6 +209,33 @@ export function buildRenderPayload(
             ...(rolesRefused.length ? { rolesRefused } : {}),
         };
     }
+    return { lat: pLat, lon: pLon, prec: pPrec, geoPoint, rolesRefused };
+}
+
+export function buildRenderPayload(
+    cols: Array<{ name: string } & Record<string, any>>,
+    rowObjs: Array<Record<string, any>>,
+    geo?: { column: string; kind: string } | null,
+    point?: GeoPointBinding | null,
+    // THE SECOND ENDPOINT (2026-08-15, origin-destination flow map). When present, `point`
+    // is the ORIGIN and this is the DESTINATION, and the payload gains __geoLatD__ /
+    // __geoLonD__ / __geoPrecisionD__ beside the origin's three. Purely ADDITIVE: absent —
+    // which is every chart but one — the output is byte-identical to before, because the
+    // new columns are appended last and nothing existing moves.
+    destination?: GeoPointBinding | null,
+): RenderPayload {
+    const colNames = cols.map(c => c.name);
+
+    const o = resolvePointChannel(cols, rowObjs, point);
+    const d = resolvePointChannel(cols, rowObjs, destination);
+    const pLat = o.lat, pLon = o.lon, pPrec = o.prec;
+    const dLat = d.lat, dLon = d.lon, dPrec = d.prec;
+    const geoPoint = o.geoPoint;
+    const geoPointDest = d.geoPoint;
+    // A refusal names the END it happened at. "state=Country (country column)" twice over,
+    // undifferentiated, tells a reader which rule fired but not which half of the route is
+    // resting on it — and on a flow map those are different problems with different fixes.
+    const rolesRefused = [...o.rolesRefused, ...d.rolesRefused.map(s => `destination: ${s}`)];
 
     // Geo choropleth: precompute the deterministic __geoIso__ join column (normal-
     // form ISO/USPS/FIPS via shape-core; unmatched → null) so each region <path>
@@ -202,7 +259,7 @@ export function buildRenderPayload(
     // shape predictable for the LLM. DateTime cells come straight off the index;
     // coerce to ISO so the contract in PromptPreable holds. Trailing columns:
     // __rowIdx__ [+ __geoIso__].
-    const extra = 1 + (geoIso ? 1 : 0) + (pLat ? 3 : 0);
+    const extra = 1 + (geoIso ? 1 : 0) + (pLat ? 3 : 0) + (dLat ? 3 : 0);
     const out: any[][] = new Array(rowObjs.length);
     for (let r = 0; r < rowObjs.length; r++) {
         const row = rowObjs[r];
@@ -222,6 +279,7 @@ export function buildRenderPayload(
         a[k++] = r;
         if (geoIso) a[k++] = geoIso[r];
         if (pLat && pLon) { a[k++] = pLat[r]; a[k++] = pLon[r]; a[k++] = pPrec ? pPrec[r] : null; }
+        if (dLat && dLon) { a[k++] = dLat[r]; a[k++] = dLon[r]; a[k++] = dPrec ? dPrec[r] : null; }
         out[r] = a;
     }
     const colsOut = [...cols, { name: "__rowIdx__", dataType: "Integer", isMeasure: false, modelDesc: "" }];
@@ -233,8 +291,18 @@ export function buildRenderPayload(
         // "zip3" | "state" | "country"), null when it was not placed. Never a dimension,
         // never a label, never a colour grouping.
         { name: "__geoPrecision__", dataType: "String", isMeasure: false, modelDesc: "" });
+    // The DESTINATION endpoint's three, same class and same rules: host metadata, never a
+    // dimension, never a label, never a colour grouping. Appended AFTER the origin's so a
+    // chart written against the single-point contract reads exactly the columns it always did.
+    if (dLat) colsOut.push(
+        { name: "__geoLatD__", dataType: "Double", isMeasure: false, modelDesc: "" },
+        { name: "__geoLonD__", dataType: "Double", isMeasure: false, modelDesc: "" },
+        { name: "__geoPrecisionD__", dataType: "String", isMeasure: false, modelDesc: "" });
     return {
         columns: colsOut as any[], rows: out, geoUnmatched, geoUnmatchedDistinct, geoPoint,
+        // Omitted when there is no second endpoint, so every existing chart's options object
+        // is unchanged rather than gaining an undefined key.
+        ...(geoPointDest ? { geoPointDest } : {}),
         // Survives a refusal that placed nothing — see geoPointRefused. Omitted when empty so
         // the ordinary case adds no bytes.
         ...(rolesRefused.length ? { geoPointRefused: rolesRefused } : {}),

@@ -163,6 +163,25 @@ export interface RenderOptions {
         rolesBackfilled?: string[];
         rolesRefused?: string[];
     } | null;
+    // THE ROUTE'S OTHER END (origin-destination flow map, 2026-08-15). Identical shape to
+    // geoPoint, produced by the identical resolver: on a flow map `geoPoint` describes the
+    // ORIGINS and this describes the DESTINATIONS. Null/absent on every other chart, which
+    // is also how a chart knows it is drawing routes rather than points.
+    //
+    // Annotate from BOTH, separately. An arc is only as honest as its WORSE endpoint, and
+    // the two ends routinely resolve at different tiers — a table of city-to-country
+    // shipments places every origin exactly and every destination on a country anchor. One
+    // blended count would claim a precision neither end has and hide which half to fix.
+    geoPointDest?: {
+        precision: GeoPointPrecision | null;
+        precisionCounts: Record<GeoPointPrecision, number>;
+        coarseExamples: string[];
+        unplaced: number;
+        unplacedExamples: string[];
+        ambiguousRows: number;
+        rolesBackfilled?: string[];
+        rolesRefused?: string[];
+    } | null;
     // Point-map mark-count ceiling (Format > Data "Max Map Points", default 1000).
     // The eligibility gate refuses to OFFER a point-map type above this many rows, but
     // a CACHED chart's row count is fixed at generation time while this dial can be

@@ -41,6 +41,10 @@ export interface ChartHostConfig {
         rows: any[][];
         geoUnmatched?: { count: number; examples: string[] };
         geoPoint?: RenderOptions["geoPoint"];
+        /** The DESTINATION endpoint's report on an origin-destination flow map — promoted
+         *  into options exactly like geoPoint, so a host that hands over the whole payload
+         *  gets both ends annotated without knowing the field exists. */
+        geoPointDest?: RenderOptions["geoPointDest"];
         /** Provenance the MCP stamps into data.sample.json. `hostContract` is checked
          *  against HOST_CONTRACT_VERSION so a major-version drift is LOUD, not silent. */
         meta?: { hostContract?: string; chart?: string };
@@ -443,6 +447,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // Same promotion for point maps: without it the chart cannot say which rows it
             // could not place, or that a "city" dot is really a state centroid.
             if (resolved.geoPoint === undefined && data.geoPoint) resolved = { ...resolved, geoPoint: data.geoPoint };
+            // The route's OTHER end. Promoted separately rather than folded into geoPoint:
+            // an arc is only as honest as its worse endpoint, and a chart that cannot tell
+            // which end is coarse cannot say so.
+            if (resolved.geoPointDest === undefined && data.geoPointDest) resolved = { ...resolved, geoPointDest: data.geoPointDest };
             try {
                 renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
             } catch (err) {

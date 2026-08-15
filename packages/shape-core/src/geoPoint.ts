@@ -137,8 +137,8 @@ type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: numb
 // The ZIP-3 GEOMETRY is fetched, and that is not an inconsistency: it serves ONE chart type,
 // it is 941 KB rather than 93, and losing it offline was weighed and accepted for that lane
 // alone. This table serves every point map. If package size forces the question again the
-// split is in git history at v0.5.5 — but the durable answer is storageV2Service (2.2 item
-// 1), which would move the GEOMETRY out first and could take this with it.
+// split is in git history at v0.5.5 — but the durable answer is a hosted-asset service, which
+// would move the GEOMETRY out first and could take this with it.
 //
 // A host that genuinely needs a different gazetteer can still supply one: registerCityTable
 // REPLACES what is bundled here.

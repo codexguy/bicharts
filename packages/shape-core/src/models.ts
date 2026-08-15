@@ -332,7 +332,7 @@ export type LLMClientHints =
         // applies even to an explicit chart-type pick, since it bounds mark count, not
         // aesthetics. Undefined on older clients → server falls back to its own default.
         maxMapPoints?: number,
-        // LEVEL OF DETAIL (2.2 item 72): "High" | "Medium" | "Low", or absent for "Leave to
+        // LEVEL OF DETAIL: "High" | "Medium" | "Low", or absent for "Leave to
         // visual". How much of the data the viewer wants to SEE - every observation as its own
         // mark, the distribution, or one mark per category.
         //
@@ -579,7 +579,21 @@ export type LLMRequestCodeResult =
         pointStateColumn?: string,
         pointZipColumn?: string,
         pointLatColumn?: string,
-        pointLonColumn?: string
+        pointLonColumn?: string,
+        // Also a PLACEMENT of last resort since the country precision tier, not only a
+        // narrowing constraint on city matching. The server has named it since 2026-08-02.
+        pointCountryColumn?: string,
+        // THE ROUTE'S SECOND ENDPOINT (origin-destination flow map, 2026-08-15). The six
+        // fields above name the ORIGIN and these name the DESTINATION; the host resolves each
+        // through the SAME cascade and appends __geoLatD__/__geoLonD__/__geoPrecisionD__ beside
+        // the origin's three. Null on every other chart, which is also how the client knows to
+        // bind a route rather than a point.
+        destPointCityColumn?: string,
+        destPointStateColumn?: string,
+        destPointZipColumn?: string,
+        destPointLatColumn?: string,
+        destPointLonColumn?: string,
+        destPointCountryColumn?: string
     };
 export type GetLicenseStatusResult =
     {
