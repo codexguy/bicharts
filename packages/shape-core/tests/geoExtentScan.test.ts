@@ -9,9 +9,8 @@ import type { LLMColumnWithValue } from "../src/models";
 const col = (name: string, dataType: string, isMeasure = false): LLMColumnWithValue =>
     ({ name, dataType, isMeasure } as LLMColumnWithValue);
 
-// Privacy level 20 ("Detailed Stats") is the product default and the tier the geo signals
-// actually ship at — see the note on the detection block, and the finding recorded with it:
-// below 20 no geoKind is emitted at all, so no map is ever offered.
+// Privacy level 20 ("Detailed Stats") is the product default; the geo signals themselves are
+// UNGATED — see the tier test at the bottom, which pins the rule that resolved it.
 function scan(cols: LLMColumnWithValue[], rows: any[][], pl = "20") {
     const it = new IndexedText();
     it.setColumns(cols);
@@ -139,5 +138,47 @@ describe("getGeoExtent", () => {
             ["Chicago", 41.88, -87.63, 30],
         ]);
         expect(it.getGeoExtent()).toEqual(it.getGeoExtent());
+    });
+});
+
+// THE PRIVACY TIER DOES NOT GATE SHAPE SIGNALS — the standing rule, pinned (2026-08-16).
+//
+// The geo signals lived inside the detailed-stats gate for a month, so a user who TIGHTENED
+// privacy silently lost every map: no geoKind emitted, no gate fired, nothing reported a signal
+// that was never computed. The rule that resolved it: the client establishes the exact, needed
+// data SHAPE and ships that — a signal is privacy-friendly when it is opaque to every single
+// source value, whatever the tier. Everything asserted here passes that test (enums,
+// percentages, booleans, small integers); the tier keeps gating what a value could be read
+// from (actual values, samples, per-column stats).
+describe("geo signals ship at every privacy tier", () => {
+    const COUNTRY_ROWS = (() => {
+        const rows: any[][] = [];
+        for (let i = 0; i < 12; i++) rows.push([["US", "CA", "MX"][i % 3], 100 + i]);
+        return rows;
+    })();
+
+    for (const pl of ["0", "10", "20"]) {
+        it(`geoKind + region fields at privacy level ${pl}`, () => {
+            const { stats } = scan([col("Country", "String"), col("Revenue", "Decimal", true)],
+                COUNTRY_ROWS, pl);
+            const c = stats.find(s => s.name === "Country")!;
+            expect(c.geoKind).toBe("country-iso2");
+            expect(c.geoMatchPct).toBe(100);
+            expect(c.dominantGeoRegion).toBe("north-america");
+            expect(c.geoRegionCount).toBe(1);
+        });
+    }
+
+    it("the tier still gates what it always gated — values", () => {
+        // The point of the rule is a DISTINCTION, not a blanket un-gating: lowering the tier
+        // must still withhold anything a source value survives into.
+        const { stats } = scan([col("Country", "String"), col("Revenue", "Decimal", true)],
+            COUNTRY_ROWS, "10");
+        const c = stats.find(s => s.name === "Country")!;
+        expect(c.formatSignature).toBeUndefined();
+        expect((c as any).safeDistinctValues).toBeUndefined();
+        const r = stats.find(s => s.name === "Revenue")!;
+        expect(r.avgValue).toBeUndefined();
+        expect(r.lowValue).toBeUndefined();
     });
 });

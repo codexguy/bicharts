@@ -908,46 +908,6 @@ export class IndexedText implements IValueCollection {
                         }
                     }
                 }
-                // GEO detection. Emits only a SUMMARY (geoKind enum + match percent +
-                // ambiguity bool), never raw values — the same privacy class as
-                // isTemporal. Matches the full distinct set against ISO / USPS / ZIP /
-                // FIPS vocabularies; the column name breaks code collisions.
-                //
-                // CORRECTED 2026-08-15 — this comment used to claim the detection "runs
-                // UNCONDITIONALLY ... so it isn't gated to pl>=20". It is not
-                // unconditional: this whole function is inside `if (pl >= 20)`, so at
-                // privacy levels 0 and 10 NO geoKind is emitted, the server's geo gates
-                // never fire, and no map is offered at all — silently, because nothing
-                // reports a signal that was never computed. 20 is the product default so
-                // most users are unaffected, but a user who TIGHTENS privacy loses every
-                // map and is told nothing.
-                //
-                // Whether the detection should move out of the gate is a privacy decision
-                // rather than a code cleanup — the emitted summary is enum-only, which is
-                // the argument for moving it, but "share less" plausibly means "offer
-                // fewer inferences" too. Left as-is deliberately; the comment now
-                // describes what the code does instead of what it was meant to do.
-                const geo = detectGeo(topcatEntries.map(e => e[0]), col.name, locale);
-                if (geo !== null) {
-                    col.geoKind = geo.geoKind;
-                    col.geoMatchPct = geo.geoMatchPct;
-                    if (geo.geoAmbiguous) col.geoAmbiguous = true;
-                    // WHICH MAP FITS, for a country column. Same privacy class as the kind
-                    // above — a region enum and a percentage, never a value — and computed
-                    // here because this is the only place that already holds every distinct
-                    // value WITH its row count. The weighting is the point: forty US rows and
-                    // one Japanese row is a US dataset, and counting distinct values alone
-                    // would call it 50/50 global and frame it as a world map.
-                    if (geo.geoKind.indexOf("country") === 0) {
-                        const reg = summarizeCountryRegionsWeighted(
-                            topcatEntries as ReadonlyArray<readonly [string, number]>);
-                        if (reg) {
-                            col.dominantGeoRegion = reg.dominantGeoRegion;
-                            col.dominantGeoRegionPct = reg.dominantGeoRegionPct;
-                            col.geoRegionCount = reg.regionCount;
-                        }
-                    }
-                }
             }
             if (sorted.length >= 8 && (col.dataType === "Integer" || col.dataType === "Decimal")) {
                 const pick = (p: number) => sorted[Math.floor((sorted.length - 1) * p)];
@@ -957,6 +917,44 @@ export class IndexedText implements IValueCollection {
                     p75: pick(0.75),
                     p95: pick(0.95)
                 };
+            }
+        }
+
+        // GEO detection — UNCONDITIONAL, outside the pl>=20 gate above, and the history of
+        // this placement is worth its length. The block was WRITTEN as unconditional (its
+        // original comment said so) but LIVED inside the gate, so at privacy levels 0 and 10
+        // no geoKind was emitted, the server's geo gates never fired, and no map was ever
+        // offered — silently, because nothing reports a signal that was never computed.
+        //
+        // The standing rule that resolves it (2026-08-16): the client does everything it can
+        // to establish the exact, needed data SHAPE and ships that — a signal is
+        // privacy-friendly when it is opaque to every single source value, regardless of the
+        // privacy tier. Everything emitted here passes that test: geoKind is an enum,
+        // geoMatchPct and dominantGeoRegionPct are percentages, geoAmbiguous is a bool, the
+        // region fields are an enum and two small integers. No source value survives into any
+        // of them. The tier keeps gating what it always gated — actual values, samples,
+        // per-column stats a value could be read from.
+        if (!col.isMeasure && vals.size > 0) {
+            const geoEntries = Array.from(vals.entries()).sort((a, b) => b[1] - a[1]);
+            const geo = detectGeo(geoEntries.map(e => e[0]), col.name, locale);
+            if (geo !== null) {
+                col.geoKind = geo.geoKind;
+                col.geoMatchPct = geo.geoMatchPct;
+                if (geo.geoAmbiguous) col.geoAmbiguous = true;
+                // WHICH MAP FITS, for a country column. Computed here because this is the
+                // only place that already holds every distinct value WITH its row count, and
+                // the weighting is the point: forty US rows and one Japanese row is a US
+                // dataset, and counting distinct values alone would call it 50/50 global and
+                // frame it as a world map.
+                if (geo.geoKind.indexOf("country") === 0) {
+                    const reg = summarizeCountryRegionsWeighted(
+                        geoEntries as ReadonlyArray<readonly [string, number]>);
+                    if (reg) {
+                        col.dominantGeoRegion = reg.dominantGeoRegion;
+                        col.dominantGeoRegionPct = reg.dominantGeoRegionPct;
+                        col.geoRegionCount = reg.regionCount;
+                    }
+                }
             }
         }
     }
