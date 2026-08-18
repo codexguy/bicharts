@@ -20,7 +20,7 @@ function pairStat(cols: LLMColumnWithValue[], colName: string, otherName: string
 
 describe("IndexedText categoricalPairStats — distinctCombinations", () => {
     // Models the exact shape that motivated this field (2026-07-27, Dendrogram investigation,
-    // RELEASE-2.2-PLAN.md item 15): a hierarchy where a child-level NAME legitimately repeats
+    // RELEASE-PLAN.md item 15): a hierarchy where a child-level NAME legitimately repeats
     // under different parents ("P" appears under Category X, Y, AND Z — cf. "Accessories"
     // under both Computing and Women in product_category_tree.csv). A single column's own
     // DistinctCount cannot see this; only a real pairwise count can.

@@ -201,7 +201,7 @@ export type LLMColumnWithValue =
         // (Department,Category,Subcategory) leaf count was 40 — 4 subcategory NAMES
         // legitimately repeat under different parent categories, which only a real
         // pairwise count (not a single column's cardinality) can see. Consumption is
-        // v2.2 (RELEASE-2.2-PLAN.md item 15); this ships the fact now so it exists.
+        // v2.2 (RELEASE-PLAN.md item 15); this ships the fact now so it exists.
         categoricalPairStats?: { otherColumn: string, fillPct: number, determinesOther: boolean, minCellCount?: number, distinctCombinations?: number }[]
         // NESTING DIRECTION (2026-06-18). determinesOther is bidirectional; this resolves it:
         // when THIS column 1:1-determines a STRICTLY coarser column, THIS column is NESTED
