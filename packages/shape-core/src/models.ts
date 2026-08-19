@@ -393,6 +393,12 @@ export type LLMRequestCode =
         // charge — syncing the user's own edit is free (verified server-side
         // against owned unlocked clones).
         editSync?: boolean,
+        // RECOVERY POLL (2026-08-19, from a production incident). A client that lost the transport
+        // mid-generate - or re-mounted with a persisted pending-generate marker -
+        // asks for the version that generate would have produced (genNew:false,
+        // version:N). With this flag the server only ever FETCHES: a miss comes
+        // back as isVersionNotFound, never as a fresh (billed) generation.
+        fetchOnly?: boolean,
         model?: string,
         // Requested renderer — the "Render Type" setting ("" / VISUAL = leave to
         // visual, or explicit D3 / PLOTLY / PYMATPLOT / VEGA).
@@ -534,6 +540,15 @@ export type LLMRequestCodeResult =
         // The client shows a coherent "daily device limit" message instead of the
         // contradictory "Freemium: 0% used" banner. 2026-06-21.
         isRateLimited?: boolean,
+        // Seconds until the per-device window would accept the next generate, when
+        // isRateLimited came from that tier and the wait is known (servers from 2026-08-19).
+        // The errorMessage already says it in words; this lets a client render a local
+        // clock time and know that retrying inside the chain is pointless.
+        retryAfterSeconds?: number,
+        // A version FETCH found no such version (the input exists without it, or -
+        // fetchOnly - no input at all). "Not there YET" for the recovery poll, as a
+        // flag rather than a sentence to parse. Servers from 2026-08-19.
+        isVersionNotFound?: boolean,
         creditBalanceBefore: number,
         creditCost: number,
         outputHash: string,
