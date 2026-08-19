@@ -118,6 +118,129 @@ function isYyyymmdd(v: number): boolean {
     return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
 }
 
+// FULL CALENDAR DATES STORED AS TEXT (2026-08-19). A CSV import, a text-typed model column, a
+// locale the host did not recognise - the date arrives as a String and every value-level
+// temporal signal above misses it, because TEMPORAL_PERIOD_RE wants a PERIOD (a year, a
+// quarter, a month) and these are DAYS. Genesis: a real user's project schedule with four
+// date columns as text - nothing saw a date, every time chart was ineligible, and the user
+// got a network diagram whose nodes were dates.
+//
+// Two questions are answered here, and they are different:
+//   (1) IS it a date?  - a value is a full date when it has three numeric fields that fit
+//       year / month / day in one of the shapes below, with a FOUR-digit year. Two-digit
+//       years are not accepted: "12/05/24" has too many readings to call a date safely.
+//   (2) HOW is it read? - ISO (year first) is unambiguous. For "a/b/yyyy" the ORDER is decided
+//       by the values when any value can decide it (a first field over 12 is a day, a second
+//       field over 12 is a month), and by the host locale otherwise - en-US reads month
+//       first, the rest of the world day first. A column can be a date (answer 1) whose order
+//       stays undecided by its values (answer 2); the locale breaks that tie, because that is
+//       what a human reading the same column would do.
+//
+// The result is a strptime / d3.timeParse specifier ("%d/%m/%Y") rather than an enum, because
+// that one vocabulary is read verbatim by d3.timeParse AND by Python's strptime and pandas
+// to_datetime - one field, every renderer. A pattern is opaque to every source value, so it
+// ships at every privacy tier.
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?Z?)?$/;
+const YMD_SLASH_RE = /^(\d{4})([\/.])(\d{1,2})\2(\d{1,2})$/;
+const DMY_OR_MDY_RE = /^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+
+function monthFirstLocale(locale?: string): boolean {
+    // The month-first convention is, in practice, the United States (and a few of its
+    // neighbours that follow its forms). Everything else - including en-GB, en-AU, en-IN,
+    // every es-*, every de-*, fr-*, pt-* - reads day first. A missing locale is read as
+    // day first because most of the world is.
+    const l = (locale || "").toLowerCase();
+    return l === "en-us" || l === "en" || l.startsWith("en-us-") || l === "en-ph" || l === "en-bz";
+}
+
+export interface TextDateDetection {
+    /** strptime / d3.timeParse specifier, e.g. "%d/%m/%Y". */
+    pattern: string;
+    /** How the day/month order was settled: by a value that decided it, or by the locale. */
+    orderFrom: "iso" | "values" | "locale";
+}
+
+// Examines the distinct values of one column. Returns null unless at least 80% of the
+// sampled values are full dates that agree on ONE shape (the same separator, the same
+// field order), mirroring the period branch's 80% floor so a stray "TBD" does not sink a
+// real date column and a mostly-free-text column cannot sneak in on a few dates.
+export function detectTextDatePattern(values: Iterable<string>, locale?: string): TextDateDetection | null {
+    let n = 0;
+    let iso = 0, isoWithTime = 0, isoWithSeconds = 0;
+    let ymd = 0; let ymdSep = "";
+    let dmyOrMdy = 0; let dmSep = ""; let dmWithTime = 0; let dmWithSeconds = 0;
+    let firstOver12 = 0, secondOver12 = 0;   // evidence for the a/b/yyyy order
+    let shapeConflict = false;
+
+    for (const raw of values) {
+        if (raw == null) continue;
+        const s = String(raw).trim();
+        if (s === "") continue;
+        n++;
+        let m: RegExpExecArray | null;
+        if ((m = ISO_DATE_RE.exec(s))) {
+            const mo = +m[2], d = +m[3];
+            if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                iso++;
+                if (m[4] !== undefined) isoWithTime++;
+                if (m[6] !== undefined) isoWithSeconds++;
+            }
+        } else if ((m = YMD_SLASH_RE.exec(s))) {
+            const mo = +m[3], d = +m[4];
+            if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                if (ymdSep && ymdSep !== m[2]) shapeConflict = true;
+                ymdSep = m[2];
+                ymd++;
+            }
+        } else if ((m = DMY_OR_MDY_RE.exec(s))) {
+            const a = +m[1], b = +m[3];
+            // Both fields must be plausible as SOME day/month reading, or it is not a date.
+            if (a >= 1 && a <= 31 && b >= 1 && b <= 31 && (a <= 12 || b <= 12)) {
+                if (dmSep && dmSep !== m[2]) shapeConflict = true;
+                dmSep = m[2];
+                dmyOrMdy++;
+                if (a > 12) firstOver12++;
+                if (b > 12) secondOver12++;
+                if (m[5] !== undefined) dmWithTime++;
+                if (m[7] !== undefined) dmWithSeconds++;
+            }
+        }
+        if (n >= 200) break;   // a long column has told us what it is well before this
+    }
+    if (n < 2) return null;
+    const hits = iso + ymd + dmyOrMdy;
+    if (hits / n < 0.8) return null;
+    // The column must agree on ONE shape: mixed ISO and slash dates are two columns' worth
+    // of formats in one, and a single pattern would misparse one of them silently.
+    const shapes = (iso > 0 ? 1 : 0) + (ymd > 0 ? 1 : 0) + (dmyOrMdy > 0 ? 1 : 0);
+    if (shapes !== 1 || shapeConflict) return null;
+
+    if (iso > 0) {
+        // Time-of-day is part of the pattern only when EVERY dated value carries it; a
+        // mixed column is read to the day, which every value supports.
+        if (isoWithTime === iso) {
+            return { pattern: isoWithSeconds === iso ? "%Y-%m-%dT%H:%M:%S" : "%Y-%m-%dT%H:%M", orderFrom: "iso" };
+        }
+        return { pattern: "%Y-%m-%d", orderFrom: "iso" };
+    }
+    if (ymd > 0) {
+        return { pattern: `%Y${ymdSep}%m${ymdSep}%d`, orderFrom: "iso" };
+    }
+    // a/b/yyyy - settle the order. Values decide when they can; both directions claiming
+    // is a column that is not one consistent date shape at all.
+    if (firstOver12 > 0 && secondOver12 > 0) return null;
+    let dayFirst: boolean;
+    let orderFrom: TextDateDetection["orderFrom"];
+    if (firstOver12 > 0) { dayFirst = true; orderFrom = "values"; }
+    else if (secondOver12 > 0) { dayFirst = false; orderFrom = "values"; }
+    else { dayFirst = !monthFirstLocale(locale); orderFrom = "locale"; }
+    const date = dayFirst ? `%d${dmSep}%m${dmSep}%Y` : `%m${dmSep}%d${dmSep}%Y`;
+    if (dmWithTime === dmyOrMdy) {
+        return { pattern: date + (dmWithSeconds === dmyOrMdy ? " %H:%M:%S" : " %H:%M"), orderFrom };
+    }
+    return { pattern: date, orderFrom };
+}
+
 // A localized "<month> <year>" / "<year> <month>" period, using the SAME Intl month
 // lookup the unshredder uses (Spanish "Ene 2024", German "Januar-2024", Polish "Luty 2024").
 // The numeric TEMPORAL_PERIOD_RE already covers English + all-numeric forms.
@@ -176,14 +299,20 @@ export function classifyTemporal(args: {
     if (args.sampleValues) {
         const monthMap = args.locale ? monthLookupFor(args.locale) : null;
         let n = 0, hit = 0;
+        const seen: string[] = [];
         for (const v of args.sampleValues) {
             if (v == null || v === "") continue;
             n++;
             const s = String(v).trim();
+            seen.push(s);
             if (TEMPORAL_PERIOD_RE.test(s) || looksLikeLocalizedMonthPeriod(s, monthMap)) hit++;
             if (n >= 60) break;
         }
         if (n >= 2 && hit / n >= 0.8) return true;
+        // FULL DATES AS TEXT (2026-08-19) - "2024-03-15", "15/03/2024". The period regex is
+        // for periods; a day-level date stored as a string is a time axis too, and the
+        // commonest way a real date arrives untyped. Same 80% floor, same sample.
+        if (detectTextDatePattern(seen, args.locale) !== null) return true;
     }
     return false;
 }
@@ -531,6 +660,16 @@ export class IndexedText implements IValueCollection {
                 sampleValues: vals.keys(),
                 locale,
             });
+            // A DATE STORED AS TEXT carries its reading (2026-08-19): the flag says "time
+            // axis", the pattern says how to parse it. String columns only - a DateTime needs
+            // no pattern, and a measure is never a date. UNGATED: a strptime specifier is
+            // opaque to every source value, so it ships at every privacy tier - which is the
+            // whole point, because the generation that motivated this ran at the strictest
+            // one, where not a single value reaches the server. See models.ts.
+            if (col.isTemporal && col.dataType === "String" && !col.isMeasure) {
+                const det = detectTextDatePattern(vals.keys(), locale);
+                if (det) col.temporalTextPattern = det.pattern;
+            }
             this.updateColumnStats10(pl, col, nonblank, vals, prec, maxval, minval);
             this.updateColumnStats20(pl, arr, nonblank, sumval, col, datalen, hastime, minval, maxval, prec, vals, locale);
 

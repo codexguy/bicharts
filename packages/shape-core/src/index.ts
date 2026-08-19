@@ -18,11 +18,13 @@ export type { IValueCollection } from "./indexedText";
 // columns before ingest).
 export {
     classifyTemporal,
+    detectTextDatePattern,
     classifyAdditivity,
     classifyNumericValueNature,
     hostAggHint,
     isIdentifierName,
 } from "./indexedText";
+export type { TextDateDetection } from "./indexedText";
 
 // The wire contract + column value shape.
 export type { LLMColumnWithValue } from "./models";

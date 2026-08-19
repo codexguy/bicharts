@@ -45,6 +45,26 @@ export type LLMColumnWithValue =
         // NeedsTimeProgression) trust this flag first, falling back to their own
         // DateTime/year-int heuristic for older clients that don't send it.
         isTemporal?: boolean,
+        // A DATE STORED AS TEXT, and how to read it (2026-08-19). Set ONLY on a String
+        // column whose values are full calendar dates - "2024-03-15", "15/03/2024",
+        // "03.15.2024" - so that isTemporal above is true for a reason the server and the
+        // generated code can ACT on. Genesis: a real user's project schedule arrived with
+        // four date columns typed as text (a CSV import, Spanish locale); nothing
+        // recognised them as dates, every time-based chart was ineligible, and the user
+        // was handed a network diagram whose nodes were dates. A boolean alone would have
+        // made Gantt ELIGIBLE and then left the code parsing "15/03/2024" with
+        // new Date(), which is Invalid Date - so the PATTERN ships with the flag.
+        //
+        // The value is a strptime / d3.timeParse specifier - "%Y-%m-%d", "%d/%m/%Y",
+        // "%m/%d/%Y", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S" - because that one vocabulary is
+        // read verbatim by d3.timeParse AND by Python's strptime / pandas to_datetime,
+        // so a single field serves every renderer. Day/month ORDER is resolved from the
+        // values when any value decides it (a first field over 12 is a day), and from
+        // the host locale otherwise (en-US reads month-first; the rest of the world
+        // day-first). A pattern, never a value: it is opaque to every source cell and
+        // ships at EVERY privacy tier. Absent on DateTime columns (they need no
+        // parsing), on measures, on period strings ("2024-Q1"), and on older clients.
+        temporalTextPattern?: string,
         // Client-measured ADDITIVITY of a measure column (2026-06-05). The client
         // has the real cell values, so it can MEASURE whether a measure stacks /
         // sums meaningfully instead of guessing from the column NAME (the old
