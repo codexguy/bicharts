@@ -513,7 +513,45 @@ export type LLMRequestCode =
         // get legacy behavior (server uses `modifiers` as-is). See
         // LLMClientHints for the full schema and which modifiers the
         // resolver owns vs which stay client-emitted.
-        clientHints?: LLMClientHints
+        clientHints?: LLMClientHints,
+        // WHAT THE READER WAS LOOKING AT WHEN THEY CHOSE.
+        //
+        // The server can re-run its own picker, but it cannot reproduce the list a reader
+        // actually saw: weights, sysparms, the catalogue and the RDF strength all move, and
+        // dev and prod deliberately run different values. So a replay months later answers a
+        // different question than the one in front of the reader. This carries the answer they
+        // had.
+        //
+        // Set ONLY when the "what fits?" shortlist was open before this generate. Absent means
+        // the reader generated without consulting it - which is itself the finding, and is why
+        // absent must never be confused with "nothing was offered".
+        offeredShortlist?: LLMOfferedShortlist
+    };
+
+// The shortlist as SHOWN, not as recomputed. See LLMRequestCode.offeredShortlist.
+export type LLMOfferedShortlist =
+    {
+        // How long before this generate the list was displayed. A pick acted on immediately and
+        // one acted on four minutes later are different behaviours, and neither timestamp
+        // survives anywhere else.
+        ageMs?: number,
+        // TOTAL types offered - deliberately separate from charts.length, which is truncated.
+        // A reader shown 37 options and one shown 2 had different experiences even when the
+        // top of both lists looks the same, and that difference is the whole reason this
+        // exists - a tile offering two types and one offering thirty are not the same
+        // product, and no other field records which one happened.
+        count?: number,
+        // The type picked in the modal, or absent when the reader skipped. NOT the type the
+        // generation ended up using - the server may substitute, and the difference between
+        // "what they asked for" and "what they got" is exactly what this makes visible.
+        picked?: string,
+        // The head of the list as rendered, in the order rendered. Truncated by the sender;
+        // `count` carries the untruncated total.
+        charts?: {
+            name?: string,
+            rank?: number,
+            score?: number,
+        }[],
     };
 
 // Result of POST /api/LLMChart/qualify (2026-07-10): the FULL list of chart
