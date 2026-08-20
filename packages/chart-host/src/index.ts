@@ -52,3 +52,7 @@ export { captureSvgSnapshot, svgToDataUrl, svgNaturalSize, rasterizeSvgToPngData
 // dialog; the DECIDING lives here so every host resolves ambiguity the same way - toward the
 // outcome that costs the user nothing.
 export { shouldReview, buildReviewWire, bareBase64, actionFor, type ReviewGate, type ReviewWire, type ReviewVerdict, type ReviewAction } from "./review";
+// The consent half of the same flow. It briefly existed once per host, and two copies of
+// "every ambiguous answer is No" is how two hosts come to charge differently for the same
+// click. Hosts localize strings and skin the chrome; the resolution rule is not an option.
+export { askApplyImprovements, type ReviewDialogOptions, type ReviewDialogText } from "./reviewDialog";
