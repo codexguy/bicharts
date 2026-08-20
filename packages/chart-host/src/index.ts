@@ -42,3 +42,13 @@ export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./s
 // has to be ordinary render() source that travels the same path as generated code.
 export { planTrivialChart, compileTrivialSource, type TrivialPlan, type TrivialShapeKind } from "./trivial";
 
+// The rendered chart AS PIXELS. Telemetry thumbnails, the AI vision review, an export
+// affordance - anything that wants "what the user is actually looking at" goes through the
+// same serialize/rasterize/fallback path, and its traps (CSS-only sizing, non-latin1 labels,
+// hung decodes) are solved once here rather than once per host.
+export { captureSvgSnapshot, svgToDataUrl, svgNaturalSize, rasterizeSvgToPngDataUrl, type SnapshotOptions } from "./snapshot";
+// The AI vision review's pure decision core: when to review, what the wire looks like, and
+// how a verdict maps to an action. Hosts own the capture, the POST, and the ask-the-user
+// dialog; the DECIDING lives here so every host resolves ambiguity the same way - toward the
+// outcome that costs the user nothing.
+export { shouldReview, buildReviewWire, bareBase64, actionFor, type ReviewGate, type ReviewWire, type ReviewVerdict, type ReviewAction } from "./review";
