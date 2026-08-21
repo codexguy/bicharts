@@ -56,3 +56,11 @@ export { shouldReview, buildReviewWire, bareBase64, actionFor, type ReviewGate, 
 // "every ambiguous answer is No" is how two hosts come to charge differently for the same
 // click. Hosts localize strings and skin the chrome; the resolution rule is not an option.
 export { askApplyImprovements, type ReviewDialogOptions, type ReviewDialogText } from "./reviewDialog";
+
+// Where the "what fits?" list breaks into groups. The server decides the ORDER; hosts have to
+// notice the boundaries and label them identically, or a preview block floated to the top reads
+// as the highest-ranked charts in one host and as an unlabelled oddity in the other.
+export {
+    qualifyGroupHeadingFor, newQualifyGroupState,
+    type QualifyGroupRow, type QualifyGroupState, type QualifyGroupHeading,
+} from "./qualifyGroups";
