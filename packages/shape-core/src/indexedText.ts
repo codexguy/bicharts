@@ -410,7 +410,7 @@ export function classifyAdditivity(args: {
     // dropped in a measure well, so "Sum of LatencyMs" tells us what the host did, not what
     // the quantity is. Asserting "additive" here made a default outrank the one real signal
     // about the quantity — its NAME — because the server trusts a client flag over its own
-    // name test (LLMLog 48991: latency stayed stackable, so Streamgraph ranked #1 on a
+    // name test (observed: latency stayed stackable, so Streamgraph ranked #1 on a
     // measure nobody would ever total). Return "unknown" and let the server decide: it owns
     // the intensive-name list, so there is no second copy here to drift out of sync, and its
     // fallback still lands on Additive for the ordinary "Sum of Revenue" case — identical
@@ -764,8 +764,20 @@ export class IndexedText implements IValueCollection {
             let ssTotal = 0; for (const x of xs) ssTotal += (x - grand) * (x - grand);
             if (ssTotal <= 1e-12) return;   // constant measure: eta² undefined
             const out: { otherColumn: string; eta2: number }[] = [];
+            // SPREAD, alongside location. eta² answers "do the group MEANS
+            // differ"; a ridgeline/violin/box-by-group is equally justified when the group
+            // WIDTHS differ at an identical mean, and eta² is blind to that. Computed in the
+            // same grouping loop so the extra cost is one IQR per group.
+            const spreadOut: { otherColumn: string; spreadRatio: number }[] = [];
+            const iqrOf = (v: number[]) => {
+                if (v.length < 4) return NaN;              // too few points for a stable IQR
+                const s = [...v].sort((a, b) => a - b);
+                const at = (p: number) => s[Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))))];
+                return at(0.75) - at(0.25);
+            };
+            const iqrAll = iqrOf(xs);
             for (const d of discrimDims) {
-                const groups = new Map<string, { s: number; n: number }>();
+                const groups = new Map<string, { s: number; n: number; vals: number[] }>();
                 for (const row of this._rows) {
                     const mv = row[mi];
                     if (mv === null || mv === undefined || mv === "") continue;
@@ -773,13 +785,24 @@ export class IndexedText implements IValueCollection {
                     if (isNaN(n)) continue;
                     const key = this.STR(row[d.idx]) + "";
                     const g = groups.get(key);
-                    if (g) { g.s += n; g.n++; } else groups.set(key, { s: n, n: 1 });
+                    if (g) { g.s += n; g.n++; g.vals.push(n); }
+                    else groups.set(key, { s: n, n: 1, vals: [n] });
                 }
                 let ssBetween = 0;
                 for (const g of groups.values()) { const gm = g.s / g.n; ssBetween += g.n * (gm - grand) * (gm - grand); }
                 out.push({ otherColumn: d.name, eta2: Math.round((ssBetween / ssTotal) * 10000) / 10000 });
+
+                // Only groups with enough points to have a meaningful IQR take part; a group of
+                // two would otherwise report a spread of ~0 and fake a difference.
+                const iqrs: number[] = [];
+                for (const g of groups.values()) { const q = iqrOf(g.vals); if (!isNaN(q)) iqrs.push(q); }
+                if (iqrs.length >= 2 && isFinite(iqrAll) && iqrAll > 1e-9) {
+                    const ratio = (Math.max(...iqrs) - Math.min(...iqrs)) / iqrAll;
+                    spreadOut.push({ otherColumn: d.name, spreadRatio: Math.round(ratio * 10000) / 10000 });
+                }
             }
             if (out.length > 0) c.groupDiscrimination = out;
+            if (spreadOut.length > 0) c.spreadDiscrimination = spreadOut;
         });
 
         // MEASURE-INDEPENDENCE pass (Layer C, 2026-06-20). For each PAIR of measures,

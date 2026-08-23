@@ -241,6 +241,19 @@ export type LLMColumnWithValue =
         // (ratios + a column name the server has, never raw values).
         relativeDispersion?: number
         groupDiscrimination?: { otherColumn: string, eta2: number }[]
+        // SPREAD-DISCRIMINATION (2026-08-23). eta2 above asks whether the group
+        // MEANS differ, and that is only half of what a distribution-comparison chart
+        // (ridgeline / violin / box by group) exists to show. Two groups can share a mean
+        // exactly and still have completely different SHAPES — one tight, one long-tailed —
+        // and drawing that IS the point. So eta2 alone cannot separate "these groups are
+        // indistinguishable" from "same centre, different width", and a picker rule built on
+        // eta2 alone would demote the second case wrongly.
+        //   spreadDiscrimination[dim].spreadRatio = (max_g IQR_g − min_g IQR_g) / IQR_overall
+        // 0 ⇒ every group has the same dispersion; larger ⇒ the groups differ in WIDTH even
+        // where their centres agree. Same contract as its sibling: a pure ratio plus a column
+        // name the server already has, thresholds applied SERVER-side, low-cardinality dims
+        // only, privacy-safe at every tier because no value is recoverable from it.
+        spreadDiscrimination?: { otherColumn: string, spreadRatio: number }[]
         // minGroupCount (2026-06-20): row count of this column's RAREST value — the
         // sparsest group a single-categorical distribution split (box/violin) would
         // draw. Pair-wise sparsity is on categoricalPairStats.minCellCount.
