@@ -432,6 +432,18 @@ export type LLMRequestCode =
         // version:N). With this flag the server only ever FETCHES: a miss comes
         // back as isVersionNotFound, never as a fresh (billed) generation.
         fetchOnly?: boolean,
+        // RECOVERY POLL, KEYED BY CORRELATION (2026-08-26, from a production incident). A
+        // version number is NOT a safe handle for a recovery. `version` is numbered per data
+        // SHAPE on the server, not per visual, so a client that lost its answer and asks for
+        // "my version 1" is asking for the first chart ANYONE ever made against that data.
+        // Seen in production: the fetch returned an unrelated chart generated weeks earlier by
+        // a different visual, and the client painted it as the user's own. When this is set on
+        // a fetchOnly request the server ignores `version` and returns the generation THIS
+        // correlation produced: the only handle a client owns that nobody else's activity can
+        // move. A miss is isVersionNotFound, as before. Servers from 2026-08-26; older servers
+        // ignore it and fall back to `version`, which is why the client sends both and
+        // verifies servedCorrelationId on the way back.
+        fetchCorrelationId?: string,
         model?: string,
         // Requested renderer — the "Render Type" setting ("" / VISUAL = leave to
         // visual, or explicit D3 / PLOTLY / PYMATPLOT / VEGA).
@@ -620,6 +632,12 @@ export type LLMRequestCodeResult =
         // fetchOnly - no input at all). "Not there YET" for the recovery poll, as a
         // flag rather than a sentence to parse. Servers from 2026-08-19.
         isVersionNotFound?: boolean,
+        // The correlation id of the generation this response actually SERVED (2026-08-26).
+        // Set on a correlation-keyed recovery fetch so the client can prove the chart it is
+        // about to paint is its own before painting it - the check that would have stopped the
+        // mis-recovery described above. Absent from older servers, and from ordinary generates
+        // where the client already knows (it minted the correlation for this very request).
+        servedCorrelationId?: string,
         creditBalanceBefore: number,
         creditCost: number,
         outputHash: string,
