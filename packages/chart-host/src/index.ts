@@ -64,3 +64,14 @@ export {
     qualifyGroupHeadingFor, newQualifyGroupState,
     type QualifyGroupRow, type QualifyGroupState, type QualifyGroupHeading,
 } from "./qualifyGroups";
+
+// What a click on a mark AMOUNTS to (2026-08-25). The dimming already tells the reader WHICH
+// marks they picked; in a host with no cross-filter to answer into — Excel, MCP, React — that
+// dimming is also the ONLY response, so the selection has to state its own numbers. Arithmetic
+// only, and deliberately so: it runs over the payload every consumer already holds at draw
+// time, which is what makes "all chart types" true by construction and hands the capability to
+// already-cached charts retroactively. The chrome is thin and per host; this is not.
+export {
+    computeSelectionCard, normaliseAggregation,
+    type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
+} from "./selectionCard";
