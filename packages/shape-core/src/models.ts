@@ -605,6 +605,58 @@ export type LLMQualifyResult =
             // named neither, since the renderer is chosen at generation time.
             renderer?: string,
             language?: string,
+            // SUITABILITY, not selection weight (2026-08-08). `false` marks a type the
+            // ontology calls INFEASIBLE for this shape - a required channel cannot be
+            // properly satisfied - while the structural gates still admit it. Those are
+            // the charts that render but MISLEAD, so they belong in a second, quieter
+            // section rather than interleaved with the good answers.
+            //
+            // Deliberately NOT derived from `score`: score is a SELECTION weight and
+            // carries a non-traditional boost, an appeal dial, recency and telemetry, so
+            // it demotes plain traditional charts on purpose. A suitability question
+            // needs a suitability signal. Absent = not assessed; render one flat list.
+            recommended?: boolean,
+            // Present when the type qualifies only after the data is AGGREGATED, and
+            // names the projection that gets it there. Those entries are ranked against
+            // the projected shape, so their ranks restart at 1 - group them under their
+            // own heading or the numbering reads as a contradiction.
+            viaProjection?: string,
+            // The catalogue marks this type as newer and less proven. NOT a gate: a
+            // preview type is offered, ranked, pickable and rendered exactly like any
+            // other - the difference is only that the list says so. Absent on older
+            // servers, and an unbadged list is the correct degradation.
+            isPreview?: boolean,
+            // Why this type moved, in the reader's own terms, when a level-of-detail
+            // preference is set. A short sentence - "shows every observation; you asked
+            // for a summary". The demoted type STAYS in the list carrying its reason and
+            // never disappears: a nudge that silently removes options is a gate wearing a
+            // nudge's clothes. Absent when nothing was asked for or this type is
+            // unaffected.
+            detailNote?: string,
+        }[],
+        // Active chart types that did NOT qualify, and why - added 2026-08-27.
+        //
+        // `charts` above answers "what fits". A host that shows the reader the WHOLE
+        // catalogue - a dropdown, a gallery - also has to say something about everything
+        // else, and greying an entry with no explanation is the reason this exists: the
+        // server knows the reason, computes it already, and used to keep it.
+        //
+        // ABSENT, NOT EMPTY, when the server did not assess refusals, so an older server
+        // and a newer one that declined are the same shape on the wire. Populated on the
+        // renderer-agnostic qualify - the one a host with a greyable list actually calls.
+        refused?: {
+            name?: string,
+            // A whole sentence naming ONE requirement the data provably fails - "an Arc
+            // diagram needs at least 2 category fields, and this data has 1 (Region)".
+            //
+            // ABSENT IS A REAL ANSWER AND HOSTS MUST HANDLE IT. The server walks only the
+            // chart's DECLARED structural requirements and stays silent when the blocker
+            // turns on a runtime signal it cannot see, because a fabricated reason is
+            // worse than none. The row still ships: "refused, and we cannot say which
+            // requirement did it" is a different message from silence, and a host needs
+            // the membership to know the greying is an ANSWER rather than a decoration
+            // that failed to load.
+            reason?: string,
         }[],
     }
 
