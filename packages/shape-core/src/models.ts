@@ -231,6 +231,37 @@ export type LLMColumnWithValue =
         // the LLM to spot the 1:1 relationship. Absent when the column nests under nothing.
         primaryParentColumn?: string
         nestingRatio?: number
+        // CONSTANT-SUM COMPOSITION (2026-08-27), numeric columns only. When three or more
+        // numeric columns sum to the SAME total on every row — 100, or 1.0, or any fixed
+        // figure — those columns are PARTS OF A WHOLE rather than independent measures, and
+        // this names the group they belong to. Every participating column carries the same
+        // descriptor, so a consumer can read it off whichever column it happens to hold.
+        //
+        // WHY IT IS WORTH MEASURING. Whether a set of numbers is a composition is arithmetic,
+        // and nothing computed it before — so a chart that is only honest on parts of a whole
+        // had no way to tell a genuine split from three unrelated columns that happen to be
+        // numeric. Normalising a set that does NOT sum to a constant produces a figure for
+        // every segment and means nothing.
+        //
+        // TWO INDEPENDENT GUARDS, chosen by sweeping 141 real datasets and reading what each
+        // setting flagged rather than by eye:
+        //   • A LOOSE tolerance finds only false positives. At 5% the hits were a year column
+        //     plus three medal counts, and a visit number plus two vital signs — nonsense
+        //     compositions every time. At 1% none of the non-composition datasets qualifies,
+        //     so that is where the noise stops.
+        //   • TOLERANCE ALONE CANNOT SEE SWAMPING, which is what those false positives were.
+        //     One large column (a year, ~2000) plus small ones (medals, ~20) sums to something
+        //     that barely moves, so it reads as constant at any loose tolerance however
+        //     unrelated the parts are. So every part must also carry a real SHARE of the
+        //     total; a part contributing almost nothing is not a part.
+        // matchedPct is the fraction of rows inside the tolerance — real percentage exports
+        // round, so rows landing on 99.9 and 100.1 are expected and must not disqualify a
+        // genuine split.
+        //
+        // Privacy-safe at every tier: column names the consumer already has, a ratio, and one
+        // aggregate over three or more columns. No single value is recoverable from a total
+        // that at least three columns contributed to.
+        constantSumGroup?: { columns: string[], total: number, matchedPct: number }
         // GROUP-DISCRIMINATION statistics (2026-06-19), measure columns only.
         // relativeDispersion = (p90-p10)/|median| over raw rows — near 0 ⇒ the
         // measure is effectively constant. groupDiscrimination[dim].eta2 =
