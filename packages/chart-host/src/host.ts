@@ -19,7 +19,7 @@
 // (contract v1.1 candidate, replay-gated) — deliberately not invented here.
 import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS,
     XFILTER_REFRESH_EVENT, CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
-    CONTAINER_SLOT_INITIAL_XF_MARK, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
+    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
     MARK_SELECTED_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
     HOST_CONTRACT_VERSION } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
@@ -260,6 +260,35 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         }
     }
     let raw: ResolveOptionsInput = { ...(config.options ?? {}) };
+    // SESSION VIEW-STATE (contract 1.5.0). A host that supplies no setUiState gets one, backed
+    // by a store PARKED ON THE CONTAINER — so a chart's resting knob, base date or focus path
+    // survives a host that is destroyed and re-created on the same element every draw. The Excel
+    // add-in does that on every resize (debounced) and every cell edit, so without this a slider
+    // reset whenever the pane moved. The element outlives the host object, which is why the
+    // element is where the store belongs; the Flippable deck already parks its own state there
+    // for the same reason. The Power BI visual supplies its own persisted pair and is untouched.
+    //
+    // REPLACE semantics, matching the visual: setUiState(s) is the whole new bag, not a merge, so
+    // a chart wanting to keep sibling keys reads options.uiState and merges itself. destroy()
+    // deliberately leaves the store alone — it dies with the element, which is the session the
+    // add-in means.
+    if (typeof raw.setUiState !== "function") {
+        const holder = container as unknown as Record<string, unknown>;
+        const existing = holder[CONTAINER_SLOT_UI_STATE];
+        const store = (existing && typeof existing === "object")
+            ? existing as Record<string, unknown>
+            : (holder[CONTAINER_SLOT_UI_STATE] = {} as Record<string, unknown>);
+        // A caller-supplied uiState SEEDS an empty store once; on later re-creations the store
+        // is what the reader actually left behind, and a stale seed must not overwrite it.
+        if (raw.uiState && typeof raw.uiState === "object" && Object.keys(store).length === 0)
+            Object.assign(store, raw.uiState as Record<string, unknown>);
+        raw.uiState = store;
+        raw.setUiState = (s: unknown) => {
+            if (!s || typeof s !== "object") return;
+            for (const k of Object.keys(store)) delete store[k];
+            Object.assign(store, s as Record<string, unknown>);
+        };
+    }
     let resolved = resolveOptions(raw);
     let renderFn: RenderFn | null = config.renderFn ?? null;
     let destroyed = false;

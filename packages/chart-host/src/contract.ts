@@ -21,7 +21,15 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.4.0";
+export const HOST_CONTRACT_VERSION = "1.5.0";
+// 1.5.0 (2026-08-29): SESSION VIEW-STATE. A host that supplies no setUiState now gets one,
+// backed by a store parked on the CONTAINER (CONTAINER_SLOT_UI_STATE). Additive, and invisible
+// to generated code, which already reads options.uiState / options.setUiState - but it is what
+// lets a chart's resting knob, base date or focus path survive a host that destroys and
+// re-creates itself on the same element every draw. The Excel add-in does exactly that, on
+// every resize and every cell edit, so until now any such state reset whenever the pane moved.
+// A caller supplying its own pair (the Power BI visual, which persists into the report) wins
+// outright and is untouched.
 // 1.4.0 (2026-08-04): __geoPrecision__. Point-map payloads gain a per-row column naming
 // the tier that placed each row ("latlon" | "city" | "zip3" | "state" | "country", null
 // when unplaced). Additive - the aggregate geoPoint counts are unchanged - but it is what
@@ -70,6 +78,12 @@ export const XFILTER_REFRESH_EVENT = "llm-xfilter-refresh";
 export const CONTAINER_SLOT_ANIM_STOP = "__llmAnimStop";           // call before unmount/re-render
 export const CONTAINER_SLOT_XF_CLEAR = "__llmXfClear";             // call to clear the chart's selection
 export const CONTAINER_SLOT_INITIAL_XF_MARK = "__llmInitialXfMark"; // a mark to apply as the initial filter
+
+// Session view-state, parked on the container by the HOST (not by generated code) when the
+// caller supplies no setUiState. The element outlives the host object in every re-creating
+// host, so the element is where a session's resting state belongs. See HOST_CONTRACT_VERSION
+// 1.5.0 and the store install in createChartHost.
+export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
 
 // ---- Selection AFFORDANCE (what a selection LOOKS like) ----
 //
