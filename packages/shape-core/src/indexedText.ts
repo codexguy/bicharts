@@ -937,6 +937,67 @@ export class IndexedText implements IValueCollection {
             }
         }
 
+        // WIDE-CHILD NESTING pass (2026-08-29). The pass above can only
+        // see columns of PAIR_CAP distinct values or fewer, because it materialises a value-pair
+        // grid. That ceiling is right for the pair STATISTICS it computes and wrong for the
+        // NESTING question, where the child is routinely the widest column in the table: a street
+        // inside a city, a borrower inside a block, a SKU inside a category. The server requires a
+        // measured parent-child pair before it will call a hierarchy chart feasible, so a
+        // containment nobody looked for reads as a containment that is not there - and it is not a
+        // rare shape. A street name inside a city, over a table of deliveries, is exactly this
+        // case: thousands of streets, hundreds of cities, and a real hierarchy that the pair pass
+        // could not see because both columns are far too wide for a value grid.
+        //
+        // ONE ROW WALK PER (child, parent), stopping at the first contradiction, so the cost is
+        // bounded by rows x candidates rather than by the value grid the pass above builds.
+        //
+        // PER-ROW-UNIQUE CHILDREN ARE EXCLUDED, and that exclusion is the substance of the rule
+        // rather than a performance guard. When every row carries its own value the column
+        // 1:1-determines EVERY other column in the table, so "determines" has stopped measuring
+        // containment and started measuring row identity - the observation-ID trap, one pass over.
+        // A row-per-borrower ID column is refused here for that reason even though the domain
+        // relationship is real; a street name repeated across its city's rows is accepted, because
+        // the repetition is what makes the containment observable.
+        const WIDE_CHILD_MAX_PARENTS = 6;   // coarsest-first, so the cheapest parents are tried
+        const wideRows = this._rows.length;
+        for (let ci = 0; ci < this._cols.length; ci++) {
+            const child = this._cols[ci];
+            if (child.isMeasure || child.primaryParentColumn) continue;
+            const childCard = child.distinctCount ?? 0;
+            if (childCard <= PAIR_CAP) continue;              // the pass above owns these
+            if (wideRows > 0 && childCard >= wideRows) continue;   // row identity, not containment
+
+            const parents: number[] = [];
+            for (let pi = 0; pi < this._cols.length; pi++) {
+                if (pi === ci) continue;
+                const p = this._cols[pi];
+                if (p.isMeasure) continue;
+                const pCard = p.distinctCount ?? 0;
+                if (pCard < 2 || pCard >= childCard) continue;   // a parent is STRICTLY coarser
+                parents.push(pi);
+            }
+            parents.sort((a, b) => (this._cols[a].distinctCount ?? 0) - (this._cols[b].distinctCount ?? 0));
+
+            for (const pi of parents.slice(0, WIDE_CHILD_MAX_PARENTS)) {
+                const seenParent = new Map<string, string>();
+                let determines = true;
+                for (const row of this._rows) {
+                    const cv = this.STR(row[ci]) + "";
+                    const pv = this.STR(row[pi]) + "";
+                    const prev = seenParent.get(cv);
+                    if (prev === undefined) seenParent.set(cv, pv);
+                    else if (prev !== pv) { determines = false; break; }
+                }
+                if (!determines) continue;
+                // Coarsest candidate first, so the first parent that survives IS the coarsest -
+                // the same choice the low-cardinality pass records.
+                const pCard = this._cols[pi].distinctCount ?? 0;
+                child.primaryParentColumn = this._cols[pi].name;
+                child.nestingRatio = Math.round((pCard / childCard) * 100) / 100;
+                break;
+            }
+        }
+
         // CONSTANT-SUM COMPOSITION pass (2026-08-27). Do three or more numeric columns sum to
         // the SAME total on every row? That makes them parts of a whole rather than independent
         // measures, which is the difference between a composition chart being honest and being
