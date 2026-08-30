@@ -689,6 +689,29 @@ export type LLMQualifyResult =
             // that failed to load.
             reason?: string,
         }[],
+        // THE HEADLINE for an empty `charts`, when the server can state a FACT instead of
+        // the host guessing - added 2026-08-30. A finished sentence, or absent.
+        //
+        // WHY. Every host led its no-fit branch with a fixed guess about FIELDS: the Power
+        // BI visual said "Try binding at least one measure and one category", the Excel
+        // pane said "try including a category column and a numeric one". Driven at a
+        // 1236x29 tile, that advice sat directly above this server's own evidence saying
+        // the real cause was the 29 pixels - over a binding that already HAD a measure and
+        // two categories. One wrong sentence in three places, each free to disagree with
+        // the gate that produced the evidence beneath it.
+        //
+        // ABSENT WHENEVER NOTHING CERTAIN CAN BE SAID, which is precisely what makes it
+        // safe to LEAD with. It is not a summary of `refused` and not a vote among those
+        // reasons - it cannot be, because the refusal walk reports the FIRST failing
+        // requirement per type, so a type that is also too small may be reported as missing
+        // a field. It answers a separate question that has a definite answer: is the tile
+        // below the floor of the SMALLEST type in the catalogue? Below that, no field
+        // combination can help.
+        //
+        // A HOST THAT IGNORES IT IS STILL CORRECT, just less specific: absent means "keep
+        // your own wording", so an older client and a server that declined to claim
+        // anything are the same shape on the wire.
+        noFitSummary?: string,
     }
 
 export type LLMRequestCodeResult =
