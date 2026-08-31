@@ -75,3 +75,11 @@ export {
     computeSelectionCard, normaliseAggregation,
     type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
 } from "./selectionCard";
+
+// A DECLARED mark that cannot receive a click is not a mark (2026-08-30). Two codegen habits
+// leave a tagged element unhittable: an inert <g> whose painted children are all
+// pointer-events:none (the canonical legend swatch), and a painted element that is itself
+// pointer-events:none. createChartHost runs this after every render; it is exported for a host
+// that drives render() itself. Additive, idempotent, and incapable of turning an UNtagged
+// element into a target, so it cannot regress a chart that already works.
+export { ensureCrossfilterHitTargets, type HitTargetReport } from "./hitTargets";

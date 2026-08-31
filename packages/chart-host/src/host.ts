@@ -29,6 +29,7 @@ import { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver } from "./selection";
+import { ensureCrossfilterHitTargets } from "./hitTargets";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -324,10 +325,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
    a host SHOULD be able to theme. Found 2026-07-26 in the React demo, on a chart that
    renders perfectly inside Power BI. */
 .${HOST_CONTAINER_CLASS} { line-height: normal; letter-spacing: normal; }
+/* BACKGROUND MARKS ARE NOT DATA. A mark whose ${ROW_IDX_ATTR} is EMPTY has no rows in the
+   CURRENT frame — an animated map's region before its country enters the series. Every
+   affordance below therefore skips it: brightening or dimming it manufactures a shade
+   that appears in no legend, and at 25% grey over white it comes out LIGHTER than plain
+   land, which reads as a real bottom-of-scale value rather than as absence. The guard is
+   exactly [${ROW_IDX_ATTR}=""] — an ABSENT attribute is a tagged companion layer (an
+   anomaly badge, a highlight stroke) and must keep dimming with its datum. */
 .${HOST_CONTAINER_CLASS} .${MARK_CLASS} { cursor: pointer; transition: opacity 120ms ease-in-out, filter 100ms ease-in-out; }
-.${HOST_CONTAINER_CLASS} .${MARK_CLASS}:hover { filter: brightness(1.1) drop-shadow(0 0 1.5px rgba(0,0,0,0.5)) !important; }
-.${HOST_CONTAINER_CLASS}:has(.${MARK_CLASS}:hover) .${MARK_CLASS}:not(:hover) { opacity: 0.55; }
-.${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}:not(.${MARK_SELECTED_CLASS}) {
+.${HOST_CONTAINER_CLASS} .${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover { filter: brightness(1.1) drop-shadow(0 0 1.5px rgba(0,0,0,0.5)) !important; }
+.${HOST_CONTAINER_CLASS}:has(.${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover) .${MARK_CLASS}:not(:hover):not([${ROW_IDX_ATTR}=""]) { opacity: 0.55; }
+.${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}:not(.${MARK_SELECTED_CLASS}):not([${ROW_IDX_ATTR}=""]) {
     opacity: var(${DIM_OPACITY_VAR}, ${DIM_OPACITY_DEFAULT}) !important;
 }
 .${HOST_CONTAINER_CLASS} .${LEGEND_MARK_CLASS} { cursor: pointer; }
@@ -537,6 +545,14 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             } catch (err) {
                 throw explainRenderFailure(err, d3);
             }
+            // A DECLARED mark that cannot receive a click is not a mark. Heal the two
+            // habits that leave one unhittable (an inert <g> whose painted children are
+            // pointer-events:none, and a painted element that is itself pointer-events:
+            // none) before anything tries to click it. Purely additive and idempotent —
+            // it only ever makes clickable something the chart already tagged. It matters
+            // most for the FURNITURE: a legend swatch or an axis / group header is exactly
+            // what a chart tends to draw as inert text, and exactly what a reader tries.
+            ensureCrossfilterHitTargets(container, doc);
             // The chart just rebuilt its DOM, so the selection classes are gone. Repaint
             // them or a cross-filtered chart loses its own highlight on every restyle.
             paintSelection();
