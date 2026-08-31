@@ -1,6 +1,39 @@
 // @bicharts/chart-host public surface (Phase A: contract + defaults; Phase B: geometry +
 // shared payload; Phase C: the createChartHost runtime).
-export * from "./contract";
+// NAMED, never `export *`, and that is load-bearing rather than stylistic.
+//
+// A consumer compiling with TypeScript's `moduleResolution: NodeNext` - the setting a
+// Power BI custom visual and any modern Node build use - resolves this package through
+// `exports`, lands on dist/types/index.d.ts, and then follows the re-exports inside it.
+// The NAMED forms below resolve; a bare `export * from "./contract"` does NOT, and it
+// fails SILENTLY: every symbol in contract.ts simply appears not to exist, with an error
+// that names the symbol rather than the star. So the entire interaction grammar - the
+// mark classes, the row-index attribute, the container slots, the affordance classes -
+// was unimportable from a NodeNext consumer for as long as this line was a star, which is
+// exactly why one of them ended up keeping its own hand-copied constants. Discovered
+// 2026-08-30 when a consumer tried to stop duplicating them.
+//
+// Keep this list explicit and keep it in sync with contract.ts. `npm run typecheck` fails
+// on a name that no longer exists; a name ADDED to contract.ts and not added here is the
+// quiet direction, so add both together.
+export {
+    HOST_CONTRACT_VERSION,
+    GEO_POINT_PRECISIONS,
+    MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS, ROW_IDX_ATTR,
+    XFILTER_REFRESH_EVENT,
+    CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
+    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE,
+    HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS,
+    DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
+    chartOwnsTimeline, periodTickSuppressesFeedback,
+    ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX,
+    ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
+    ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
+    COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
+    FLIP_MODE_DEFAULT,
+    type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode,
+    type ColorScaleScope, type RenderOptions,
+} from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // GEOMETRY IS NOT RE-EXPORTED HERE ON PURPOSE. "./geo" statically imports ~1.3 MB of
 // generated FeatureCollections, so re-exporting it from the package entry made every
