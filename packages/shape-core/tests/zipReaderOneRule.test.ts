@@ -1,6 +1,6 @@
 // 02108 IS 02108 HOWEVER IT ARRIVES.
 //
-// Joel, 2026-08-02: "the matcher to the gazette needs to do proper zip matching: it should
+// 2026-08-02: "the matcher to the gazette needs to do proper zip matching: it should
 // work for 02108 no matter how the source is interpreted (e.g. integer 2108)."
 //
 // A ZIP reaches us in whatever shape the pipeline left it, and none of these are exotic:

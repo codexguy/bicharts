@@ -1,6 +1,6 @@
 // AN AMBIGUOUS TOKEN IS SETTLED BY THE COMPANY IT KEEPS.
 //
-// Joel, 2026-08-02: "CA" should be read as "Canada" when there are other countries that
+// 2026-08-02: "CA" should be read as "Canada" when there are other countries that
 // identify in the same column (e.g. US, DE, IT), and as "California" when there are other
 // states that identify in the same column (e.g. CO, FL, WA). Plus "a minimum ratio of
 // successful matches against the gazette (e.g. 97% - if data quality is worse, it's the
@@ -55,7 +55,7 @@ describe("the gazetteer match ratio", () => {
     });
 
     it("the ratio is over NON-BLANKS, so placeholders do not dilute it", () => {
-        // Joel: "my 97% is for non-blanks, by the way." A blank is not a value and does not
+        // The field report: "my 97% is for non-blanks, by the way." A blank is not a value and does not
         // get to vote against the column. Four countries and a placeholder is a clean country
         // column with a hole in it — 100% of what is actually there — not an 80% one.
         expect(countryMatchPct(["US", "DE", "IT", "JP", "N/A"])).toBe(100);

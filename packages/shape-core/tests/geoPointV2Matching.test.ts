@@ -1,4 +1,4 @@
-// GAZETTEER V2 (Joel 2026-08-02) — the unified City+State+Country table and the COMMON
+// GAZETTEER V2 (2026-08-02) — the unified City+State+Country table and the COMMON
 // matching rules every point-map type shares:
 //
 //   • one list, per-row MAP-KIND flags (N = North America map, W = World map); each map
@@ -10,7 +10,7 @@
 //   • multiple survivors = AMBIGUOUS -> not plotted, reported as info. No population
 //     tie-break, anywhere, any more.
 //
-// The W set is EVERY city with pop >= 250k, worldwide and uncapped (Joel 2026-08-02 — the
+// The W set is EVERY city with pop >= 250k, worldwide and uncapped (2026-08-02 — the
 // original 1000-row cap bit at 576k and could not place Lisbon, Antwerp or Nuremberg by
 // name). Assertions here follow the BUILT table, not the aspiration; re-capping will move
 // some. Uncapping made exactly 16 world names newly ambiguous while making 2,708 newly

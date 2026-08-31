@@ -88,7 +88,7 @@ describe("resolveGeoPoint — tier 2, city (+state)", () => {
     });
 
     it("an ambiguous BARE city name is REFUSED and reported — never guessed (v2)", () => {
-        // v2 matching (Joel 2026-08-02): "if multiple possible matches are found, that
+        // v2 matching (2026-08-02): "if multiple possible matches are found, that
         // should be a call-out … and it should not be plotted." This replaced the old
         // largest-city tie-break, which put every bare Springfield in Missouri with a
         // flag — a guess with a footnote is still a guess.

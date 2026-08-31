@@ -96,7 +96,7 @@ export interface RenderPayload {
      * reason ("only 95.5% of values are country identifiers") and no way to say it.
      *
      * Present whenever a point binding was attempted and something was refused, whether or not
-     * a map came out of it. Joel 2026-08-02: "be sure to provide feedback in the output that
+     * a map came out of it. 2026-08-02: "be sure to provide feedback in the output that
      * helps call out exceptions / decisions like this, if possible."
      */
     geoPointRefused?: string[];
@@ -174,8 +174,8 @@ function resolvePointChannel(
     // silent and total: a World point map over country-only data took this branch as false,
     // never called buildGeoPointColumns, appended no __geoLat__/__geoLon__, and the chart
     // drew its own "no coordinate data" empty state — while the resolver was perfectly
-    // capable of placing every row. Seen on dev LLMLogID 38905 (world_country_metrics,
-    // 44 countries, server binding {"country":"Country"}).
+    // capable of placing every row. Seen on a real country-metrics dataset: 44 countries,
+    // server binding {"country":"Country"}.
     const hasPointBind = !!bind && !!(bind.city || bind.state || bind.zip || bind.country || (bind.lat && bind.lon));
     if (hasPointBind) {
         const p = bind!;

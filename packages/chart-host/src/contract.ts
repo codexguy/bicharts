@@ -279,11 +279,11 @@ export interface RenderOptions {
     //   flipIntervalMs — 0 (the default) is MANUAL ONLY, so a deck never moves unless someone
     //                    asks it to; a non-zero value is clamped chart-side to 500..120000.
     // BOTH ARE BOOLEAN/NUMBER VALUES, never callbacks — a generated chart that treats flipSync
-    // as a subscription hook has misread this contract (dev 49020 did exactly that).
+    // as a subscription hook has misread this contract (a real consumer did exactly that).
     flipSync?: boolean;
     flipIntervalMs?: number;
     // WHERE THE FLIP CONTROLS LIVE, which turned out to be a different question from whether
-    // the cards move together (Joel 2026-08-13: "the ability to flip individual cards shouldn't
+    // the cards move together (2026-08-13: "the ability to flip individual cards shouldn't
     // necessarily stop being able to flip all together too"). flipSync conflated the two, so
     // gaining per-card arrows meant losing the deck-wide ones.
     //   "all"    — one control strip for the deck; every card shows the same face (the old true).

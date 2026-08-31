@@ -30,7 +30,7 @@
 // itself — ø, ł, đ, ı, æ, ß, þ, ð have no decomposition at all, so they survive into the
 // key and leave "København" unreachable from "Kobenhavn". Those are exactly the letters
 // Danish, Norwegian, Polish, Turkish, Vietnamese and Icelandic place names are full of.
-// (Joel 2026-08-02: "convert accented 'o' into just utf-8 'o' ... and that's it" — this
+// (2026-08-02: "convert accented 'o' into just utf-8 'o' ... and that's it" — this
 // map is the rest of that instruction, the part NFD can't do.) The multi-letter
 // expansions are the conventional transliterations, not inventions: ß→ss is how German
 // writes it without the letter, æ→ae and œ→oe likewise.

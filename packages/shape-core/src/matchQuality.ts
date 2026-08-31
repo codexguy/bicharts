@@ -15,7 +15,7 @@
 //
 //   That is NOT the same as demanding a byte-for-byte string. Resolving is done on NORMALIZED
 //   text and always has been — case-insensitive, diacritic-folded ("München" = "Munchen"),
-//   punctuation-flattened, and across the recorded alternates for a place (Joel, 2026-08-02:
+//   punctuation-flattened, and across the recorded alternates for a place (2026-08-02:
 //   "the match to the gazette can still use normalized strings... case-insensitive, diacritic
 //   friendly, common spellings accounted for"). What is refused is a PARTIAL match: a value
 //   that normalizes to something the gazetteer does not contain is unplaced, not placed
@@ -31,12 +31,12 @@
  * that column may claim a geographic role.
  *
  * One number for every role — city, state, ZIP, country, and the choropleth region detector
- * (Joel 2026-08-02: "I would prefer one constant, so maybe we make that 95 and apply to all").
+ * (2026-08-02: "I would prefer one constant, so maybe we make that 95 and apply to all").
  * Tune here and they all move together — except CITY, which has its own looser bar below for
  * a reason worth reading.
  *
- * 96 was tried first and SETTLED AT 95 the same day, on evidence rather than taste: Joel's own
- * world_country_metrics carries 42 clean countries and two deliberate junk rows, which is
+ * 96 was tried first and SETTLED AT 95 the same day, on evidence rather than taste: the reference
+ * dataset behind the request carries 42 clean countries and two deliberate junk rows, which is
  * 95.5% — a well-formed reference dataset landing half a point under its own bar. A cliff that
  * a curated 44-row table falls off is in the wrong place. 95 is still far too strict for a
  * column of something else to claim a role by accident (a wrong column scores near zero, not
@@ -57,7 +57,7 @@ export const ROLE_MATCH_PCT = 95;
 /**
  * Normalized tokens that mean "no value here".
  *
- * Blanks leave the DENOMINATOR — they are not failed matches (Joel: "my 97% is for
+ * Blanks leave the DENOMINATOR — they are not failed matches (the field report: "my 97% is for
  * non-blanks, by the way"). Forty countries and one "N/A" is a clean country column with a
  * hole in it, not a 97.6%-quality one, and the difference decides whether the map draws.
  *
@@ -102,7 +102,7 @@ export function isBlankLike(normalized: string): boolean {
 }
 
 /**
- * CITY is held LOWER, and deliberately so (Joel 2026-08-02: "maybe city is a good one to make
+ * CITY is held LOWER, and deliberately so (2026-08-02: "maybe city is a good one to make
  * lower - 80% even").
  *
  * The other roles are closed vocabularies. There are ~195 countries and ~90 admin1s in scope,

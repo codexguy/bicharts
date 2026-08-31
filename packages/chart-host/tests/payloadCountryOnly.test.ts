@@ -9,7 +9,7 @@
 // The failure was silent and complete: a World point map over country-only data — the exact
 // shape of the world_country_metrics dataset — produced no __geoLat__/__geoLon__ at all, and
 // the generated chart drew its own "No coordinate data available" while the resolver could
-// place all 44 rows. Dev LLMLogID 38905, 2026-08-02.
+// place all 44 rows. A real world_country_metrics dataset, 2026-08-02.
 //
 // The lesson generalises past `country`: a capability added to the resolver is invisible
 // until the gate that guards the resolver knows about it. The last test here is the guard
@@ -49,7 +49,7 @@ describe("a country-only point binding places rows", () => {
         }
         // France is the first row: a real coordinate, not a null and not 0/0. The value is
         // PARIS (48.85, 2.35) since the country tier became "the country's largest city"
-        // (Joel 2026-08-03); it was 47.3/2.9, a population-weighted centroid.
+        // (2026-08-03); it was 47.3/2.9, a population-weighted centroid.
         expect(row0(p, lat)).toBeCloseTo(48.85, 1);
         expect(row0(p, lon)).toBeCloseTo(2.35, 1);
 

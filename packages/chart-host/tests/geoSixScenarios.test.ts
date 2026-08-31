@@ -1,4 +1,4 @@
-// JOEL'S SIX, 2026-08-02. Asked as "confirm these tests would pass", so they are tests.
+// THE SIX FIELD SCENARIOS, 2026-08-02. Asked as "confirm these tests would pass", so they are tests.
 //
 // Each one walks the FULL host path for its map — detection of the column kind, then either
 // the choropleth join key or the point cascade — rather than poking the classifier directly,
@@ -121,7 +121,7 @@ describe("4. North America Bubbles cannot place Tokyo, and says so", () => {
         // 137E, on a map of North America - and counted as placed, so nothing said so.
         //
         // The map must DECLARE itself for the cascade to refuse on its behalf, which is what
-        // the visual now does (ctxRender passes "north-america" instead of nothing). An absent
+        // the visual now does (it passes "north-america" instead of nothing). An absent
         // mapKind still means "no basemap declared, do not filter", so MCP and React callers
         // that never had a map in mind keep the whole gazetteer.
         expect(resolveGeoPoint({ city: "Tokyo", country: "Japan", mapKind: "north-america" })).toBeNull();
@@ -168,7 +168,7 @@ describe("5. USA Choropleth by state uses the STATE column and ignores the city"
     });
 
     it("a state-only POINT binding lands on the state centre, and reports that tier", () => {
-        // The other half of Joel's "only State matters here, so pick center of state".
+        // The other half of "only State matters here, so pick center of state".
         const r = resolveGeoPoint({ state: "TX" }) as any;
         expect(r.precision).toBe("state");
         expect(r.lat).toBeGreaterThan(28); expect(r.lat).toBeLessThan(34);

@@ -1,4 +1,4 @@
-// PROPER BEHAVIOUR — the second set, same shape as Joel's six (2026-08-02).
+// PROPER BEHAVIOUR — the second set, same shape as the six field scenarios (2026-08-02).
 //
 // Written after scenario 4 turned out to be a bug rather than a bad expectation, on the view
 // that the useful test is the one stating what SHOULD happen for a whole scenario, end to end,
@@ -251,7 +251,7 @@ describe("16. a choropleth reports its holes rather than leaving them grey and u
 
 describe("17. a world map over ONE country refuses, and says which condition failed", () => {
     it("every row on the same centroid is not a map", () => {
-        // "World types yes, North America, yes, USA - no" (Joel), gated on the structural
+        // "World types yes, North America, yes, USA - no", gated on the structural
         // trait rather than a map-type allowlist: with one distinct country every row lands on
         // one dot, which is a picture of nothing regardless of which basemap is behind it.
         const rows = [

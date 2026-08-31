@@ -53,7 +53,7 @@ describe("geo_point_resolution_test.csv — the shipped test dataset", () => {
         const expected: Record<string, string | null> = {
             "city unambiguous": "city",
             "ambiguous city + state": "city",
-            // v2 (Joel 2026-08-02): multiple possible matches = NOT plotted + reported.
+            // v2 (2026-08-02): multiple possible matches = NOT plotted + reported.
             // The old behaviour placed these at the largest same-named city with a flag.
             "ambiguous city NO state": "AMBIGUOUS",
             "canada city + code": "city",

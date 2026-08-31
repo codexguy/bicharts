@@ -1,6 +1,6 @@
 // ONE THRESHOLD, ONE PLACE.
 //
-// Joel, 2026-08-02: "I would prefer one constant, so maybe we make that 95 and apply to all."
+// 2026-08-02: "I would prefer one constant, so maybe we make that 95 and apply to all."
 // This replaced three numbers that had drifted apart — 85 for the name roles, 100 for ZIP,
 // and an implicit 100 for country — each with its own rationale written at a different time.
 //
@@ -15,8 +15,8 @@ import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT } from "../src/matchQuality";
 const src = (f: string) => readFileSync(resolve(process.cwd(), "packages/shape-core/src", f), "utf8");
 
 describe("the role-identification threshold has a single source", () => {
-    it("is the value Joel set", () => {
-        // 95 (Joel 2026-08-02, after a day at 96). This assertion is the KNOB'S CONTRACT, not
+    it("is the value the contract sets", () => {
+        // 95 (2026-08-02, after a day at 96). This assertion is the KNOB'S CONTRACT, not
         // a behavioural guard — it exists so the number cannot drift without someone changing
         // it here on purpose. Editing it is the intended way to move the bar; editing anything
         // else in this file to make a failure go away is not.
@@ -28,7 +28,7 @@ describe("the role-identification threshold has a single source", () => {
     });
 
     it("CITY is deliberately looser, because city names are not a closed vocabulary", () => {
-        // Joel 2026-08-02: "maybe city is a good one to make lower - 80% even". Two numbers,
+        // 2026-08-02: "maybe city is a good one to make lower - 80% even". Two numbers,
         // still ONE file - the point was never a single value, it was a single place to tune.
         expect(CITY_ROLE_MATCH_PCT).toBe(80);
         expect(CITY_ROLE_MATCH_PCT).toBeLessThan(ROLE_MATCH_PCT);
@@ -66,7 +66,7 @@ describe("the role-identification threshold has a single source", () => {
         expect(doc).toMatch(/There is no ratio and no nearly/i);
         // And the other half, which is just as easy to lose: refusing a partial match is NOT
         // refusing normalization. Case, diacritics and recorded alternates all still resolve
-        // (Joel: "the match to the gazette can still use normalized strings").
+        // (the field report: "the match to the gazette can still use normalized strings").
         expect(doc).toMatch(/NORMALIZED/);
         expect(doc).toMatch(/diacritic/i);
     });

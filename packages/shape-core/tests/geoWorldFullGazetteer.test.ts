@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolveGeoPoint, buildGeoPointColumns } from "../src/geoPoint";
 
-// A WORLD MAP MAY DRAW EVERY CITY WE HAVE (Joel 2026-08-04: "every single city in the gazette
+// A WORLD MAP MAY DRAW EVERY CITY WE HAVE (2026-08-04: "every single city in the gazette
 // should be accessible by the world map - I mean, why not?").
 //
 // The row flags exist to keep a REGIONAL map's candidate set tight, which is real for North

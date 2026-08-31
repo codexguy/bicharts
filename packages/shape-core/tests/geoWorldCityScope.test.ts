@@ -1,6 +1,6 @@
 // THE GAZETTE IS TRUE NO MATTER THE CHART; THE MAP DECIDES WHICH SUBSET IT CAN DRAW.
 //
-// Joel, 2026-08-02: "I would expect the gazette entries name cities from across the world.
+// 2026-08-02: "I would expect the gazette entries name cities from across the world.
 // The NA map cities have a 'map uses' tag of NA. World map is a superset so they would be
 // tagged 'world'. Makes it easy to tell what subset is right to use, depending on the map."
 //
@@ -53,7 +53,7 @@ describe("a column of world cities is recognised as cities", () => {
 });
 
 describe("THE SCOPE IS THE FLOOR — no second threshold needed", () => {
-    // Joel, 2026-08-02, asked whether a basemap should need a minimum placeable share before
+    // 2026-08-02, asked whether a basemap should need a minimum placeable share before
     // it is offered at all: "no floor, but we should also be attentive to the chart type since
     // it NAMES the scope... you have a column with city names from all over the world and
     // evenly distributed over countries: that's not going to look like a city column to the

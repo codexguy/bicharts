@@ -119,7 +119,7 @@ describe("country changes NOTHING when absent or unrecognized", () => {
         expect(paris!.precision).toBe("country");
         expect(paris!.lon).toBeGreaterThan(0);          // Europe, not Ontario (-80)
         // 48.85 = PARIS. The country tier's point became the country's LARGEST CITY
-        // (Joel 2026-08-03); it was 47.3, a population-weighted centroid. This assertion
+        // (2026-08-03); it was 47.3, a population-weighted centroid. This assertion
         // pinned the old rule's coordinate, so moving it IS the change - see countryIndex
         // for why one stateable rule beat a centroid-that-sometimes-snaps.
         //
@@ -173,11 +173,11 @@ describe("the country ROLE", () => {
         expect(r.bind?.country).toBe("Country");
     });
 
-    // REVERSED 2026-08-02 (Joel). This asserted "country alone is never placeable", which was
+    // REVERSED 2026-08-02. This asserted "country alone is never placeable", which was
     // correct when written at 0.1.7 — country could only narrow a city match. The 0.4.2
     // COUNTRY precision tier made country-alone a real placement and this assertion was left
     // behind, which is why World (Bubbles) over country-only data drew an empty state from the
-    // day that tier shipped. Joel: "you can certainly use country alone - as long as the
+    // day that tier shipped. The field report: "you can certainly use country alone - as long as the
     // detection proves there IS a true country column", and "World types yes, North America,
     // yes, USA - no." Both conditions are asserted here.
     it("treats a DETECTED country column alone as placeable", () => {
@@ -213,7 +213,7 @@ describe("the country ROLE", () => {
     });
 });
 
-// The gazetteer is global; the MAP decides which readings are live (Joel 2026-08-02:
+// The gazetteer is global; the MAP decides which readings are live (2026-08-02:
 // "detection ought to be global… same code base, but different filters depending on chart
 // type. the gazette is 'true' no matter the chart, though.").
 //

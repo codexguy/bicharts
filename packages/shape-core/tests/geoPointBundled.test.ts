@@ -1,4 +1,4 @@
-// THE GAZETTEER IS BUNDLED, AND THAT IS THE FEATURE (Joel 2026-08-02).
+// THE GAZETTEER IS BUNDLED, AND THAT IS THE FEATURE (2026-08-02).
 //
 // This file replaces geoPointSplit.test.ts, which locked the opposite arrangement for about
 // an hour. The story is worth keeping, because the byte count argues for the split every

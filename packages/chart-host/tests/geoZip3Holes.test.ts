@@ -120,7 +120,7 @@ describe("ZIP-3 interior rings", () => {
     });
 
     it("the Big Island keeps its outline and loses its crater", () => {
-        // Joel's example. 967 is Hawaii county; its interior is volcano with no ZCTA.
+        // The reported example. 967 is Hawaii county; its interior is volcano with no ZCTA.
         const hi = US_ZIP3.features.find((f: any) => f.id === "967");
         expect(hi, "ZIP-3 967 is missing from the asset").toBeTruthy();
         expect(rings(hi).inner.length).toBe(0);

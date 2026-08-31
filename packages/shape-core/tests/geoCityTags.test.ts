@@ -1,4 +1,4 @@
-// CITY-LEVEL TAGS (Joel 2026-08-03: "having tags that can apply at the city level makes
+// CITY-LEVEL TAGS (2026-08-03: "having tags that can apply at the city level makes
 // sense and can be leveraged in follow-on prompt requests", after asking how "largest city"
 // is stored and whether capitals could be flagged).
 //

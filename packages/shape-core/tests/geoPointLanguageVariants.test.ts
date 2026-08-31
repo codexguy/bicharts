@@ -1,4 +1,4 @@
-// MULTILINGUAL CITY VARIANTS, second cut (Joel 2026-08-02): "I'd lean on normalization
+// MULTILINGUAL CITY VARIANTS, second cut (2026-08-02): "I'd lean on normalization
 // rules ... and I'd avoid using distance — convert accented 'o' into just utf-8 'o', and
 // that's it."
 //
@@ -24,7 +24,7 @@ describe("language-tagged variants open the right door", () => {
         const doors: Array<[string, number, number, string]> = [
             ["Wien", 16.37, 48.21, "German — the case a stem heuristic can NEVER reach (Wien/Vienna share nothing)"],
             ["Londres", -0.13, 51.51, "French/Spanish/Portuguese — alphabetically late, so first-K order missed it"],
-            ["München", 11.58, 48.14, "the local form, and the exact miss Joel reported"],
+            ["München", 11.58, 48.14, "the local form, and the exact miss that was reported"],
             ["Muenchen", 11.58, 48.14, "ASCII transliteration — a distinct key, not an accent fold"],
             ["Praha", 14.42, 50.09, "Czech"],
             ["Moskva", 37.62, 55.75, "Russian, romanized"],
@@ -39,7 +39,7 @@ describe("language-tagged variants open the right door", () => {
     });
 
     it("applies to the NORTH AMERICA map too — one rule, every map type", () => {
-        // Joel: "the rules I just described for lookup should apply to all map-based types
+        // The field report: "the rules I just described for lookup should apply to all map-based types
         // (common logic)". A Spanish-language report saying "Nueva York" is the NA-map
         // equivalent of a German one saying "Wien", and it resolves in the NA scope with no
         // country column and no world rows involved.

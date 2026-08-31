@@ -105,7 +105,7 @@ const MAX_DISTINCT_SCAN = 400;
  * countries through countryIso3, so detection that stops at three of them means a column of
  * European or Asian countries is not recognized as a country column at all, and the tier
  * that could place it never engages. That was the third guard behind the World (Bubbles)
- * empty state (dev LLMLogID 38905), after the two placeability gates.
+ * empty state (seen on a real 44-country dataset), after the two placeability gates.
  *
  * Detection and placement now read the SAME table, which is the only arrangement where
  * "we recognized it" and "we can place it" cannot disagree.
@@ -155,7 +155,7 @@ export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     const d = distinctNormalized(values);
     if (d.length === 0) return false;
 
-    // A MINIMUM RATIO against the gazetteer, not "every value" (Joel 2026-08-02: "there
+    // A MINIMUM RATIO against the gazetteer, not "every value" (2026-08-02: "there
     // probably needs to be a minimum ratio of successful matches against the gazette (e.g.
     // 97% - if data quality is worse, it's the user's responsibility to clean it)"). The old
     // all-or-nothing test meant one "N/A", one "Unknown" or one typo in an otherwise clean
@@ -164,7 +164,7 @@ export function looksLikeCountryColumn(values: Array<unknown>): boolean {
     // something else to claim the role by accident.
     if (countryMatchPct(values) < ROLE_MATCH_PCT) return false;
 
-    // AN AMBIGUOUS TOKEN IS SETTLED BY THE COMPANY IT KEEPS (Joel, same note): "CA" should
+    // AN AMBIGUOUS TOKEN IS SETTLED BY THE COMPANY IT KEEPS (same note): "CA" should
     // read as Canada beside US/DE/IT, and as California beside CO/FL/WA. Count only the
     // values that can mean ONE thing — those are the column's actual evidence — and let them
     // decide. {CA, DE, IT}: IT is a country and nothing else, DE and CA are both, so the sole
@@ -181,7 +181,7 @@ export function looksLikeCountryColumn(values: Array<unknown>): boolean {
 
 // The countries the NORTH-AMERICA scope can draw. A FILTER, not gazetteer truth: the
 // gazetteer knows every country regardless of which map is on screen, and a map decides which
-// of those readings are live for it (Joel 2026-08-02: "detection ought to be global… same code
+// of those readings are live for it (2026-08-02: "detection ought to be global… same code
 // base, but different filters depending on chart type. the gazette is 'true' no matter the
 // chart, though."). Defined in geoPoint and imported, not redeclared — the placement cascade
 // needs the same set to decide which countries it may place on which map, and a second copy of
@@ -510,9 +510,9 @@ export function resolvePointRoles(
     // other: resolveGeoPoint would happily place a country-only row while this refused to
     // hand it one, so the capability shipped unreachable. Symptom: a World point map over
     // country-only data drew "No coordinate data available" with a perfectly resolvable
-    // 44-country table behind it (dev LLMLogID 38905).
+    // 44-country table behind it (seen on a real dataset).
     //
-    // CONDITION 1 — DETECTION, not a hint (Joel 2026-08-02: "you can certainly use country
+    // CONDITION 1 — DETECTION, not a hint (2026-08-02: "you can certainly use country
     // alone - as long as the detection proves there IS a true country column"). A hinted
     // country role is carried above WITHOUT checking its values, which was safe while country
     // could only narrow: an unrecognized country is a no-op inside resolveGeoPoint. Now that
@@ -522,12 +522,12 @@ export function resolvePointRoles(
     // a narrowing constraint (it costs nothing); it just cannot be the thing that makes a
     // binding geocodable.
     //
-    // CONDITION 2 — the column must actually DISTINGUISH rows. Joel: "World types yes, North
+    // CONDITION 2 — the column must actually DISTINGUISH rows. The field report: "World types yes, North
     // America, yes, USA - no." Gated on the structural trait rather than a map-type allowlist,
     // because that is what the map-type answer is really about: on a US map every row is in
     // the US, so country-alone stacks the entire dataset on one centroid. Two or more resolvable
-    // countries is exactly the condition that makes the tier meaningful, and it gives Joel's
-    // three answers without new plumbing — GeoMapKind cannot even express "usa" today, so a
+    // countries is exactly the condition that makes the tier meaningful, and it gives all
+    // three reported answers without new plumbing — GeoMapKind cannot even express "usa" today, so a
     // literal per-map rule would be untestable AND would still miss a World map holding
     // single-country data, which is the same degenerate picture.
     const countryValues = out.country ? valuesOf(out.country) : [];

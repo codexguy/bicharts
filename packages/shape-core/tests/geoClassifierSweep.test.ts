@@ -1,4 +1,4 @@
-// THE SWEEP (Joel, 2026-08-02: "scrub the resolver, the classifier - all of it for defects
+// THE SWEEP (2026-08-02: "scrub the resolver, the classifier - all of it for defects
 // like the one you just found").
 //
 // The defect that prompted it — an unproven country HINT owning the role slot and blocking a
@@ -86,7 +86,7 @@ describe("one reader per concept, not one per caller", () => {
     });
 
     it("a typed placeholder is a blank in BOTH classifiers, not just the one", () => {
-        // Joel: "my 97% is for non-blanks... '-' and 'N/A' could be interpreted as blank."
+        // The field report: "my 97% is for non-blanks... '-' and 'N/A' could be interpreted as blank."
         // That was applied to the point-role classifier and not to detectGeo — the half that
         // decides whether a CHOROPLETH is offered — so the same column scored 100 on one path
         // and under the bar on the other.

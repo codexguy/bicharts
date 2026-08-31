@@ -227,7 +227,7 @@ export function detectGeo(
         const s = String(v).trim();
         if (s.length === 0) continue;
         // A TYPED PLACEHOLDER IS A BLANK, and a blank leaves the denominator rather than
-        // voting against the column (Joel 2026-08-02: "my 97% is for non-blanks... '-' and
+        // voting against the column (2026-08-02: "my 97% is for non-blanks... '-' and
         // 'N/A' could be interpreted as blank, as well"). That instruction was applied to the
         // point-role classifier and not to this one, which is the half that decides whether a
         // CHOROPLETH is offered at all — so a clean 20-country column with one "Unknown" in it
@@ -290,7 +290,7 @@ export function detectGeo(
         // BOTH SCOPES, because the gazetteer already knows the answer per row and this was
         // the only place still refusing to ask it. Every row carries a kind flag (N = the
         // North America basemap can draw it, W = the world one can, and 200 rows carry both),
-        // which is what lets ONE table serve both maps — Joel 2026-08-02: "the gazette entries
+        // which is what lets ONE table serve both maps — 2026-08-02: "the gazette entries
         // name cities from across the world... makes it easy to tell what subset is right to
         // use, depending on the map." detectGeo asked only the N question, so a column of
         // Tokyo / Abidjan / Aachen — 2,213 W-only rows — classified as nothing at all and no

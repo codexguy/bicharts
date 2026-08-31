@@ -1,6 +1,6 @@
 // A COUNTRY'S POINT IS ITS LARGEST CITY.
 //
-// Joel, 2026-08-03, on seeing Canada's bubble sitting on the US border: "switch to use largest
+// 2026-08-03, on seeing Canada's bubble sitting on the US border: "switch to use largest
 // city if it's known in the gazette, otherwise augment the gazette. we will document it as
 // 'largest city'."
 //
@@ -47,7 +47,7 @@ describe("the country point is the largest city, and can be checked by hand", ()
     });
 
     it("LARGEST, not capital — the distinction the rule turns on", () => {
-        // Joel: "it could also have been the capital city." For a political map it could; this
+        // The field report: "it could also have been the capital city." For a political map it could; this
         // one is read as where the activity is, and these four are exactly where the two rules
         // disagree. If someone ever switches to capitals, this test is what tells them the
         // choice was deliberate rather than incidental.

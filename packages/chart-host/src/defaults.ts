@@ -97,7 +97,7 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // synced; only an explicit false switches it.
         flipSync: p.flipSync === undefined || p.flipSync === null ? true : !!p.flipSync,
         // WHERE the controls live, which is a different question from whether the cards move
-        // together (Joel 2026-08-13: "the ability to flip individual cards shouldn't necessarily
+        // together (2026-08-13: "the ability to flip individual cards shouldn't necessarily
         // stop being able to flip all together too"). Resolution order matters and is the whole
         // back-compat story:
         //   1. an explicit, recognised flipMode wins;

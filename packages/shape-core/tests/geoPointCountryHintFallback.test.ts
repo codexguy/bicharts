@@ -6,7 +6,7 @@
 // first half — a hinted column owned the slot whether or not it verified, so the backfill that
 // would have found a good column never ran.
 //
-// Found on Joel's own world_country_metrics, 2026-08-02, on the build that was supposed to
+// Found on a real world_country_metrics dataset, 2026-08-02, on the build that was supposed to
 // have fixed exactly this: the server named `Country` (full names; 42 of 44 distinct resolve,
 // which is 95.5% — the two misses are the deliberate "Freedonia" and "Global (unassigned)"
 // rows) while `CountryCode` sat beside it, clean ISO-3 at 100% because those two rows leave

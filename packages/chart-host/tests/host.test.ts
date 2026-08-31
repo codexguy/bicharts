@@ -4,7 +4,7 @@ import { createChartHost } from "../src/host";
 import { loadGeo } from "../src/geoLazy";
 
 // The createChartHost runtime vs a SYNTHETIC contract-conformant archetype. The real
-// shipping archetypes are locked to the same grammar by the d3gate conformance gate
+// shipping archetypes are locked to the same grammar by the server-side conformance gate
 // (server-side), so runtime↔contract here plus
 // archetype↔contract there closes the chain without cross-repo test reads.
 //

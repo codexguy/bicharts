@@ -65,7 +65,7 @@ import { normalizePlaceName } from "./geoCountryNames";
 
 /** Which point-map's candidate set a lookup runs against. Rows carry kind flags
  *  (N = North America map, W = World map; a row may carry both), so ONE table serves
- *  every map type with the map deciding its own scope — Joel 2026-08-02: "one row can
+ *  every map type with the map deciding its own scope — 2026-08-02: "one row can
  *  apply to 1 or more map types", and the matching rules are COMMON logic. */
 export type GeoMapKind = "north-america" | "world";
 const KIND_FLAG: Record<GeoMapKind, string> = { "north-america": "N", world: "W" };
@@ -73,7 +73,7 @@ const KIND_FLAG: Record<GeoMapKind, string> = { "north-america": "N", world: "W"
 /**
  * May this basemap draw this gazetteer row?
  *
- * A WORLD MAP MAY DRAW EVERY CITY WE HAVE (Joel 2026-08-04: "every single city in the
+ * A WORLD MAP MAY DRAW EVERY CITY WE HAVE (2026-08-04: "every single city in the
  * gazette should be accessible by the world map - I mean, why not?"). The row flags exist
  * to keep a REGIONAL map's candidate set tight, which is a real constraint for North
  * America — its canvas cannot show Oslo, so offering Oslo as a candidate could only ever
@@ -116,7 +116,7 @@ type Admin1Row = { key: string; cc: string; name: string; lon: number; lat: numb
 // v2 record: name|a1|cc|lon|lat|popK|kinds|alt1;alt2 — ALT keys (Latin-script exonyms
 // like "Munich"/"Londres" that diacritic folding cannot reach) index onto the SAME row,
 // so a variant is just another door to one place, never a second place.
-// ── WHY THIS TABLE IS BUNDLED, DELIBERATELY (Joel 2026-08-02) ───────────────
+// ── WHY THIS TABLE IS BUNDLED, DELIBERATELY (2026-08-02) ───────────────
 // It is ~93 KB gz, by far the largest thing shape-core ships, and it was briefly SPLIT so a
 // host could fetch the coordinates and bundle only a name index (0.5.5, reverted here in
 // 0.5.6). The split worked — 118 KB off the .pbiviz — and was still the wrong call, for a
@@ -221,7 +221,7 @@ function cityIndex(): Map<string, CityHit[]> {
         const row: CityRow = { a1: p[1], cc: p[2], lon: +p[3], lat: +p[4], pop: +p[5], kinds: p[6] || "N" };
         // CITY TAGS — field 9, optional, semicolon list ("capital;port"). The `kinds` field
         // above is already a tag in everything but name — a per-row "which maps can use me"
-        // marker (Joel's original design: "the NA map cities have a 'map uses' tag") — and
+        // marker (the original design: "the NA map cities have a 'map uses' tag") — and
         // this generalizes the idea so follow-on prompt features can ask categorical
         // questions about a city ("is this the capital?") without a schema change each time.
         // Additive and backward compatible: every existing record has <= 8 fields.
@@ -241,7 +241,7 @@ function cityIndex(): Map<string, CityHit[]> {
         if (p.length > 7 && p[7]) for (const alt of p[7].split(";")) add(normalizePlaceName(alt), row, false);
     }
     // Population order is kept ONLY for stable diagnostics — it is NO LONGER a tie-break.
-    // Since v2 (Joel 2026-08-02) an ambiguous name is REFUSED and reported, never guessed.
+    // Since v2 (2026-08-02) an ambiguous name is REFUSED and reported, never guessed.
     for (const hits of m.values()) hits.sort((a, b) => b.row.pop - a.row.pop);
     _cities = m;
     return m;
@@ -306,7 +306,7 @@ function cityRowsFor(key: string): CityHit[] | undefined {
     return direct ? [...asPrimary, ...direct] : asPrimary;
 }
 
-// COUNTRY POINTS — THE LARGEST CITY (Joel 2026-08-03: "switch to use largest city if it's
+// COUNTRY POINTS — THE LARGEST CITY (2026-08-03: "switch to use largest city if it's
 // known in the gazette, otherwise augment the gazette. we will document it as 'largest city'").
 //
 // This replaced a population-weighted centroid that SNAPPED to the largest city whenever the
@@ -324,7 +324,7 @@ function cityRowsFor(key: string): CityHit[] | undefined {
 // "The country's largest city" is that sentence, and it is checkable by the person reading the
 // map. It is also the better answer for THIS chart specifically: a bubble map is read as where
 // the activity is, and for Canada, Australia, Brazil and the US the capital deliberately is not
-// that. (Joel: "it could also have been the capital city" — true, and equally defensible for a
+// that. (the field report: "it could also have been the capital city" — true, and equally defensible for a
 // political map; this one is not political.)
 //
 // DERIVED FROM THE CITY TABLE, not stored: the gazetteer already knows every city's population
@@ -490,7 +490,7 @@ export function zipToPrefix3(value: string | null | undefined): string | null {
 /**
  * THE ZIP READER. One function, because a ZIP arrives in whatever shape the pipeline left it
  * and both matchers — the point cascade here and the choropleth join key in geoDetector —
- * have to read it identically (Joel 2026-08-02: "the matcher to the gazette needs to do
+ * have to read it identically (2026-08-02: "the matcher to the gazette needs to do
  * proper zip matching: it should work for 02108 no matter how the source is interpreted").
  *
  * Everything it survives, and why each one is real:
@@ -549,7 +549,7 @@ export function zipPrefixCandidates(value: string | null | undefined): string[] 
  */
 /** The city tier found MORE THAN ONE place the source row could mean, after every
  *  non-blank source attribute was honoured. The row is NOT plotted and the caller
- *  reports it as info — since v2 (Joel 2026-08-02) a guess is never made: "if multiple
+ *  reports it as info — since v2 (2026-08-02) a guess is never made: "if multiple
  *  possible matches are found, that should be a call-out … and it should not be
  *  plotted." Distinct from `null` (nothing matched at all): coarser tiers must NOT
  *  rescue an ambiguity, because the coarser placement would silently pick a side. */
@@ -624,7 +624,7 @@ export function resolveGeoPoint(args: {
     // a single row cannot.
     if (a1 && iso3 && admin1Iso3(a1) !== iso3) a1 = null;
 
-    // 2. City — the v2 COMMON matching rules (Joel 2026-08-02), identical for every
+    // 2. City — the v2 COMMON matching rules (2026-08-02), identical for every
     //    point-map type; only the candidate SCOPE differs (row kind flags):
     //      • every NON-BLANK source attribute must match the SAME value or a BLANK in
     //        the lookup row — a blank lookup attribute passes, a contradicting one
@@ -719,7 +719,7 @@ export function resolveGeoPoint(args: {
     //    dropped above — in both cases this is the most precise claim the data supports.
     //
     //    SCOPED TO THE MAP, like every tier above it. This one was not, and the gap showed up
-    //    on Joel's fourth scenario: "North America Bubbles ... would fail to place Tokyo,
+    //    on the fourth field scenario: "North America Bubbles ... would fail to place Tokyo,
     //    Japan." It did not fail — Tokyo is out of the NA city scope, so the row fell all the
     //    way through to here and was placed on JAPAN'S CENTROID, at 137E on a map of North
     //    America. Worse than the off-canvas dot is the bookkeeping: the row counted as PLACED,
@@ -737,7 +737,7 @@ export function resolveGeoPoint(args: {
     //    delete every non-NA country for the MCP client, the React host, and anyone else
     //    calling buildRenderPayload without a map in mind. The city tier defaults to NA for
     //    compatibility reasons documented at isKnownCity — a wart worth keeping there, not
-    //    worth spreading here. The Power BI visual states its scope explicitly (ctxRender), so
+    //    worth spreading here. The Power BI visual states its scope explicitly, so
     //    the map that has a basemap gets the filter and the caller that has none keeps the
     //    gazetteer whole.
     if (iso3 && (args.mapKind !== "north-america" || NORTH_AMERICA_COUNTRIES.has(iso3))) {
@@ -758,7 +758,7 @@ export type GeoPointColumns = {
      *  Without this a chart can only ever say "22 of 117 positions approximated" — true,
      *  but it cannot say WHICH 22, so it draws every mark as though it were exact. A reader
      *  hovering Inverness got "Inverness, United Kingdom" over LONDON's coordinates, with
-     *  nothing to distinguish it from the London row stacked underneath (Joel 2026-08-04).
+     *  nothing to distinguish it from the London row stacked underneath (2026-08-04).
      *
      *  The counts above are a summary OF this array and remain the right input for a
      *  caption. This is what lets a mark disclose its own precision — style it differently,
@@ -903,7 +903,7 @@ function describeRow(r: { city?: any; state?: any; zip?: any; country?: any; lab
 /**
  * The TAGS on a known city ("capital", ...), empty when it carries none or is unknown.
  *
- * The query surface for the per-city tag layer (Joel 2026-08-03: "having tags that can apply
+ * The query surface for the per-city tag layer (2026-08-03: "having tags that can apply
  * at the city level makes sense and can be leveraged in follow-on prompt requests"). `country`
  * narrows to one row when the name is shared ("London" GB vs ON); without it, a name that
  * matches several cities returns the union of their tags, which is honest about what a bare
@@ -952,7 +952,7 @@ export function cityMatchPct(values: Array<string | null | undefined>, mapKind?:
         if (v === null || v === undefined) continue;
         const k = normalizePlaceName(String(v));
         // A typed placeholder is a HOLE, not a failed match, and it leaves the denominator
-        // (Joel: "my 97% is for non-blanks... '-' and 'N/A' could be interpreted as blank").
+        // (the field report: "my 97% is for non-blanks... '-' and 'N/A' could be interpreted as blank").
         // This measure was written before that rule and kept counting them, so it reported a
         // lower number than the gate it is supposed to mirror — the drift that makes a
         // standalone measure worse than none.
