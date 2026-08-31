@@ -20,7 +20,8 @@
 import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS,
     XFILTER_REFRESH_EVENT, CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
-    MARK_SELECTED_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
+    MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
+    chartOwnsTimeline, periodTickSuppressesFeedback,
     HOST_CONTRACT_VERSION } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // Deliberately NOT "./geo": that module statically imports ~1.3 MB of generated geometry,
@@ -294,6 +295,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let destroyed = false;
     let warnedGeo = false;
     let current: number[] | null = null;
+    // The axis tick / group header that created the CURRENT selection, and whether that
+    // tick is a PERIOD (see periodTickSuppressesFeedback in contract.ts). Held as the
+    // ELEMENT so the affordance survives a repaint that does not rebuild it, and
+    // isConnected-guarded so a re-render that replaces the node silently drops it.
+    let activeTickEl: any = null;
+    let selectionIsPeriod = false;
     const subs = new Set<(rowIdxs: number[], source: string) => void>();
 
     // ---- Selection affordance ------------------------------------------------
@@ -323,7 +330,20 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
 .${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}:not(.${MARK_SELECTED_CLASS}) {
     opacity: var(${DIM_OPACITY_VAR}, ${DIM_OPACITY_DEFAULT}) !important;
 }
-.${HOST_CONTAINER_CLASS} .${LEGEND_MARK_CLASS} { cursor: pointer; }`;
+.${HOST_CONTAINER_CLASS} .${LEGEND_MARK_CLASS} { cursor: pointer; }
+/* An axis/group header that filters when clicked LOOKS like inert text, and until it is
+   marked there is no way to tell a landed filter from a dead label — the report reads
+   "the axis labels are not clickable" even when every click resolved. Weight + underline
+   rather than a colour: these labels sit wherever the host page's theme puts them, and
+   the host has no reliable contrast partner out in the axis gutter. This paints NO marks,
+   so it is the one acknowledgement a PERIOD tick can have without breaking the rule that
+   a timeline never dims its own chart. */
+.${HOST_CONTAINER_CLASS} .${AXIS_FILTER_CLASS} { cursor: pointer; }
+.${HOST_CONTAINER_CLASS} .${ACTIVE_TICK_CLASS},
+.${HOST_CONTAINER_CLASS} .${ACTIVE_TICK_CLASS} text {
+    font-weight: 700 !important;
+    text-decoration: underline !important;
+}`;
             (doc.head || doc.documentElement)?.appendChild(st);
         } catch { /* no document (jsdom edge) — affordance is cosmetic, never fatal */ }
     };
@@ -334,7 +354,22 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         try {
             const sel = current;
             const active = !!sel && sel.length > 0;
-            container.classList?.[active ? "add" : "remove"](SELECTION_ACTIVE_CLASS);
+            // A PERIOD selection filters everything downstream but never repaints THIS
+            // chart: it is already showing that period by being on the frame, and dimming
+            // by time invents shades no legend explains. A CATEGORY tick, and every mark
+            // click, dims normally. See periodTickSuppressesFeedback in contract.ts.
+            const dim = active && !selectionIsPeriod;
+            container.classList?.[dim ? "add" : "remove"](SELECTION_ACTIVE_CLASS);
+            // The clicked tick is marked under BOTH origins — it colours no marks, so it
+            // is outside the period rule by construction and is the only feedback a
+            // scrubbed period gets. Cleared when the selection empties or the anchor is
+            // gone (a re-render replaces the node).
+            const lit = container.querySelectorAll(`.${ACTIVE_TICK_CLASS}`);
+            for (const t of Array.from(lit)) t.classList?.remove(ACTIVE_TICK_CLASS);
+            const tickStillDrawn = !!activeTickEl && (typeof container.contains === "function"
+                ? container.contains(activeTickEl)
+                : activeTickEl.isConnected !== false);
+            if (active && tickStillDrawn) activeTickEl.classList?.add(ACTIVE_TICK_CLASS);
             const wanted = new Set(sel ?? []);
             const marks = container.querySelectorAll(`.${MARK_CLASS}[${ROW_IDX_ATTR}], .${LEGEND_MARK_CLASS}[${ROW_IDX_ATTR}]`);
             for (const m of Array.from(marks)) {
@@ -348,8 +383,14 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         } catch { /* cosmetic */ }
     };
 
-    const notify = (rowIdxs: number[], source: string) => {
+    // `tick` is the axis/group element that drove this selection, or null for a data-mark
+    // click / a clear. It decides BOTH the affordance anchor and, with the container's own
+    // timeline slots, whether the marks dim at all.
+    const notify = (rowIdxs: number[], source: string, tick?: any) => {
         current = rowIdxs;
+        activeTickEl = rowIdxs.length ? (tick ?? null) : null;
+        selectionIsPeriod = rowIdxs.length > 0
+            && periodTickSuppressesFeedback(!!tick, chartOwnsTimeline(container));
         paintSelection();
         for (const cb of subs) { try { cb(rowIdxs, source); } catch { /* subscriber error is not ours */ } }
     };
@@ -363,8 +404,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     const onXf = (e: any) => {
         const d = e?.detail || {};
         xfAt = Date.now();
+        // A chart-dispatched mark IS the tick it came from — a scrubber hands over its own
+        // period tick — so it anchors the affordance and, on a timeline-owning chart, marks
+        // the selection as a PERIOD. `source` cannot be used for this: the scrubber reports
+        // an honest 'user' when the reader clicked it.
         if (d.clear) notify([], d.source || "chart");
-        else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart");
+        else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark);
     };
     // Plain mark clicks (static charts + choropleth regions): the chart does NOT
     // dispatch the event for these — the host reads data-row-idx itself.
@@ -406,6 +451,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         }
         const rows = parseRowIdxs(el.getAttribute(ROW_IDX_ATTR));
         if (!rows.length) return;
+        // Is the thing clicked an axis/group header? That is what makes it eligible to be
+        // a period AND what gives the affordance something to light. A legend swatch is
+        // not a tick: it names a series, and its own MARK_SELECTED_CLASS already says so.
+        const tick = (el.classList?.contains?.(AXIS_FILTER_CLASS)) ? el : null;
 
         // MULTI-SELECT (Ctrl / Cmd / Shift), matching the Power BI visual.
         // Without this a chart that grows a selection fine inside Power BI silently cannot
@@ -425,7 +474,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             }
             // Toggling the last row off is a legitimate way to reach empty; notify([]) is
             // the clear, so a modifier-click can undo a selection without hunting for canvas.
-            notify(Array.from(next), "user");
+            // A multi-select mixes origins; the last click decides, exactly as the visual
+            // does — ticks do not participate in multi-select in practice, so this stays
+            // simple rather than tracking a per-row origin map.
+            notify(Array.from(next), "user", tick);
             return;
         }
 
@@ -434,7 +486,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // running both is the dual-owner drift the visual hit (it clears lastMarkClickSig
         // when isMulti for exactly this reason).
         const same = !!current && current.length === rows.length && rows.every(r => current!.includes(r));
-        notify(same ? [] : rows, "user");
+        notify(same ? [] : rows, "user", same ? null : tick);
     };
     container.addEventListener(XFILTER_REFRESH_EVENT, onXf);
     container.addEventListener("click", onClick);

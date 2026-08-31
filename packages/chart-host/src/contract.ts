@@ -97,8 +97,37 @@ export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
 export const HOST_CONTAINER_CLASS = "bic-chart-host";        // stamped on every hosted container
 export const SELECTION_ACTIVE_CLASS = "lch-has-selection";   // on the container while a selection exists
 export const MARK_SELECTED_CLASS = "lch-mark-selected";      // on each mark in the selection
+export const ACTIVE_TICK_CLASS = "lch-tick-active";          // on the axis tick / group header driving the selection
 export const DIM_OPACITY_VAR = "--lch-dim-opacity";          // unselected-mark opacity (visual default 0.25)
 export const DIM_OPACITY_DEFAULT = 0.25;
+
+// ---- PERIOD vs CATEGORY: the two things `.d3-axis-filter` means ----
+//
+// The class is worn by BOTH a scrubber's period tick and a plain row / column / group
+// header, and the two want OPPOSITE feedback. A category tick is the reader nominating
+// marks, so the marks dim as they would for any selection. A PERIOD tick narrows TIME,
+// and the chart already shows that period by being on the frame — dimming by time paints
+// shades that exist in no legend (on an animated choropleth a no-data region at 25% over
+// white rendered LIGHTER than plain land and read as a bogus bottom-of-scale value).
+//
+// The trait that separates them is whether the chart owns a TIMELINE, and the container
+// slots above already carry that signal: the shared scrubber helper stamps
+// __llmXfClear / __llmAnimStop on the container it is handed, and a static chart stamps
+// neither. So "is this tick a period?" is answered by the chart, not by where the click
+// landed — a question any host can ask, in any environment.
+//
+// Both pure, and exported so a host painting its own affordance reaches the same verdict
+// instead of re-deriving one. A host that gets this wrong is not cosmetically off: it
+// either dims a timeline (the ruling above) or leaves a category click with no visible
+// effect at all, which reads to the user as "the axis labels are not clickable".
+export function chartOwnsTimeline(container: any): boolean {
+    return !!container
+        && (!!container[CONTAINER_SLOT_XF_CLEAR] || !!container[CONTAINER_SLOT_ANIM_STOP]);
+}
+
+export function periodTickSuppressesFeedback(isAxisTick: boolean, ownsTimeline: boolean): boolean {
+    return isAxisTick && ownsTimeline;
+}
 
 // ---- Option defaults / clamps (mirrored by the archetype `||` fallbacks) ----
 export const ANIM_PLAY_SPEED_DEFAULT = 1000;
