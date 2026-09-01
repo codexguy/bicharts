@@ -129,3 +129,9 @@ export {
 // that drives render() itself. Additive, idempotent, and incapable of turning an UNtagged
 // element into a target, so it cannot regress a chart that already works.
 export { ensureCrossfilterHitTargets, type HitTargetReport } from "./hitTargets";
+
+// A chart that ran clean and painted nothing (2026-09-01). The mark contract
+// asking a question about itself: all three hosts run the same generated code against the same
+// classes, so all three can go blank the same way and a copy per host is three chances to
+// disagree about what blank means.
+export { censusMarks, isBlankRender, blankRenderFlag, type MarkCensus, type BlankVerdictInput } from "./blankRender";

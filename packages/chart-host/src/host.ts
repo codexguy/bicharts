@@ -30,6 +30,7 @@ import { resolveOptions, type ResolveOptionsInput } from "./defaults";
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
+import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -66,6 +67,23 @@ export interface ChartHostConfig {
      *  already holds its assets (e.g. `geoForKind` from "@bicharts/chart-host/geo", or the
      *  data.geo.json the MCP wrote next to the chart). */
     geoProvider?: (geoKind: string) => any | undefined;
+    /**
+     * Called when a render completes cleanly having painted NO data marks against a non-empty
+     * table (2026-09-01). The chart did not throw, so nothing else will tell you — this is
+     * the only notification that the rectangle your reader is looking at is empty.
+     *
+     * The commonest cause by far is schema drift: generated code binds columns BY NAME, so a
+     * renamed or removed field sends its own `findIndex(...) === -1` guard down the no-data
+     * branch. A host that knows the binding can say WHICH column; one that does not should still
+     * surface it, because "empty and silent" is the state this exists to abolish.
+     */
+    onBlankRender?: (info: { census: MarkCensus; rows: number }) => void;
+    /** This chart declares time keyframes: frame one is allowed to be empty, so no blank verdict
+     *  is issued for it. */
+    animated?: boolean;
+    /** The chart's marks are not tagged with the shared contract (a Vega lane names its own
+     *  marks), so a mark count proves nothing and the blank verdict is suppressed. */
+    contractUntagged?: boolean;
 }
 
 export interface ChartHost {
@@ -295,6 +313,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let renderFn: RenderFn | null = config.renderFn ?? null;
     let destroyed = false;
     let warnedGeo = false;
+    let warnedBlank = false;   // once per host: a repainting chart must not spam the console
     let current: number[] | null = null;
     // The axis tick / group header that created the CURRENT selection, and whether that
     // tick is a PERIOD (see periodTickSuppressesFeedback in contract.ts). Held as the
@@ -556,6 +575,34 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // The chart just rebuilt its DOM, so the selection classes are gone. Repaint
             // them or a cross-filtered chart loses its own highlight on every restyle.
             paintSelection();
+            // DID IT ACTUALLY DRAW? A render that returns without throwing is
+            // not the same as a render that painted something, and the difference is invisible
+            // from out here — generated code guards its own column lookups and bails to a
+            // "no data" div, which reaches this line as a complete success. Runs LAST, after
+            // hit-target healing, so a mark that only became countable there still counts.
+            // Never throws: a diagnostic must not be why a delivered render fails.
+            try {
+                const census = censusMarks(container);
+                if (isBlankRender({
+                    markCount: census.markCount,
+                    rows: data.rows ? data.rows.length : 0,
+                    animated: config.animated,
+                    contractUntagged: config.contractUntagged,
+                })) {
+                    if (!warnedBlank) {
+                        warnedBlank = true;
+                        try {
+                            (win?.console ?? console)?.warn(
+                                `[@bicharts/chart-host] this chart rendered without error but painted no data ` +
+                                `marks, against ${data.rows.length} row(s) — so the container is empty. The usual ` +
+                                `cause is that the generated code binds a column BY NAME that is no longer in ` +
+                                `the data, sending it down its own "no data" branch. Check that the columns in ` +
+                                `your table still match the ones the chart was generated for.`);
+                        } catch { /* advisory only */ }
+                    }
+                    config.onBlankRender?.({ census, rows: data.rows ? data.rows.length : 0 });
+                }
+            } catch { /* a census must never break a render */ }
         },
         setOptions(partial) {
             raw = { ...raw, ...partial };
