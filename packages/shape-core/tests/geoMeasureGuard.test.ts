@@ -79,6 +79,48 @@ describe("a measure never receives a geoKind", () => {
         expect(measure.geoKind).toBeUndefined();
     });
 
+    it("holds when the column is PROMOTED to a measure after detection", () => {
+        // THE HOLE THIS FILE HAD, and the one production fell through. Every case above binds
+        // isMeasure UP FRONT, so the guard is evaluated against the final answer. But a host
+        // often hands a numeric quantity over unbound, and measure-inference promotes it LATER
+        // in the same pass — after the geo block has already run and stamped it. The guard was
+        // right; it simply could not see a fact that did not exist yet.
+        //
+        // In the field: a column of physical measurements arrived unbound (isMeasure=false)
+        // and shipped geoKind "us-zip5" at 100%, because its values are five-digit integers.
+        // Eligibility reads geoKind to admit point maps, so geographic charts were offered for
+        // data with no geography, and the picker weighted them heavily.
+        const MEASUREMENTS =
+            [2590, 8110, 14300, 21860, 29400, 33101, 37750, 42300, 45410, 48200,
+             51900, 55400, 58800, 62100, 64750, 67990, 69200, 70400, 71100, 71650];
+        // Same discipline as the opening test: prove the detector DOES claim these, or an
+        // absent geoKind below would prove nothing about the guard. It answers us-zip5 at 100%.
+        expect(detectGeo(MEASUREMENTS.map(String), "Reading(mm)")?.geoKind).toBe("us-zip5");
+        const [promoted] = profile(
+            [{ name: "Reading(mm)", dataType: "Integer", isMeasure: false }],
+            MEASUREMENTS.map(v => [v]),
+        );
+        expect(promoted.isMeasure, "the classifier must promote a continuous quantity, or this "
+            + "test is not exercising the promotion path at all").toBe(true);
+        expect(promoted.geoKind, "a PROMOTED measure kept its geoKind — the guard ran before the "
+            + "promotion, which is how a millimetre reached production as a ZIP code")
+            .toBeUndefined();
+        expect(promoted.geoMatchPct).toBeUndefined();
+        expect(promoted.geoAmbiguous).toBeUndefined();
+    });
+
+    it("a genuine ZIP dimension is NOT promoted, so it keeps its geography", () => {
+        // The other half of the trade, and the reason clearing is safe: an id-like column is
+        // classified Ordinal/Categorical rather than Continuous, so promotion never fires and
+        // the geo signal survives. If this fails, the fix has broken the feature it protects.
+        const [dim] = profile(
+            [{ name: "ZipCode", dataType: "Integer", isMeasure: false }],
+            ZIPPY.map(v => [v]),
+        );
+        expect(dim.isMeasure, "an id-like column must not be promoted").toBeFalsy();
+        expect(dim.geoKind).toBe("us-zip5");
+    });
+
     it("holds across every column of a mixed shape", () => {
         const cols = profile(
             [

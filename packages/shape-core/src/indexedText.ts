@@ -687,7 +687,34 @@ export class IndexedText implements IValueCollection {
                     dataType: col.dataType, isMeasure: false, name: col.name,
                     distinct: vals.size, nonblank, prec, maxval: typeof maxval === "number" ? maxval : 0, minval: typeof minval === "number" ? minval : 0,
                 });
-                if (nature === "Continuous") col.isMeasure = true;
+                if (nature === "Continuous") {
+                    col.isMeasure = true;
+                    // A PROMOTED MEASURE IS NOT A PLACE, AND THE GEO GUARD RAN TOO EARLY TO
+                    // KNOW IT. The geo block inside updateColumnStats20 above is guarded by
+                    // `!col.isMeasure`, which is exactly right — and it evaluated BEFORE this
+                    // promotion, while the column still looked like a dimension. So a numeric
+                    // quantity a host hands over unbound gets stamped with a geoKind and is
+                    // THEN promoted to a measure, ending up carrying both.
+                    //
+                    // Observed in the field: a column of physical measurements, unbound and so
+                    // arriving isMeasure=false, was stamped geoKind "us-zip5" at geoMatchPct
+                    // 100 — its values were five-digit integers, which land squarely in the US
+                    // ZIP range and are indistinguishable from ZIPs on values alone. Downstream
+                    // that is not a cosmetic mislabel: eligibility reads geoKind to admit point
+                    // maps, so geographic charts were offered for data with no geography in it,
+                    // and the chart picker weighted them heavily.
+                    //
+                    // Clearing here rather than reordering the detection keeps the guard's own
+                    // stated intent — a measure is not a place — and touches nothing else: a
+                    // column that was ALREADY a measure never reached the detection, and one
+                    // that stays a dimension keeps every signal it earned.
+                    col.geoKind = undefined;
+                    col.geoMatchPct = undefined;
+                    col.geoAmbiguous = undefined;
+                    col.dominantGeoRegion = undefined;
+                    col.dominantGeoRegionPct = undefined;
+                    col.geoRegionCount = undefined;
+                }
             }
 
             // Capture distinct value-set for the overlap pass (skip measures and
