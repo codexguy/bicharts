@@ -105,7 +105,7 @@ export {
 export {
     qualifyPick, qualifyAuto, qualifyCancel,
     launchGenerates, launchFavorStyle,
-    chooserFitsViewport, shouldOpenChooserOnGenerate,
+    chooserFitsViewport, shouldOpenChooserOnGenerate, shouldOpenInlineChooserOnGenerate,
     canConfirmLaunch, confirmLaunch, qualifyFailureFallsOpen,
     CHOOSER_MIN_WIDTH_PX, CHOOSER_MIN_HEIGHT_PX,
     type QualifyLaunchOutcome, type ChooserGateInput,

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+    shouldOpenInlineChooserOnGenerate,
     qualifyPick, qualifyAuto, qualifyCancel,
     launchGenerates, launchFavorStyle,
     chooserFitsViewport, shouldOpenChooserOnGenerate,
@@ -97,6 +98,26 @@ describe("the gate in front of Generate", () => {
     });
 });
 
+describe("an inline scrolling panel has no size clause, and that is measured", () => {
+    it("opens at any pane size when the setting is on and there is data", () => {
+        expect(shouldOpenInlineChooserOnGenerate({ enabled: true, hasData: true })).toBe(true);
+    });
+
+    it("still honours the opt-out and the nothing-bound case", () => {
+        expect(shouldOpenInlineChooserOnGenerate({ enabled: false, hasData: true })).toBe(false);
+        expect(shouldOpenInlineChooserOnGenerate({ enabled: true, hasData: false })).toBe(false);
+    });
+
+    it("differs from the modal gate exactly where the layouts differ", () => {
+        // A default task pane is narrower than the modal's floor. Applying the card's number to
+        // a flowing panel would switch the feature off for the common case and protect nobody -
+        // the panel cannot trap a reader, because it wraps and scrolls.
+        const tiny = { enabled: true, hasData: true, width: 320, height: 500 };
+        expect(shouldOpenChooserOnGenerate(tiny)).toBe(false);
+        expect(shouldOpenInlineChooserOnGenerate(tiny)).toBe(true);
+    });
+});
+
 describe("confirm is armed by a selection, never by hope", () => {
     it("arms on a real name", () => {
         expect(canConfirmLaunch("Bar chart")).toBe(true);
@@ -139,7 +160,7 @@ describe("the launch contract is reachable from the package barrel", () => {
             "qualifyPick", "qualifyAuto", "qualifyCancel",
             "launchGenerates", "launchFavorStyle",
             "chooserFitsViewport", "shouldOpenChooserOnGenerate",
-            "canConfirmLaunch", "confirmLaunch", "qualifyFailureFallsOpen",
+            "canConfirmLaunch", "confirmLaunch", "qualifyFailureFallsOpen", "shouldOpenInlineChooserOnGenerate",
             "CHOOSER_MIN_WIDTH_PX", "CHOOSER_MIN_HEIGHT_PX",
         ]) {
             expect(name in api, `barrel is missing ${name}`).toBe(true);

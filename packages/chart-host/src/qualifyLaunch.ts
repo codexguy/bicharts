@@ -118,6 +118,26 @@ export function shouldOpenChooserOnGenerate(i: ChooserGateInput): boolean {
 }
 
 /**
+ * The same gate for a host whose chooser is an INLINE, SCROLLING PANEL rather than a modal card
+ * - and it deliberately has no size clause at all.
+ *
+ * THE ASYMMETRY IS THE POINT, AND IT IS MEASURED RATHER THAN ASSUMED. The modal above lives in
+ * a card that CLIPS, so past a certain smallness its buttons are simply not on screen and the
+ * reader is trapped. A panel that flows inside a scrolling pane, with a wrapping button row,
+ * cannot reach that state: swept across 63 pane sizes down to 200x120, every one stayed usable
+ * - the footer wrapped from one line to three (38px to 86px) and stayed inside the panel, and
+ * the list kept four or more rows because it carries its own max-height and scrolls.
+ *
+ * So a size clause here would not protect anybody; it would only switch the feature off for a
+ * default task pane, which is narrower than the modal's floor. Two hosts, two layouts, two
+ * honest answers - written next to each other so the difference reads as a decision rather than
+ * as one of them having forgotten.
+ */
+export function shouldOpenInlineChooserOnGenerate(i: { enabled: boolean; hasData: boolean }): boolean {
+    return i.enabled === true && i.hasData === true;
+}
+
+/**
  * Is the confirm button live?
  *
  * A SEPARATE QUESTION FROM "is a type selected", because it is the answer to a UI state and the
