@@ -98,6 +98,19 @@ export {
     type QualifyGroupRow, type QualifyGroupState, type QualifyGroupHeading,
 } from "./qualifyGroups";
 
+// The same list used as a LAUNCH PAD - opened by Generate rather than browsed beside it. Which
+// outcomes exist (pick / auto / cancel, never two), when there is room to draw the chooser at
+// all, and when a failed qualify may fall through to a generation. Hosts own the chrome; these
+// answers are the ones that mislead silently when two hosts differ.
+export {
+    qualifyPick, qualifyAuto, qualifyCancel,
+    launchGenerates, launchFavorStyle,
+    chooserFitsViewport, shouldOpenChooserOnGenerate,
+    canConfirmLaunch, confirmLaunch, qualifyFailureFallsOpen,
+    CHOOSER_MIN_WIDTH_PX, CHOOSER_MIN_HEIGHT_PX,
+    type QualifyLaunchOutcome, type ChooserGateInput,
+} from "./qualifyLaunch";
+
 // What a click on a mark AMOUNTS to (2026-08-25). The dimming already tells the reader WHICH
 // marks they picked; in a host with no cross-filter to answer into — Excel, MCP, React — that
 // dimming is also the ONLY response, so the selection has to state its own numbers. Arithmetic
