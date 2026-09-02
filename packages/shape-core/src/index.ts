@@ -26,6 +26,31 @@ export {
 } from "./indexedText";
 export type { TextDateDetection } from "./indexedText";
 
+// WHICH AGGREGATIONS ARE HONEST for a column (2026-09-01). The two axes a presentation surface
+// needs and that no single enum carried: what KIND of scale this is, and whether SUM means
+// anything over it. Public because the answer has to be identical in the selection card, in the
+// settings panel and in whatever a host builds next — "Sum of Latitude: 84 (12.3% of total)" is
+// what one surface deciding for itself looked like. The token lists here are the CANONICAL copy
+// of the server's own; a server-side test asserts the two sets are equal.
+export {
+    classifyForAggregation,
+    allowedAggregations,
+    defaultAggregation,
+    isAggregationAllowed,
+    shareOfTotalIsHonest,
+    nameLooksIntensiveRate,
+    nameLooksPositional,
+    stripHostAggPrefix,
+    hasDefaultAggPrefix,
+    INTENSIVE_WORD_TOKENS,
+    INTENSIVE_SUFFIX_TOKENS,
+    POSITIONAL_WORD_TOKENS,
+    POSITIONAL_SUFFIX_TOKENS,
+} from "./aggregation";
+export type {
+    AggKind, AggAdditivity, AggBasis, AggNature, AggregationClass, AggregationColumn,
+} from "./aggregation";
+
 // The wire contract + column value shape.
 export type { LLMColumnWithValue } from "./models";
 export type {
