@@ -328,6 +328,20 @@ export function resolvePointRoles(
     rows: Array<Record<string, any>>,
     hint: PointBind | null,
     mapKind?: GeoMapKind | null,
+    /** Columns the COORDINATE roles may be carried over from — the full set, measures included.
+     *  Defaults to `columns`, so a caller that does not pass it behaves exactly as before.
+     *
+     *  WHY THIS IS SEPARATE FROM `columns` (2026-09-02). `columns` must exclude measures, and the
+     *  reason above is a good one: it protects the BACKFILL, where a store number would be
+     *  adopted as the ZIP column on digit shape alone. But the same list also gated the
+     *  carry-over of an EXPLICITLY HINTED lat/lon — and coordinates are always measures, so those
+     *  two roles were unreachable by construction. Measured on a 21-city table with explicit
+     *  Latitude/Longitude: `precisionCounts.latlon = 0`, every row geocoded from its city NAME,
+     *  two rows refused outright for an ambiguous name while carrying exact coordinates, and the
+     *  rest placed at the gazetteer's coordinates rather than the data's — so editing a Latitude
+     *  cell moved no mark. Backfill still draws from `columns`; only the hinted coordinate roles
+     *  read this, and `latLonCanPlace` below is what verifies them. */
+    coordinateColumns?: string[],
 ): PointRoleResolution {
     const backfilled: string[] = [];
     const refused: string[] = [];
@@ -349,9 +363,21 @@ export function resolvePointRoles(
     //
     // A refused hint is dropped from the binding, exactly like state, so the backfill below
     // gets its turn — that is the half the country role was missing until this same pass.
-    for (const role of ["city", "lat", "lon", "country"] as const) {
+    for (const role of ["city", "country"] as const) {
         const name = hint?.[role];
         if (name && colSet.has(name)) out[role] = name;
+    }
+    // COORDINATES read their OWN set. They were in the loop above until 2026-09-02, which meant
+    // `colSet.has(name)` — a DIMENSION test — decided whether an explicit latitude was used, and
+    // a coordinate is always a measure. No verification is added here on purpose: the
+    // latLonCanPlace gate at the bottom of this function already checks that the pair holds a
+    // usable coordinate, and it is deliberately a ONE-ROW bar rather than a ratio, so a
+    // partly-populated coordinate column stays ordinary data. A ratio here would have re-broken
+    // exactly that.
+    const coordSet = new Set(coordinateColumns ?? columns);
+    for (const role of ["lat", "lon"] as const) {
+        const name = hint?.[role];
+        if (name && coordSet.has(name)) out[role] = name;
     }
     const hintedZip = hint?.zip;
     if (hintedZip && colSet.has(hintedZip)) {

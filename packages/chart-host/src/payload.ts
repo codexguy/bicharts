@@ -160,7 +160,19 @@ function resolvePointChannel(
     let labelCol: string | undefined;
     if (bind) {
         const dims = cols.filter(c => !c.isMeasure).map(c => c.name);
-        const res = resolvePointRoles(dims, rowObjs, bind, point?.mapKind);
+        // COORDINATES COME FROM THE FULL SET (2026-09-02). `dims` excludes measures for a good
+        // reason — a store number would be adopted as the ZIP column on digit shape alone — but
+        // that same list also decided whether an EXPLICITLY HINTED latitude was used, and a
+        // coordinate is always a measure. So the lat/lon roles were unreachable by construction
+        // and every point map fell through to geocoding place NAMES instead: measured on a
+        // 21-city table with explicit Latitude/Longitude, `precisionCounts.latlon = 0`, two rows
+        // refused outright for an ambiguous name while carrying exact coordinates, and the rest
+        // drawn at the gazetteer's coordinates rather than the sheet's — so editing a Latitude
+        // cell moved no mark. The archetype prompts say the opposite in as many words ("read
+        // coordinates from the data rows ... NEVER geocode place names"), so this was the host
+        // contradicting the contract it hands the model. resolvePointRoles range-checks both
+        // roles now that they are reachable; the backfill still draws from `dims` alone.
+        const res = resolvePointRoles(dims, rowObjs, bind, point?.mapKind, cols.map(c => c.name));
         bind = res.bind;
         rolesBackfilled = res.backfilled;
         rolesRefused = res.refused;
