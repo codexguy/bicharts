@@ -96,6 +96,12 @@ export { askApplyImprovements, type ReviewDialogOptions, type ReviewDialogText }
 export {
     qualifyGroupHeadingFor, newQualifyGroupState,
     type QualifyGroupRow, type QualifyGroupState, type QualifyGroupHeading,
+    // ...and the same job for the REFUSED half, behind "Show all chart types". The
+    // boundary there is possibility rather than quality: `refusalIsSelectable` is the one place
+    // either host decides whether a refused type gets a control or only a sentence.
+    orderRefusalsForDisplay, refusalIsSelectable, hasRefusalsToShow,
+    qualifyRefusalHeadingFor, newQualifyRefusalGroupState,
+    type QualifyRefusalRow, type QualifyRefusalGroupState, type QualifyRefusalHeading,
 } from "./qualifyGroups";
 
 // The same list used as a LAUNCH PAD - opened by Generate rather than browsed beside it. Which

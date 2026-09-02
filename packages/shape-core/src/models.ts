@@ -221,7 +221,7 @@ export type LLMColumnWithValue =
         // (Department,Category,Subcategory) leaf count was 40 — 4 subcategory NAMES
         // legitimately repeat under different parent categories, which only a real
         // pairwise count (not a single column's cardinality) can see. Consumption is
-        // v2.2 (RELEASE-PLAN.md item 15); this ships the fact now so it exists.
+        // a later release; this ships the fact now so it exists.
         categoricalPairStats?: { otherColumn: string, fillPct: number, determinesOther: boolean, minCellCount?: number, distinctCombinations?: number }[]
         // NESTING DIRECTION (2026-06-18). determinesOther is bidirectional; this resolves it:
         // when THIS column 1:1-determines a STRICTLY coarser column, THIS column is NESTED
@@ -688,6 +688,27 @@ export type LLMQualifyResult =
             // the membership to know the greying is an ANSWER rather than a decoration
             // that failed to load.
             reason?: string,
+            // IS THIS AN IMPOSSIBILITY OR A PREFERENCE? Added 2026-09-01.
+            //
+            // True means a required CHANNEL IS ABSENT and no rebinding of these columns
+            // supplies it - "needs a date or time field, and this data has none". False (or
+            // absent) means the gate declined to OFFER the type: a threshold about how GOOD
+            // the result would be - a row floor, a legibility cap, a keyframe count. The
+            // honour-though-ugly path draws the second kind on request and every such gate
+            // carries a written degrade; nothing draws the first.
+            //
+            // A HOST CANNOT DERIVE THIS, and the cost of conflating the two was measured
+            // rather than argued: read as one verdict, a gate rejection would have refused
+            // 25.5% of the explicit picks the real path went on to HONOUR. So the chooser
+            // offers a waivable refusal as a PICKABLE row and a veto as reason-text with no
+            // control - the user may overrule our taste, but asking for a chart whose
+            // required channel does not exist can only return the sentence already beside it.
+            //
+            // ABSENT IS THE SAFE DIRECTION, which is why it is the default rather than a
+            // required field: an older server sends nothing, every row reads waivable, and
+            // the host offers an option that would be refused - a wasted click. The inverse
+            // error hides a chart the user wanted and gives them no way to say so.
+            isVeto?: boolean,
         }[],
         // THE HEADLINE for an empty `charts`, when the server can state a FACT instead of
         // the host guessing - added 2026-08-30. A finished sentence, or absent.

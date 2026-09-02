@@ -73,3 +73,102 @@ export function qualifyGroupHeadingFor(
     }
     return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE REFUSED LIST — "Show all chart types"
+//
+//  A SECOND PARTITION, OVER A DIFFERENT ARRAY, ANSWERING A DIFFERENT QUESTION. Everything above
+//  partitions `charts` — types that FIT, ordered by how well. This partitions `refused` — types
+//  that did not — and the boundary that matters there is not quality but POSSIBILITY.
+//
+//  WHY IT IS A SHARED RULE RATHER THAN A HOST IDIOM. Both hosts had a full-catalogue surface that
+//  offered every chart type equally: the visual's chart-type dropdown greyed the non-qualifying
+//  ones and let you pick them anyway, and the Excel pane simply had no such surface at all. Both
+//  were wrong in the same direction — offering a control whose only possible outcome is a refusal
+//  — and the fix has to land identically or the two hosts disagree about what the product can do.
+//
+//  THE LINE IS DRAWN BY THE SERVER, NOT GUESSED HERE. `isVeto` is the gate's own verdict, gathered
+//  under exactly the relaxations an explicit pick receives. A host that inferred the split from
+//  reason text, or from a name list, would be re-deriving a decision it was already handed — the
+//  precise mistake that, measured against real traffic, misread 25.5% of honoured picks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One row of a qualify result's `refused` array, in the only shape this logic cares about. */
+export interface QualifyRefusalRow {
+    name?: string | null;
+    /** The gate's sentence. Absent is a real answer — the blocker rested on a runtime signal. */
+    reason?: string | null;
+    /** True = a required channel is ABSENT. Absent/false = a threshold we are willing to waive. */
+    isVeto?: boolean | null;
+}
+
+/** Which heading to write BEFORE a refused row, if any. */
+export type QualifyRefusalHeading = "poorFit" | "cannotDraw";
+
+/** Carried across the refusal loop. One per render. */
+export interface QualifyRefusalGroupState {
+    poorFit: boolean;
+    cannotDraw: boolean;
+}
+
+export function newQualifyRefusalGroupState(): QualifyRefusalGroupState {
+    return { poorFit: false, cannotDraw: false };
+}
+
+/**
+ * MAY THE READER PICK THIS ONE? The single place that answers it, in either host.
+ *
+ * DEFAULTS TO YES, and the asymmetry is deliberate. An older server sends no `isVeto` at all, so
+ * every row reads selectable and the reader is offered something that may be refused — one wasted
+ * click, and the refusal that follows names its own reason. The opposite default would hide charts
+ * from readers on exactly the servers that cannot tell us it is wrong to.
+ */
+export function refusalIsSelectable(row: QualifyRefusalRow | null | undefined): boolean {
+    return !!row && row.isVeto !== true;
+}
+
+/**
+ * The refused rows in RENDER ORDER: everything pickable first, then the vetoes.
+ *
+ * A STABLE PARTITION, not a sort — within each block the server's alphabetical order survives, so
+ * two answers over the same shape stay diffable. Rows without a name are dropped: a control
+ * labelled with nothing cannot be chosen and a reason with no subject cannot be read.
+ *
+ * The two blocks are ordered pickable-first because the reader opened this section to DO something.
+ * Putting the inert half above the actionable half makes them scroll past every chart they cannot
+ * have to reach the ones they can.
+ */
+export function orderRefusalsForDisplay<T extends QualifyRefusalRow>(
+    rows: readonly T[] | null | undefined,
+): T[] {
+    if (!Array.isArray(rows)) return [];
+    const named = rows.filter(r => !!r && typeof r.name === "string" && r.name.trim() !== "");
+    return [...named.filter(refusalIsSelectable), ...named.filter(r => !refusalIsSelectable(r))];
+}
+
+/**
+ * The heading (if any) belonging immediately before `row`, MUTATING `state` — same shape as
+ * `qualifyGroupHeadingFor` so the two loops read alike.
+ *
+ * Assumes `rows` came through `orderRefusalsForDisplay`; fed an unpartitioned list it would write
+ * a heading at every alternation, which is why the ordering and the headings are one export pair
+ * rather than two independent helpers a host can half-adopt.
+ */
+export function qualifyRefusalHeadingFor(
+    row: QualifyRefusalRow, state: QualifyRefusalGroupState,
+): QualifyRefusalHeading | null {
+    if (refusalIsSelectable(row)) {
+        if (!state.poorFit) { state.poorFit = true; return "poorFit"; }
+        return null;
+    }
+    if (!state.cannotDraw) { state.cannotDraw = true; return "cannotDraw"; }
+    return null;
+}
+
+/**
+ * Is there anything behind "Show all chart types"? A checkbox that reveals nothing is worse than
+ * no checkbox: it reads as a broken control rather than an empty category.
+ */
+export function hasRefusalsToShow(rows: readonly QualifyRefusalRow[] | null | undefined): boolean {
+    return orderRefusalsForDisplay(rows).length > 0;
+}
