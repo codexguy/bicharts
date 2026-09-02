@@ -266,10 +266,17 @@ export function allowedAggregations(col: AggregationColumn | null | undefined): 
     if (k.nature === "Categorical") return ["first", "distinctcount", "count"];
     if (k.nature === "Ordinal") {
         // An ordinal STRING domain (Low / Medium / High) has an order we do not carry here, so
-        // min/max would be alphabetical and wrong. Numeric ordinals (a 1-5 rating, a year) do
-        // have one.
+        // min/max would be alphabetical and wrong. Numeric ordinals (a 1-5 rating, a year, a
+        // 0-100 score) do have one.
+        //
+        // MEDIAN LEADS, AVERAGE IS AVAILABLE. The mean of a rank is formally meaningless - the
+        // distance between "Good" and "Very Good" is not defined - so the default must not be
+        // the mean. But a numeric ordinal in practice is very often averaged on purpose ("4.2
+        // stars"), and refusing it outright would substitute median for a user who deliberately
+        // asked for average, which is a surprise rather than a protection. SUM stays off either
+        // way, which is the part that would be wrong rather than merely arguable.
         return isNumericLike(c)
-            ? ["median", "min", "max", "first", "distinctcount", "count"]
+            ? ["median", "average", "min", "max", "first", "distinctcount", "count"]
             : ["first", "distinctcount", "count"];
     }
 

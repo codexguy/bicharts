@@ -129,9 +129,14 @@ describe("dimensions get First / Count / Distinct and nothing arithmetic", () =>
         }
     });
 
-    it("a NUMERIC ordinal gets median/min/max; a STRING one does not", () => {
+    it("a NUMERIC ordinal leads with median, offers average, and never sums", () => {
         const numeric = { name: "Tier", dataType: "Integer", isMeasure: false, valueNature: "Ordinal" };
-        expect(allowedAggregations(numeric)).toContain("median");
+        // The mean of a RANK is formally meaningless, so it must not be the default...
+        expect(defaultAggregation(numeric)).toBe("median");
+        // ...but a numeric ordinal is very often averaged on purpose ("4.2 stars"), and
+        // substituting median for someone who deliberately asked for average is a surprise
+        // rather than a protection.
+        expect(allowedAggregations(numeric)).toContain("average");
         expect(allowedAggregations(numeric)).not.toContain("sum");
 
         // Low / Medium / High: the order exists but this module does not carry it, so min/max
