@@ -36,6 +36,16 @@ export interface BicChartProps {
     d3: any;
     /** Attach the bundled geometry for this kind as options.geo (choropleth or basemap). */
     geoKind?: string;
+    /**
+     * WHERE THIS APP KEEPS THE CHART'S RESTING VIEW-STATE - a sort, an expanded row, a 3D
+     * camera. Omit for the session store parked on the container element, which is the right
+     * answer for most pages: the chart remembers while it is mounted and forgets on reload.
+     *
+     * Supply one to outlive the page. A React app is the host that most often has somewhere
+     * better to put it - localStorage, a URL query, a user profile on the server - and no
+     * default could pick between them, which is why this is a prop rather than a flag.
+     */
+    viewState?: ChartHostConfig["viewState"];
     /** Identity within a <BicChartGroup> — the key other charts filter by. */
     id?: string;
     /** Take this group member's selection as a filter on THIS chart's rows. */
@@ -139,7 +149,7 @@ function payloadFor(g: GroupCtx, sourceIdxs: number[] | null) {
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, id, filteredBy, respondsWith,
+    const { code, renderFn, options, d3, geoKind, viewState, id, filteredBy, respondsWith,
             onSelect, className, style } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
@@ -195,7 +205,7 @@ export function BicChart(props: BicChartProps) {
     useLayoutEffect(() => {
         const el = ref.current;
         if (!el || (!code && !renderFn) || !data) return;
-        const host = createChartHost(el, { code, renderFn, data, options, d3, geoKind });
+        const host = createChartHost(el, { code, renderFn, data, options, d3, geoKind, viewState });
         hostRef.current = host;
         const off = host.selection.onChange((payloadIdxs, source) => {
             // "host" = a programmatic clear WE issued (below) to drop a stale highlight.
