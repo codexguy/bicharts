@@ -21,7 +21,18 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.5.0";
+export const HOST_CONTRACT_VERSION = "1.6.0";
+// 1.6.0 (2026-09-02): VIEW-STATE PROVIDERS. `createChartHost({ viewState })` takes a
+// ViewStateProvider — load()/save() — and binds it to the options.uiState / options.setUiState
+// pair generated code already speaks. Additive and invisible to generated code, which is the
+// point: WHERE a chart's resting view-state lives is a property of the HOST (a report file, a
+// workbook, a browser session, nowhere at all), and it was previously either hard-coded here as
+// a session store or handed in as a raw function pair by the one host that happened to persist.
+// Naming the seam means each host implements its own instead of it being reinvented per feature —
+// the 3D scatter's camera is the second thing to want this after a Tabular chart's sort, and will
+// not be the last. A caller supplying its own uiState/setUiState pair still wins outright; a
+// caller supplying neither still gets the 1.5.0 session store, now spelled
+// sessionViewStateProvider(container).
 // 1.5.0 (2026-08-29): SESSION VIEW-STATE. A host that supplies no setUiState now gets one,
 // backed by a store parked on the CONTAINER (CONTAINER_SLOT_UI_STATE). Additive, and invisible
 // to generated code, which already reads options.uiState / options.setUiState - but it is what
@@ -84,6 +95,33 @@ export const CONTAINER_SLOT_INITIAL_XF_MARK = "__llmInitialXfMark"; // a mark to
 // host, so the element is where a session's resting state belongs. See HOST_CONTRACT_VERSION
 // 1.5.0 and the store install in createChartHost.
 export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
+
+/**
+ * WHERE A CHART'S RESTING VIEW-STATE LIVES between draws (contract 1.6.0).
+ *
+ * Generated code never sees this. It keeps reading `options.uiState` and calling
+ * `options.setUiState(bag)`; `createChartHost` is what binds that pair to a provider. The seam
+ * exists because the answer genuinely differs per host: a Power BI visual persists into the
+ * report file so every viewer lands on the author's view, an Excel add-in persists into the
+ * workbook that travels with the sheet, a React page has only the session, and a static preview
+ * has nowhere at all. Before this, the first of those was a raw function pair passed by one
+ * caller and every other host got a session store hard-coded in the host runtime.
+ *
+ * IMPLEMENTORS: `load()` must never throw and returns `{}` when nothing is stored — a chart must
+ * never be blocked from drawing by a storage failure. `save()` takes the WHOLE new bag (REPLACE
+ * semantics, matching setUiState) and MAY DEBOUNCE; a drag emits hundreds of repaints and no
+ * host's persistence layer is a frame buffer.
+ *
+ * READERS: whatever comes back is UNTRUSTED. It may have been written by a previous generation of
+ * the chart, by a different chart on the same element, or by a person editing a file. Validate and
+ * clamp every value you read; a key you do not recognise is not an error, it is someone else's.
+ */
+export interface ViewStateProvider {
+    /** The stored bag, or {} when there is none. Never throws. */
+    load(): Record<string, unknown>;
+    /** Replace the stored bag. May debounce internally. */
+    save(next: Record<string, unknown>): void;
+}
 
 // ---- Selection AFFORDANCE (what a selection LOOKS like) ----
 //

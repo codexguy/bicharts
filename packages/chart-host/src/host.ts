@@ -22,7 +22,7 @@ import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_F
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
     MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
     chartOwnsTimeline, periodTickSuppressesFeedback,
-    HOST_CONTRACT_VERSION } from "./contract";
+    HOST_CONTRACT_VERSION, type ViewStateProvider } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // Deliberately NOT "./geo": that module statically imports ~1.3 MB of generated geometry,
 // which every consumer then paid for even to draw a bar chart (GAP-11). geoLazy holds the
@@ -33,6 +33,48 @@ import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
+
+/**
+ * THE SESSION PROVIDER — what every host got hard-coded before contract 1.6.0, now named.
+ *
+ * The bag is parked on the CONTAINER ELEMENT, which outlives the host object in every host that
+ * destroys and re-creates itself on the same node — the Excel add-in does exactly that on every
+ * resize and every cell edit, so a chart's resting knob used to reset whenever the pane moved.
+ * It dies with the element, which is precisely the scope "session" means here.
+ *
+ * `load()` returns the LIVE store, and `save()` mutates it in place rather than replacing the
+ * object, so a caller holding the bag from before a save still sees the current values. That is
+ * the 1.5.0 behaviour preserved exactly.
+ */
+export function sessionViewStateProvider(container: HTMLElement): ViewStateProvider {
+    const holder = container as unknown as Record<string, unknown>;
+    const existing = holder[CONTAINER_SLOT_UI_STATE];
+    const store = (existing && typeof existing === "object")
+        ? existing as Record<string, unknown>
+        : (holder[CONTAINER_SLOT_UI_STATE] = {} as Record<string, unknown>);
+    return {
+        load: () => store,
+        save: (next) => {
+            if (!next || typeof next !== "object") return;
+            // REPLACE semantics, matching setUiState: the argument is the whole new bag, so a
+            // chart keeping sibling keys reads options.uiState and merges itself.
+            for (const k of Object.keys(store)) delete store[k];
+            Object.assign(store, next);
+        },
+    };
+}
+
+/**
+ * NOWHERE TO PUT IT, said out loud. For a host with no session to speak of — a server-side
+ * render, a static preview, a thumbnail capture — where remembering would be wrong rather than
+ * merely absent: a thumbnail must be the same picture every time it is taken.
+ *
+ * Deliberately not the same as omitting a provider. Omitting one gets the session store and a
+ * chart that remembers within the page; choosing this one says the forgetting is the point.
+ */
+export function noopViewStateProvider(): ViewStateProvider {
+    return { load: () => ({}), save: () => { /* deliberately nowhere */ } };
+}
 
 export interface ChartHostConfig {
     // The payload as buildRenderPayload / the MCP data.sample.json produce it. geoUnmatched
@@ -58,6 +100,10 @@ export interface ChartHostConfig {
     renderFn?: RenderFn;
     /** Partial raw options; resolveOptions applies the shared defaults/clamps. */
     options?: ResolveOptionsInput;
+    /** WHERE this host keeps a chart's resting view-state (contract 1.6.0). Omit for the
+     *  session store parked on the container — the behaviour every host had before 1.6.0.
+     *  A raw `options.setUiState` still wins over this, so an existing caller is untouched. */
+    viewState?: ViewStateProvider;
     /** D3 v7 instance handed to the compiled code. Default: (globalThis as any).d3. */
     d3?: any;
     /** Attach geometry for this geoKind as options.geo (choropleths / basemaps). Resolved
@@ -292,21 +338,30 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // a chart wanting to keep sibling keys reads options.uiState and merges itself. destroy()
     // deliberately leaves the store alone — it dies with the element, which is the session the
     // add-in means.
+    // WHICH PROVIDER, in strict precedence (contract 1.6.0 restated the middle rung; the outer
+    // two are unchanged): a raw setUiState pair from the caller wins outright, then an explicit
+    // viewState provider, then the session store. The first rung is what keeps the Power BI
+    // visual — which has persisted into the report file since long before providers existed —
+    // byte-identical without being ported.
     if (typeof raw.setUiState !== "function") {
-        const holder = container as unknown as Record<string, unknown>;
-        const existing = holder[CONTAINER_SLOT_UI_STATE];
-        const store = (existing && typeof existing === "object")
-            ? existing as Record<string, unknown>
-            : (holder[CONTAINER_SLOT_UI_STATE] = {} as Record<string, unknown>);
-        // A caller-supplied uiState SEEDS an empty store once; on later re-creations the store
-        // is what the reader actually left behind, and a stale seed must not overwrite it.
-        if (raw.uiState && typeof raw.uiState === "object" && Object.keys(store).length === 0)
-            Object.assign(store, raw.uiState as Record<string, unknown>);
-        raw.uiState = store;
+        const provider = config.viewState ?? sessionViewStateProvider(container);
+        let bag: Record<string, unknown>;
+        try {
+            bag = provider.load() ?? {};
+        } catch {
+            // A provider that throws on load is a storage problem, never a reason not to draw.
+            bag = {};
+        }
+        // A caller-supplied uiState SEEDS an empty bag once; on later re-creations the bag is
+        // what the reader actually left behind, and a stale seed must not overwrite it.
+        if (raw.uiState && typeof raw.uiState === "object" && Object.keys(bag).length === 0)
+            Object.assign(bag, raw.uiState as Record<string, unknown>);
+        raw.uiState = bag;
         raw.setUiState = (s: unknown) => {
             if (!s || typeof s !== "object") return;
-            for (const k of Object.keys(store)) delete store[k];
-            Object.assign(store, s as Record<string, unknown>);
+            try {
+                provider.save(s as Record<string, unknown>);
+            } catch { /* a chart must never fail to repaint because a save failed */ }
         };
     }
     let resolved = resolveOptions(raw);

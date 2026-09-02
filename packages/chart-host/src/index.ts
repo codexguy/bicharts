@@ -32,7 +32,7 @@ export {
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
     FLIP_MODE_DEFAULT,
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode,
-    type ColorScaleScope, type RenderOptions,
+    type ColorScaleScope, type RenderOptions, type ViewStateProvider,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // GEOMETRY IS NOT RE-EXPORTED HERE ON PURPOSE. "./geo" statically imports ~1.3 MB of
@@ -64,7 +64,9 @@ export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./
 // stripEsmExports is on the surface for the same reason: a host that receives the
 // module-form artifact and wants to compile it itself needs the same normalization the
 // host applies, or the two paths disagree about what a valid chart artifact is.
-export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure, type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
+export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
+    sessionViewStateProvider, noopViewStateProvider,
+    type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
 export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./selection";
 // Deterministic charts for shapes with exactly one defensible answer: a single value, a
 // single categorical column, a single numeric column. Returns null for everything else, so
