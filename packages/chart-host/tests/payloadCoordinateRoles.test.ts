@@ -5,11 +5,21 @@
 // ALWAYS measures, so the `lat` and `lon` roles were unreachable by construction: every point
 // map fell through to geocoding place NAMES from the gazetteer instead.
 //
-// It failed silently — the carry-over loop had no `else`, so nothing landed in `rolesRefused` —
-// and it was invisible on real data because a city's gazetteer coordinate and its own coordinate
-// agree to about a pixel. What gave it away was rows going MISSING: a row whose place name is
-// ambiguous ("Vancouver" is BC and WA) is refused by the name tier while carrying an exact
-// coordinate that needed no lookup at all.
+// It failed silently — the carry-over loop had no `else`, so nothing landed in `rolesRefused`.
+// What gave it away was rows going MISSING: a row whose place name is ambiguous ("Vancouver" is
+// BC and WA) is refused by the name tier while carrying an exact coordinate that needed no
+// lookup at all.
+//
+// AND THE MISSING ROWS WERE THE MILD HALF. Measured over a 21-city table, comparing where each
+// row was placed before and after: eight cities moved 0.8-6.4 km, which is the invisible case
+// and the reason this survived. TWO DID NOT. A row whose coordinates say San Juan, Puerto Rico
+// (18.47, -66.11) was drawn at San Juan, TEXAS (26.19, -98.16) — 3,482 km away. A row whose
+// coordinates say Panama City, Panama (8.98, -79.52) was drawn in the Florida Panhandle
+// (30.16, -85.66) — 2,445 km. Both with `ambiguous: false`, because each name was unique in the
+// table: nothing was flagged, nothing was annotated, and the chart looked entirely fine. A
+// dropped row at least leaves a count on screen. This does not.
+//
+// The last two cases below are those two rows, kept as fixtures.
 //
 // The archetype prompts say the opposite in as many words — "read coordinates from the data rows
 // ... NEVER geocode place names" — so this was the host contradicting the contract it hands the
@@ -75,6 +85,23 @@ describe("coordinates that arrive as measures", () => {
         const p = buildRenderPayload(COLS, ROWS, null,
             { lat: "Latitude", lon: "Longitude", city: "City" } as any);
         expect(at(p, 2)).toEqual([44.1234, -95.4321]);
+    });
+
+    it("keep a name that exists in TWO countries in the country its coordinates name", () => {
+        // The two real ones, and the worst class this fixes: each name is UNIQUE in its table,
+        // so the name tier resolved it confidently to the wrong continent and flagged nothing.
+        // San Juan PR was drawn in Texas, 3,482 km out; Panama City, Panama in the Florida
+        // Panhandle, 2,445 km out. A dropped row leaves a count on screen; this left nothing.
+        const rows = [
+            { City: "San Juan", Latitude: 18.4655, Longitude: -66.1057, Revenue: 97000 },
+            { City: "Panama City", Latitude: 8.9824, Longitude: -79.5199, Revenue: 141000 },
+        ];
+        const p = buildRenderPayload(COLS, rows, null,
+            { lat: "Latitude", lon: "Longitude", city: "City" } as any);
+        expect(at(p, 0)).toEqual([18.4655, -66.1057]);      // Puerto Rico, not Texas
+        expect(at(p, 1)).toEqual([8.9824, -79.5199]);       // Panama, not Florida
+        expect(p.geoPoint!.precisionCounts.latlon).toBe(2);
+        expect(p.geoPoint!.ambiguousRows).toBe(0);
     });
 });
 
