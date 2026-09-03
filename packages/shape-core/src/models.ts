@@ -949,6 +949,20 @@ export type GetLicenseStatusResult =
         // running BUILD_VERSION is older than this. Undefined when the server didn't send it.
         latestVersion?: string,
         latestVersionIsPreview?: boolean,
+        // HOW LONG THE SERVER ITSELF TOOK, in ms (2026-09-03).
+        //
+        // A client measures wall time, which for a browser includes DNS, TLS, connection
+        // queueing and its own scheduling. Over three weeks of production this call read a
+        // median of 836 ms and a p90 of 8,576 ms, while the server's own daily counters over
+        // the same window averaged 175 ms across 4,058 calls - so almost none of that latency
+        // was execution. Carrying the server's elapsed time back in the RESPONSE puts both
+        // halves on the one line the client already writes, which is the only way to tell a
+        // slow call from a queued one without adding log volume to an endpoint whose volume
+        // was the original complaint.
+        //
+        // Undefined from a server older than this field, which reads correctly as "no split
+        // available" rather than as zero server time.
+        serverMs?: number,
         // ModelCode of the catalog's default (LLMModel.IsDefault=1) row,
         // pre-filtered to active and within its effective window. The
         // client uses this to order the freemium picker so the default
