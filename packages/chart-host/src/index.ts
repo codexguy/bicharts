@@ -146,3 +146,12 @@ export { ensureCrossfilterHitTargets, type HitTargetReport } from "./hitTargets"
 // classes, so all three can go blank the same way and a copy per host is three chances to
 // disagree about what blank means.
 export { censusMarks, isBlankRender, blankRenderFlag, type MarkCensus, type BlankVerdictInput } from "./blankRender";
+
+// A mark drawn as a thin open stroke can only be clicked if you aim perfectly (2026-09-03). The
+// sibling question to ensureCrossfilterHitTargets, one step further out: that pass heals marks
+// that cannot be clicked AT ALL, this one MEASURES marks whose hit target is a hairline. It only
+// counts — widening a hit band has a real failure mode (a band that is too generous steals the
+// clicks of the marks beneath it), so the measurement ships on its own first. And it reads
+// COMPUTED stroke width, which is the half a server-side code check structurally cannot see: a
+// width bound to a scale is a number only the browser knows.
+export { censusHitBands, hitBandFlag, MIN_HIT_BAND_PX, type HitBandCensus } from "./hitBands";

@@ -31,6 +31,7 @@ import { geoFromCache } from "./geoLazy";
 import { createMarkResolver } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
+import { censusHitBands, type HitBandCensus } from "./hitBands";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -124,6 +125,18 @@ export interface ChartHostConfig {
      * surface it, because "empty and silent" is the state this exists to abolish.
      */
     onBlankRender?: (info: { census: MarkCensus; rows: number }) => void;
+    /**
+     * Called after every render with the hit-band census — how many of this chart's marks are
+     * thin open strokes, and how many of those have no wider companion to catch a click
+     * (2026-09-03). Counts only; the host decides what, if anything, to record. It fires even
+     * when everything is fine, because a rate needs a denominator and `interactive` is it: a
+     * chart with no open-stroke marks reports zeroes and should be excluded, not counted as good.
+     *
+     * This is the half a server-side code check structurally cannot do. A regex reads
+     * `.attr('stroke-width', 2)` and nothing else; `.attr('stroke-width', d => scale(d.v))` is a
+     * number only the browser knows, and this reads the COMPUTED width off the rendered element.
+     */
+    onHitBandCensus?: (census: HitBandCensus) => void;
     /** This chart declares time keyframes: frame one is allowed to be empty, so no blank verdict
      *  is issued for it. */
     animated?: boolean;
@@ -669,6 +682,16 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                     config.onBlankRender?.({ census, rows: data.rows ? data.rows.length : 0 });
                 }
             } catch { /* a census must never break a render */ }
+            // CAN THE MARKS BE HIT? Counted separately from whether they exist, because a thin
+            // open stroke is present, correct, tagged, and still unclickable unless you aim at
+            // the hairline. Reported, never repaired: widening a hit band has a real failure
+            // mode of its own, so the measurement lands first and alone. After hit-target
+            // healing, for the same reason the blank census is — a mark that only became
+            // countable there should be measured as it will actually behave.
+            if (config.onHitBandCensus) {
+                try { config.onHitBandCensus(censusHitBands(container, doc)); }
+                catch { /* a census must never break a render */ }
+            }
         },
         setOptions(partial) {
             raw = { ...raw, ...partial };
