@@ -392,6 +392,16 @@ export type LLMClientHints =
          * answer, and the only answer before this existed.
          */
         supportsProjectionChoice?: boolean,
+        /**
+         * Does this client read the `dataset` global, rather than the legacy headerless
+         * CSV_STRING? Declare it and the server stops inferring the data channel from your
+         * version number - which it otherwise does by comparing against 2.0.0.0, quietly making
+         * that number load-bearing for any host numbered on its own line.
+         *
+         * Absent means "infer from my version", which is what a frozen 1.0 client can never do
+         * anything but.
+         */
+        supportsDatasetGlobal?: boolean,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
