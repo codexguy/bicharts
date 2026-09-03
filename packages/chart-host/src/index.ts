@@ -122,6 +122,22 @@ export {
     type QualifyLaunchOutcome, type ChooserGateInput,
 } from "./qualifyLaunch";
 
+// Finding a chart type BY NAME in a list that reaches 137 rows. A filter, never a search: it
+// hides rows and never reorders them, because the order is the picker's own ranking and
+// re-sorting throws the answer away. Shared because three surfaces have to agree on whether
+// "gan" matches a row, and a product that finds a chart in one host and not in another is the
+// class of drift nobody notices from inside either one. The two size predicates live here for
+// the same reason as the chooser's: two hosts, two layouts, two honest answers, written next
+// to each other so the difference reads as a decision.
+export {
+    normalizeFilterTerm, filterQualifyRows, readQualifyChartRow, readQualifyRefusalRow,
+    filterFitsChooser, listNeedsFilter, qualifyFilterGate, inlineFilterGate,
+    FILTER_MIN_TERM_CHARS, FILTER_ROW_PX, FILTER_MIN_WIDTH_PX, FILTER_MIN_HEIGHT_PX,
+    INLINE_FILTER_MIN_ROWS,
+    type QualifyFilterTier, type QualifyFilterResult, type QualifyFilterRead,
+    type QualifyFilterGateReason, type QualifyFilterGateInput,
+} from "./qualifyFilter";
+
 // What a click on a mark AMOUNTS to (2026-08-25). The dimming already tells the reader WHICH
 // marks they picked; in a host with no cross-filter to answer into — Excel, MCP, React — that
 // dimming is also the ONLY response, so the selection has to state its own numbers. Arithmetic
