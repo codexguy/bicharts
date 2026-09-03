@@ -47,3 +47,18 @@ export function GET_RANDOM(): number {
     // source is acceptable here; stat derivation never reaches this.
     return Math.floor(Date.now() % 0xFFFFFFFF) / (0xFFFFFFFF + 1);
 }
+
+/**
+ * Is this generate answer a VERDICT the server reached before any model ran - so that asking
+ * again returns the same answer at the same price of nothing?
+ *
+ * The one rule, in one place, for every host with a retry loop. The Power BI visual used to
+ * treat every non-empty errorMessage as a transient server error and re-send one refused
+ * explicit pick three times per click; the MCP client refused to retry such an answer only by
+ * omission (isServiceError was false). The server now says it on the wire as `isRefusal`, and
+ * this predicate is the only thing a host needs to consult. Strict: only an explicit `true`
+ * counts, so an older server (no field) and a transient failure both read as "not a verdict".
+ */
+export function isDeterministicRefusal(r: { isRefusal?: boolean | null } | null | undefined): boolean {
+    return !!r && r.isRefusal === true;
+}

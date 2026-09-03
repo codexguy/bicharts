@@ -746,6 +746,12 @@ export type LLMRequestCodeResult =
         // server cycled back (pool exhausted) → restart the cycle. (design B)
         chartName?: string,
         isServiceError: boolean,
+        // A VERDICT, NOT A FAILURE (servers from 2026-09-03). True when the server declined
+        // before any model ran - an unchartable shape, a renderer with no lane, an explicit
+        // pick the shape gate refuses - so asking again gets the same answer at the same price
+        // of nothing. A host's retry loop must stop on it; see isDeterministicRefusal(). Absent
+        // on older servers, which reads as false.
+        isRefusal?: boolean,
         // Blocked by the per-DEVICE/IP rate limit (not per-key credit exhaustion).
         // The client shows a coherent "daily device limit" message instead of the
         // contradictory "Freemium: 0% used" banner. 2026-06-21.
