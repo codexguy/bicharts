@@ -21,15 +21,22 @@
 
 /** How the reader left the chooser. Three outcomes, never two - see the note above. */
 export type QualifyLaunchOutcome =
-    /** A named type. Rides the host's explicit-pick lane for exactly one generation. */
-    | { kind: "pick"; chartType: string }
+    /**
+     * A named type. Rides the host's explicit-pick lane for exactly one generation.
+     *
+     * `projectionKey` is set when the row the reader clicked was a PROJECTED one: the list offers
+     * such a type once per projection that admits it, so the same chart appears at two grains and
+     * the pick has to say which. Absent for a direct row, and for a host that does not offer the
+     * choice - the server then picks the first projection that admits the type, as it always did.
+     */
+    | { kind: "pick"; chartType: string; projectionKey?: string }
     /** "Choose for me." Generates with NO preference expressed. */
     | { kind: "auto" }
     /** Backed out. Nothing is generated and no preference is recorded. */
     | { kind: "cancel" };
 
-export const qualifyPick = (chartType: string): QualifyLaunchOutcome =>
-    ({ kind: "pick", chartType });
+export const qualifyPick = (chartType: string, projectionKey?: string | null): QualifyLaunchOutcome =>
+    ({ kind: "pick", chartType, ...(projectionKey ? { projectionKey } : {}) });
 export const qualifyAuto = (): QualifyLaunchOutcome => ({ kind: "auto" });
 export const qualifyCancel = (): QualifyLaunchOutcome => ({ kind: "cancel" });
 
@@ -157,8 +164,11 @@ export function canConfirmLaunch(selected: string | null | undefined): boolean {
  * reading is "this click means nothing", not "this click means spend a credit". The host's
  * disabled state is the first guard; this is the second.
  */
-export function confirmLaunch(selected: string | null | undefined): QualifyLaunchOutcome {
-    return canConfirmLaunch(selected) ? qualifyPick(String(selected).trim()) : qualifyCancel();
+export function confirmLaunch(selected: string | null | undefined,
+                              projectionKey?: string | null): QualifyLaunchOutcome {
+    return canConfirmLaunch(selected)
+        ? qualifyPick(String(selected).trim(), projectionKey)
+        : qualifyCancel();
 }
 
 /**

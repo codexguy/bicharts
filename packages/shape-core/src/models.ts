@@ -373,6 +373,16 @@ export type LLMClientHints =
         allowGeneratedMeasures?: string, // "", "YES", "NO" — Leave to Visual / explicit yes / explicit no
         industryContext?: string,      // "" = N/A, else an industry label (e.g. "Logistics & shipping") for domain-aware metric naming
         favorStyle?: string,
+        /**
+         * WHICH PROJECTION the reader picked, when the row they clicked was a projected one
+         * (servers from 2026-09-03). The "What fits?" list offers a projected type once per
+         * projection that admits it - the same chart at two grains, 3 marks or 4 - so the pick
+         * has to name one. This is the projection's KEY (`viaProjectionKey` from the row), never
+         * its prose label. Absent means "decide for me", which is what every earlier client sends
+         * and what the auto-pick path always sends: the server falls back to the first projection
+         * that admits the type.
+         */
+        favorProjection?: string,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
@@ -652,6 +662,14 @@ export type LLMQualifyResult =
             // the projected shape, so their ranks restart at 1 - group them under their
             // own heading or the numbering reads as a contradiction.
             viaProjection?: string,
+            /**
+             * The projection's stable identity, beside `viaProjection`'s prose (servers from
+             * 2026-09-03). Null on a direct offer. A type several projections admit appears once
+             * per projection - each row a different grain - so a host that lets the reader pick
+             * one must send this back as `clientHints.favorProjection`, or the server re-decides
+             * the grain by its own ordering.
+             */
+            viaProjectionKey?: string,
             // The catalogue marks this type as newer and less proven. NOT a gate: a
             // preview type is offered, ranked, pickable and rendered exactly like any
             // other - the difference is only that the list says so. Absent on older
