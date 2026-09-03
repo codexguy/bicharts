@@ -287,6 +287,27 @@ describe("resolveOptions - the whitelist covers the contract", () => {
         expect(missing, "not a key of resolveOptions({})").toEqual([]);
     });
 
+    it("the two numeric live knobs keep a MEANINGFUL zero", () => {
+        // Both mean "the chart decides" at 0, so an explicit 0 must survive and junk must not
+        // become a number. This is the animLoopDelaySec lesson applied to the two fields that
+        // were passed and read for weeks without ever being declared.
+        expect(resolveOptions({}).geoPointRadiusPx).toBe(0);
+        expect(resolveOptions({ geoPointRadiusPx: 0 }).geoPointRadiusPx).toBe(0);
+        expect(resolveOptions({ geoPointRadiusPx: "" }).geoPointRadiusPx).toBe(0);
+        expect(resolveOptions({ geoPointRadiusPx: "junk" }).geoPointRadiusPx).toBe(0);
+        expect(resolveOptions({ geoPointRadiusPx: -4 }).geoPointRadiusPx).toBe(0);
+        expect(resolveOptions({ geoPointRadiusPx: 7 }).geoPointRadiusPx).toBe(7);
+        expect(resolveOptions({ geoPointRadiusPx: "12" }).geoPointRadiusPx).toBe(12);
+
+        expect(resolveOptions({}).pageSize).toBe(0);
+        expect(resolveOptions({ pageSize: 0 }).pageSize).toBe(0);
+        expect(resolveOptions({ pageSize: "" }).pageSize).toBe(0);
+        expect(resolveOptions({ pageSize: "junk" }).pageSize).toBe(0);
+        expect(resolveOptions({ pageSize: -1 }).pageSize).toBe(0);
+        expect(resolveOptions({ pageSize: 25 }).pageSize).toBe(25);
+        expect(resolveOptions({ pageSize: "50" }).pageSize).toBe(50);
+    });
+
     it("the three live knobs keep their own defaults and reject junk", () => {
         expect(resolveOptions({}).approximatePositions).toBe("mark");
         expect(resolveOptions({ approximatePositions: "aggregate" }).approximatePositions).toBe("aggregate");

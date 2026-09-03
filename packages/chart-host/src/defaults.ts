@@ -51,6 +51,15 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // omission is a missing check, not four mistakes.
         geoPointDest: p.geoPointDest,
         maxMapPoints: p.maxMapPoints,
+        // FIFTH AND SIXTH OCCURRENCES, and the two that argue hardest for the guard test: both
+        // were passed by the visual AND read by the charts, and neither was ever declared here or
+        // in the contract - so the contract-vs-whitelist check could not see them either. What
+        // found them was scanning the OTHER direction, from the caller and the charts inward.
+        // 0 is MEANINGFUL for both ("let the chart choose", "no paging"), so numberOr rather than
+        // `|| DEFAULT`, which would turn an explicit 0 into something else. Clamping stays
+        // chart-side for the same reason it does for flipIntervalMs.
+        geoPointRadiusPx: Math.max(0, numberOr(p.geoPointRadiusPx, 0)),
+        pageSize: Math.max(0, numberOr(p.pageSize, 0)),
         uiState: p.uiState,
         setUiState: p.setUiState,
         backgroundColor: p.backgroundColor,

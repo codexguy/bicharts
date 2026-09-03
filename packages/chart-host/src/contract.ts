@@ -302,6 +302,14 @@ export interface RenderOptions {
     // lowered afterward with no regeneration — so the chart itself must cap what it
     // draws and say so, live, every render. Undefined = no cap known (older client).
     maxMapPoints?: number;
+    // Radius in px for the dot a map draws where a polygon would be sub-pixel. 0 or absent means
+    // the chart's own viewport-relative default, so an untouched report is unchanged; the CHART
+    // clamps it, because only the chart knows what its viewport can carry.
+    geoPointRadiusPx?: number;
+    // Rows per page for charts whose rows are a LIST rather than marks competing for one viewport.
+    // 0 or absent means no paging - every row drawn, an over-tall body scrolls - which is what
+    // those charts did before the knob existed. The shared pager helper owns the slicing.
+    pageSize?: number;
     // See ApproximatePositions. Read LIVE at render time, like maxMapPoints: it changes only how
     // existing marks are drawn, so a cached chart honours a change of mind with no regeneration.
     approximatePositions?: ApproximatePositions;
