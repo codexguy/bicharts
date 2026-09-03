@@ -32,6 +32,7 @@ import { createMarkResolver } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
+import { fitRenderedChart, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -143,6 +144,24 @@ export interface ChartHostConfig {
     /** The chart's marks are not tagged with the shared contract (a Vega lane names its own
      *  marks), so a mark count proves nothing and the blank verdict is suppressed. */
     contractUntagged?: boolean;
+    /**
+     * DOES THE RENDERED CHART FIT ITS FRAME (2026-09-03)? Runs after every render.
+     *
+     * The outermost <svg> clips at its own viewport in every browser, so a chart that sets
+     * `svg height = options.height` and draws a taller body loses the overflow OUTRIGHT - the
+     * rows past the fold are never painted, and the container's scrollHeight agrees that
+     * everything fits, so nothing anywhere offers a scrollbar. This grows the frame to the ink
+     * the chart actually drew and THEN sets the container's overflow, in that order, because a
+     * scrollbar on an un-grown frame scrolls to nothing.
+     *
+     * DEFAULT ON, because the alternative is silent data loss and the pass only acts when ink is
+     * measurably outside the frame (8px of slack, and a 20x ceiling against a mark parked in the
+     * weeds). Pass `false` for a host that owns its own layout, or an options object to take the
+     * reading without touching the chart (`grow: false`, `applyOverflow: false`).
+     */
+    fit?: boolean | FitRenderedChartOptions;
+    /** The fit result after each render - what was grown, and how the chart measured. */
+    onFit?: (result: FitRenderedChartResult) => void;
 }
 
 export interface ChartHost {
@@ -599,6 +618,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     container.classList?.add(HOST_CONTAINER_CLASS);
     ensureAffordanceStyles();
 
+    const fitOpts: boolean | FitRenderedChartOptions = config.fit ?? true;
+
     const stopAnim = () => { const s = (container as any)[CONTAINER_SLOT_ANIM_STOP]; if (typeof s === "function") { try { s(); } catch { /* chart timer already dead */ } } };
 
     const host: ChartHost = {
@@ -691,6 +712,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (config.onHitBandCensus) {
                 try { config.onHitBandCensus(censusHitBands(container, doc)); }
                 catch { /* a census must never break a render */ }
+            }
+            // DOES IT FIT, AND IF NOT CAN THE READER GET AT THE REST (2026-09-03)? Runs
+            // LAST, after every heal and census, because it measures what is finally on screen.
+            // The <svg> clips at its own viewport, so a chart drawing past its declared height
+            // loses those rows outright while the container reports that everything fits - the
+            // frame is grown to the ink FIRST, and only then does a scrollbar mean anything.
+            if (fitOpts !== false) {
+                try {
+                    const r = fitRenderedChart(container, fitOpts === true ? {} : fitOpts);
+                    config.onFit?.(r);
+                } catch { /* a fit pass must never break a render that already succeeded */ }
             }
         },
         setOptions(partial) {

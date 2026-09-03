@@ -177,3 +177,20 @@ export { censusMarks, isBlankRender, blankRenderFlag, type MarkCensus, type Blan
 // COMPUTED stroke width, which is the half a server-side code check structurally cannot see: a
 // width bound to a scale is a number only the browser knows.
 export { censusHitBands, hitBandFlag, MIN_HIT_BAND_PX, type HitBandCensus } from "./hitBands";
+
+// DOES THE CHART FIT ITS FRAME, AND WHAT DO YOU DO WHEN IT DOES NOT (2026-09-03). The outermost
+// <svg> clips at its own viewport in every browser and every host, so a chart that sets
+// `svg height = options.height` and draws a taller body loses the overflow outright - the rows
+// past the fold are not cramped, they are never painted, and the container's scrollHeight agrees
+// that everything fits. Written and proven in the Power BI visual, where it recovered 9 of 25 lost
+// rows on a paged Gantt; none of it was Power-BI-specific, so it lives here now and the other
+// hosts stop clipping silently. `fitRenderedChart(container)` is the one call after a render.
+export {
+    SCROLL_SLACK_PX, MAX_FRAME_GROW_FACTOR, PHANTOM_FRACTION, FIT_CONTENT_SELECTOR,
+    needsScroll, contentExtentOf, scrollFitFor, planFrameGrow, isPhantomBox,
+    type MeasuredBox, type ContentExtent, type ScrollFit, type FrameGrowPlan,
+} from "./fit";
+export {
+    fitRenderedChart, fitReadingFor, measureContainerBoxes, svgInkReach, ctmScaleOf,
+    type FitReading, type InkReach, type FitRenderedChartOptions, type FitRenderedChartResult,
+} from "./fitDom";
