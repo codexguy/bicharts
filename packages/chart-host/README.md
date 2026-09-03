@@ -185,7 +185,16 @@ visual — override them if you want a different look:
 ```css
 .bic-chart-host { --lch-dim-opacity: 0.25; }
 .bic-chart-host.lch-has-selection .d3-mark:not(.lch-mark-selected) { opacity: var(--lch-dim-opacity); }
+.bic-chart-host.lch-has-selection .d3-lift-selected .d3-mark.lch-mark-selected { opacity: 1; stroke-opacity: 1; fill-opacity: 1; }
 ```
+
+The second rule is opt-in. The affordance is dim-only — a selected mark is merely *exempt* from
+the dim and keeps whatever paint the chart gave it — so a chart that rests its marks below full
+opacity by design (a parallel-coordinates plot drawing every line at 0.38 so overplotting reads)
+would show its selected lines at 38%, which the eye reads as dimmed. Such a chart stamps
+`d3-lift-selected` on the group holding those marks, and inside that group a selected mark is
+painted at full opacity. Undeclared charts are unchanged, so alpha used as an encoding (a depth
+cue, a hierarchy level) is never flattened by a fix meant for another chart.
 
 ## Architecture — three layers, and why it matters if you contribute
 

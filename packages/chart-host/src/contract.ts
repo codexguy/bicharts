@@ -21,7 +21,16 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.6.0";
+export const HOST_CONTRACT_VERSION = "1.7.0";
+// 1.7.0 (2026-09-02): LIFT_SELECTED_CLASS. A chart whose marks REST below full opacity by design
+// (a parallel-coordinates plot drawing every line at 0.38 so overplotting reads) may stamp
+// `d3-lift-selected` on the group holding those marks; the shared stylesheet then paints a
+// SELECTED mark in that group at full opacity instead of merely exempting it from the dim.
+// Without the declaration nothing changes: the affordance has always been dim-only, and on a
+// pale-by-design chart that left the selected marks at 38% - indistinguishable from dimmed.
+// Declared by the CHART, per group, rather than switched on per chart type by the host, so
+// alpha that is an ENCODING (a depth cue, a hierarchy level) is never flattened by accident and
+// a second chart type opts in with one class on its own archetype. Additive.
 // 1.6.0 (2026-09-02): VIEW-STATE PROVIDERS. `createChartHost({ viewState })` takes a
 // ViewStateProvider — load()/save() — and binds it to the options.uiState / options.setUiState
 // pair generated code already speaks. Additive and invisible to generated code, which is the
@@ -76,6 +85,12 @@ export type GeoMapKind = "north-america" | "world";
 export const MARK_CLASS = "d3-mark";                 // a data mark
 export const LEGEND_MARK_CLASS = "d3-legend-mark";   // a legend swatch (also filterable)
 export const AXIS_FILTER_CLASS = "d3-axis-filter";   // an axis/scrubber tick (union of row idxs)
+// A DECLARATION, not a mark: stamped by the chart on a GROUP (or a mark) whose members rest
+// below full opacity by design. The selection affordance is dim-only - a selected mark is
+// merely exempt from the dim - which leaves a pale-by-design mark looking dimmed when it is
+// the one thing selected. Inside a declared group a selected mark is lifted to full paint.
+// Per group, so a chart can protect an alpha ENCODING elsewhere on the same canvas.
+export const LIFT_SELECTED_CLASS = "d3-lift-selected";
 
 // The attribute each filterable mark carries: comma-joined __rowIdx__ values,
 // frame-scoped for animated charts.

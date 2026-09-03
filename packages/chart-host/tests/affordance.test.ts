@@ -7,6 +7,7 @@ import { createChartHost } from "../src/host";
 import {
     MARK_CLASS, LEGEND_MARK_CLASS, ROW_IDX_ATTR, HOST_CONTAINER_CLASS,
     SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
+    LIFT_SELECTED_CLASS,
 } from "../src/contract";
 
 // The SELECTION AFFORDANCE — what a selection LOOKS like, and how a user gets OUT of one.
@@ -88,6 +89,20 @@ describe("selection affordance", () => {
         expect(marks()[2].classList.contains(MARK_SELECTED_CLASS)).toBe(false);
     });
 
+    it("a DECLARED group lifts its selected marks to full paint; an undeclared chart is untouched", () => {
+        // A chart that rests its marks below full opacity by design (a parallel-coordinates
+        // plot at 0.38) used to show its SELECTED marks at 38% - the eye reads that as dimmed,
+        // because the affordance only ever dims the others. The lift is opt-in by class so a
+        // chart using alpha as an ENCODING is never flattened by a fix meant for another.
+        const h = host();
+        h.render();
+        const css = dom.window.document.getElementById("bic-chart-host-affordances")?.textContent ?? "";
+        expect(css).toContain(`.${LIFT_SELECTED_CLASS} .${MARK_CLASS}.${MARK_SELECTED_CLASS}`);
+        expect(css).toContain("stroke-opacity: 1 !important");
+        // The dim rule itself is untouched: an undeclared selected mark is still merely exempt.
+        expect(css).toContain(`.${MARK_CLASS}:not(.${MARK_SELECTED_CLASS})`);
+    });
+
     it("re-clicking the same mark toggles the selection OFF", () => {
         const h = host();
         h.render();
@@ -167,5 +182,6 @@ describe("affordance grammar is a STABLE contract", () => {
         expect(MARK_SELECTED_CLASS).toBe("lch-mark-selected");
         expect(DIM_OPACITY_VAR).toBe("--lch-dim-opacity");
         expect(DIM_OPACITY_DEFAULT).toBe(0.25);
+        expect(LIFT_SELECTED_CLASS).toBe("d3-lift-selected");
     });
 });

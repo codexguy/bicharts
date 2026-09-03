@@ -20,7 +20,7 @@
 import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS,
     XFILTER_REFRESH_EVENT, CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
-    MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
+    MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, LIFT_SELECTED_CLASS,
     chartOwnsTimeline, periodTickSuppressesFeedback,
     HOST_CONTRACT_VERSION, type ViewStateProvider } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
@@ -411,6 +411,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
 .${HOST_CONTAINER_CLASS}:has(.${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover) .${MARK_CLASS}:not(:hover):not([${ROW_IDX_ATTR}=""]) { opacity: 0.55; }
 .${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}:not(.${MARK_SELECTED_CLASS}):not([${ROW_IDX_ATTR}=""]) {
     opacity: var(${DIM_OPACITY_VAR}, ${DIM_OPACITY_DEFAULT}) !important;
+}
+/* THE LIFT, BY DECLARATION ONLY. Dimming the others is all the rule above does; a selected
+   mark keeps whatever paint its chart gave it. A chart that draws every mark pale on purpose
+   (a parallel-coordinates plot at 0.38 so overplotting reads) therefore shows its SELECTED
+   lines at 38% - the same eye-reading as dimmed. Inside a group the chart stamps
+   ${LIFT_SELECTED_CLASS} on, a selected mark is painted at full opacity. Opacity only, never
+   stroke geometry. Undeclared charts are byte-identical, which is what keeps an alpha
+   ENCODING (a depth cue, a hierarchy level) from being flattened by a fix meant for one. */
+.${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${LIFT_SELECTED_CLASS} .${MARK_CLASS}.${MARK_SELECTED_CLASS},
+.${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}.${LIFT_SELECTED_CLASS}.${MARK_SELECTED_CLASS} {
+    opacity: 1 !important; stroke-opacity: 1 !important; fill-opacity: 1 !important;
 }
 .${HOST_CONTAINER_CLASS} .${LEGEND_MARK_CLASS} { cursor: pointer; }
 /* An axis/group header that filters when clicked LOOKS like inert text, and until it is
