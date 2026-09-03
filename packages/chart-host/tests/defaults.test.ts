@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
 import { resolveOptions } from "../src/defaults";
 import { RenderOptions } from "../src/contract";
 
@@ -229,4 +230,79 @@ describe("resolveOptions — host fields pass through by identity", () => {
         expect(resolveOptions({}).flipSync).toBe(true);
     });
 
+});
+
+// ---------------------------------------------------------------------------------------------
+// THE GUARD. Four fields have now been declared on RenderOptions, passed by a caller, read by a
+// chart, and silently dropped in between: animLoopDelaySec, flipSync/flipIntervalMs, geoPointDest
+// and approximatePositions. Every one behaved as its downstream default, which is why none of
+// them threw and two of them sat in the product as dead pane controls. The omission is structural
+// - this function is a WHITELIST that returns a NEW object - so the check has to be structural
+// too, and it must not itself be a list somebody remembers to extend.
+// ---------------------------------------------------------------------------------------------
+describe("resolveOptions - the whitelist covers the contract", () => {
+    const readSrc = (f: string) => fs.readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
+
+    // Top-level fields of `export interface RenderOptions { ... }`, which are indented exactly
+    // four spaces - nested shapes (geoPoint's members) are deeper and are not fields of the
+    // interface itself.
+    const contractFields = (): string[] => {
+        const s = readSrc("contract.ts");
+        const at = s.indexOf("export interface RenderOptions {");
+        expect(at, "RenderOptions must be findable in contract.ts").toBeGreaterThan(-1);
+        const body = s.slice(at).split(/\n\}/)[0];
+        return [...body.matchAll(/^ {4}([A-Za-z][A-Za-z0-9]*)\??\s*:/gm)].map(m => m[1]);
+    };
+
+    // Keys of the object literal resolveOptions returns, indented eight spaces.
+    const resolvedKeys = (): string[] => {
+        const s = readSrc("defaults.ts");
+        const at = s.indexOf("export function resolveOptions");
+        expect(at, "resolveOptions must be findable in defaults.ts").toBeGreaterThan(-1);
+        const body = s.slice(at);
+        return [...body.matchAll(/^ {8}([A-Za-z][A-Za-z0-9]*)\s*:/gm)].map(m => m[1]);
+    };
+
+    it("every RenderOptions field appears in the returned object", () => {
+        const declared = contractFields();
+        // Sanity: the parse must actually find the interface, or this test passes vacuously.
+        expect(declared.length, "parsed RenderOptions fields").toBeGreaterThan(25);
+        expect(declared).toContain("width");
+        expect(declared).toContain("flipMode");
+
+        const resolved = new Set(resolvedKeys());
+        expect(resolved.size, "parsed resolveOptions keys").toBeGreaterThan(25);
+
+        const dropped = declared.filter(f => !resolved.has(f));
+        expect(dropped, "declared on RenderOptions but DROPPED by resolveOptions - a caller can "
+            + "pass these and a chart can read them, and they will never arrive").toEqual([]);
+    });
+
+    it("and the runtime agrees: every declared field is a KEY of the result, even when absent", () => {
+        // The value may legitimately be undefined; the KEY must exist, because the object is
+        // rebuilt rather than spread. This is the same check at runtime, so a parse that drifts
+        // cannot quietly stop testing anything.
+        const out = resolveOptions({}) as Record<string, unknown>;
+        const missing = contractFields().filter(f => !(f in out));
+        expect(missing, "not a key of resolveOptions({})").toEqual([]);
+    });
+
+    it("the three live knobs keep their own defaults and reject junk", () => {
+        expect(resolveOptions({}).approximatePositions).toBe("mark");
+        expect(resolveOptions({ approximatePositions: "aggregate" }).approximatePositions).toBe("aggregate");
+        expect(resolveOptions({ approximatePositions: "skip" }).approximatePositions).toBe("skip");
+        expect(resolveOptions({ approximatePositions: "SKIP" }).approximatePositions).toBe("skip");
+        expect(resolveOptions({ approximatePositions: "sideways" }).approximatePositions).toBe("mark");
+
+        expect(resolveOptions({}).valueAxisBaseline).toBe("fit");
+        expect(resolveOptions({ valueAxisBaseline: "zero" }).valueAxisBaseline).toBe("zero");
+        expect(resolveOptions({ valueAxisBaseline: "auto" }).valueAxisBaseline).toBe("auto");
+        expect(resolveOptions({ valueAxisBaseline: "FIT" }).valueAxisBaseline).toBe("fit");
+        expect(resolveOptions({ valueAxisBaseline: "tight" }).valueAxisBaseline).toBe("fit");
+
+        // A pass-through, so the caller's object must arrive by reference and untouched.
+        const dest = { precision: null, precisionCounts: {} as any, coarseExamples: [], unplaced: 2,
+                       unplacedExamples: ["x"], ambiguousRows: 0 };
+        expect(resolveOptions({ geoPointDest: dest }).geoPointDest).toBe(dest);
+    });
 });

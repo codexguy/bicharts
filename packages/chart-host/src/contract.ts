@@ -211,6 +211,24 @@ export type TimelineStyle = "" | "line" | "boxes";
 // cached chart keeps behaving exactly as it did. See RenderOptions.flipMode.
 export type FlipMode = "" | "single" | "all" | "both";
 export const FLIP_MODE_DEFAULT: FlipMode = "both";
+
+// What to do with rows a gazetteer could not place exactly: draw the mark at the coarse
+// position anyway (the default), roll them into the coarser area they DID resolve to, or draw
+// no mark for them. "skip" is skip DRAWING only - every total, average, legend entry and
+// cross-filter selection still counts those rows, because dropping them from the data would
+// quietly change the numbers on screen.
+export type ApproximatePositions = "mark" | "aggregate" | "skip";
+export const APPROXIMATE_POSITIONS_DEFAULT: ApproximatePositions = "mark";
+
+// Whether a value axis must contain zero. "zero" forces it in; "fit" (the default) fits the
+// data; "auto" fits only where the marks do not encode magnitude by LENGTH. The distinction
+// exists because a forced zero is honest for bars and wasteful for lines: a series between 720
+// and 1,490 drawn from 0 spends more than half its panel below anything the chart is about, and
+// on a difference chart the crossings - the subject - flatten into the top third. A bar is the
+// other case: its length IS the number, so a floating baseline lies, and a chart whose marks are
+// bars keeps its floor whatever this says.
+export type ValueAxisBaseline = "zero" | "fit" | "auto";
+export const VALUE_AXIS_BASELINE_DEFAULT: ValueAxisBaseline = "fit";
 // Colour Scale Scope for animated continuous scales: "" = ONE global domain over
 // every period (default; a colour means the same value in every frame); "frame" =
 // re-scale each keyframe to its own min-max (in-frame contrast lens; the chart must
@@ -284,6 +302,12 @@ export interface RenderOptions {
     // lowered afterward with no regeneration — so the chart itself must cap what it
     // draws and say so, live, every render. Undefined = no cap known (older client).
     maxMapPoints?: number;
+    // See ApproximatePositions. Read LIVE at render time, like maxMapPoints: it changes only how
+    // existing marks are drawn, so a cached chart honours a change of mind with no regeneration.
+    approximatePositions?: ApproximatePositions;
+    // See ValueAxisBaseline. Also live: an axis domain is a drawing decision, not a generation
+    // decision, so a cached chart must re-draw under the new rule without being regenerated.
+    valueAxisBaseline?: ValueAxisBaseline;
     // Live-restyle knobs (changing any of these = re-render, never a regeneration).
     colorScaleLow?: string;
     colorScaleHigh?: string;

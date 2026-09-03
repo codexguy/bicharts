@@ -31,7 +31,10 @@ export {
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
     FLIP_MODE_DEFAULT,
+    APPROXIMATE_POSITIONS_DEFAULT,
+    VALUE_AXIS_BASELINE_DEFAULT,
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode,
+    type ApproximatePositions, type ValueAxisBaseline,
     type ColorScaleScope, type RenderOptions, type ViewStateProvider,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";

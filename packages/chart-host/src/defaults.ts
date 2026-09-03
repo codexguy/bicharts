@@ -17,6 +17,8 @@ import {
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
     FLIP_MODE_DEFAULT,
+    APPROXIMATE_POSITIONS_DEFAULT,
+    VALUE_AXIS_BASELINE_DEFAULT,
 } from "./contract";
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
@@ -40,6 +42,14 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         geoUnmatched: p.geoUnmatched,
         geo: p.geo,
         geoPoint: p.geoPoint,
+        // THIRD AND FOURTH OCCURRENCES OF THE animLoopDelaySec OMISSION, found together by
+        // reading the contract against this list rather than by a bug report. geoPointDest is
+        // declared on RenderOptions, passed by the visual and read by the route archetypes, and
+        // was missing here - so a chart that claims "an arc is only as honest as its worse
+        // endpoint" never saw the destination end at all. The guard test at the bottom of
+        // tests/defaults.test.ts now compares the two lists, because four instances of one
+        // omission is a missing check, not four mistakes.
+        geoPointDest: p.geoPointDest,
         maxMapPoints: p.maxMapPoints,
         uiState: p.uiState,
         setUiState: p.setUiState,
@@ -66,6 +76,21 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         geoLandColor: p.geoLandColor || undefined,
         geoNoDataColor: p.geoNoDataColor || undefined,
         aggregation: (p.aggregation == null ? "" : String(p.aggregation)) || undefined,
+        // A recognised value wins, anything else falls to the default: an unknown string must
+        // never reach a chart as a live mode. Both of these are read on EVERY render, so a
+        // reader can change their mind about a cached chart without regenerating it.
+        approximatePositions: ((): RenderOptions["approximatePositions"] => {
+            const v = (p.approximatePositions == null ? "" : String(p.approximatePositions)).toLowerCase();
+            return v === "mark" || v === "aggregate" || v === "skip"
+                ? (v as RenderOptions["approximatePositions"])
+                : APPROXIMATE_POSITIONS_DEFAULT;
+        })(),
+        valueAxisBaseline: ((): RenderOptions["valueAxisBaseline"] => {
+            const v = (p.valueAxisBaseline == null ? "" : String(p.valueAxisBaseline)).toLowerCase();
+            return v === "zero" || v === "fit" || v === "auto"
+                ? (v as RenderOptions["valueAxisBaseline"])
+                : VALUE_AXIS_BASELINE_DEFAULT;
+        })(),
 
         // ---- animation: booleans, default+clamp numerics, "" default enum ----
         animAutoPlay: !!p.animAutoPlay,
