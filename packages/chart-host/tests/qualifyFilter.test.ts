@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     normalizeFilterTerm, filterQualifyRows, readQualifyChartRow, readQualifyRefusalRow,
     filterFitsChooser, listNeedsFilter, qualifyFilterGate, inlineFilterGate,
+    computeQualifyFilterView, qualifyFilterCountText, type QualifyFilterGroup,
     FILTER_MIN_TERM_CHARS, FILTER_ROW_PX, FILTER_MIN_WIDTH_PX, FILTER_MIN_HEIGHT_PX,
     INLINE_FILTER_MIN_ROWS,
 } from "../src/qualifyFilter";
@@ -262,5 +263,116 @@ describe("inlineFilterGate - the add-in has no size clause, and that is the deci
     it("still declines a short list - a filter over five rows is clutter in every host", () => {
         expect(inlineFilterGate(INLINE_FILTER_MIN_ROWS - 1)).toEqual({ show: false, why: "no-overflow" });
         expect(inlineFilterGate(0)).toEqual({ show: false, why: "no-overflow" });
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//  THE FILTERED VIEW - the rules that MISLEAD silently when they drift, driven directly.
+//
+//  Element handles are plain strings here. The function never touches an element, only carries
+//  it, which is exactly what makes the two hosts' `style.display` and `hidden` writes the only
+//  difference between them.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const row = (el: string, name: string, description = "") => ({ el, name, description });
+
+/** A dialog shaped like a real one: a preview block, the ranked main block, and a refusal block
+ *  behind "Show all chart types". */
+function dialog(): QualifyFilterGroup<string>[] {
+    return [
+        { heading: "h-preview", section: "fits", rows: [row("r-flow", "Flow map", "Origin to destination.")] },
+        { heading: "h-main", section: "fits", rows: [
+            row("r-bar", "Bar chart", "One bar per category."),
+            row("r-line", "Line chart", "A value over an ordered axis."),
+        ] },
+        { heading: "h-refused-poor", section: "refused", rows: [row("r-gantt", "Gantt chart", "needs a start and an end date, and this data has 1 date (OrderDate).")] },
+    ];
+}
+
+describe("computeQualifyFilterView", () => {
+    it("shows everything and hides nothing when there is no term", () => {
+        const v = computeQualifyFilterView(dialog(), "");
+        expect(v.tier).toBe("all");
+        expect(v.hide).toEqual([]);
+        expect(v.hideHeadings).toEqual([]);
+        expect(v.show).toEqual(["r-flow", "r-bar", "r-line", "r-gantt"]);
+    });
+
+    it("HIDES A HEADING THAT NOW INTRODUCES NOTHING, and keeps the one that still does", () => {
+        // The rule that misleads when it drifts: a "New - in preview" heading over an empty gap
+        // reads as a claim about the rows below it, which belong to a different block.
+        const v = computeQualifyFilterView(dialog(), "bar");
+        expect(v.show).toEqual(["r-bar"]);
+        expect(v.showHeadings).toEqual(["h-main"]);
+        expect(v.hideHeadings).toEqual(["h-preview", "h-refused-poor"]);
+    });
+
+    it("preserves render order in `show`, so a host writing it in sequence cannot reorder", () => {
+        const v = computeQualifyFilterView(dialog(), "chart");
+        expect(v.show).toEqual(["r-bar", "r-line", "r-gantt"]);
+    });
+
+    it("OPENS THE REFUSAL BLOCK when the term matches only down there, and says where it went", () => {
+        const v = computeQualifyFilterView(dialog(), "gan");
+        expect(v.matched).toBe(0);
+        expect(v.refusalMatched).toBe(1);
+        expect(v.openRefusals).toBe(true);
+        expect(v.note).toBe("onlyRefusals");
+        expect(v.show).toEqual(["r-gantt"]);
+    });
+
+    it("does NOT ask for the refusal block when something that FITS already matched", () => {
+        // The block is the answer to "why isn't my chart here". With a fitting match on screen
+        // that question has not been asked, and opening it would bury the answer that was.
+        const v = computeQualifyFilterView(dialog(), "chart");
+        expect(v.openRefusals).toBe(false);
+    });
+
+    it("goes back to false the moment the term stops needing it - the host restores from there", () => {
+        // AUTO-EXPANSION IS AN OVERRIDE, NOT A SETTING. This is the transition each host has to
+        // watch: true, then false, and the reader's own checkbox goes back to what they set.
+        expect(computeQualifyFilterView(dialog(), "gan").openRefusals).toBe(true);
+        expect(computeQualifyFilterView(dialog(), "ga").openRefusals).toBe(true);
+        expect(computeQualifyFilterView(dialog(), "").openRefusals).toBe(false);
+        expect(computeQualifyFilterView(dialog(), "bar").openRefusals).toBe(false);
+    });
+
+    it("announces the DESCRIPTION tier and nothing else", () => {
+        expect(computeQualifyFilterView(dialog(), "origin").note).toBe("descFallback");
+        expect(computeQualifyFilterView(dialog(), "bar").note).toBe("none");
+        expect(computeQualifyFilterView(dialog(), "").note).toBe("none");
+    });
+
+    it("distinguishes 'nothing matched your term' from every other empty state", () => {
+        const v = computeQualifyFilterView(dialog(), "zzzz");
+        expect(v.note).toBe("noMatch");
+        expect(v.show).toEqual([]);
+        expect(v.hide).toHaveLength(4);
+        // Every heading goes, including the refusal block's - there is nothing under any of them.
+        expect(v.hideHeadings).toHaveLength(3);
+    });
+
+    it("counts the FITTING list only - the refusal block has its own answer", () => {
+        const v = computeQualifyFilterView(dialog(), "chart");
+        expect(v.total).toBe(3);
+        expect(v.matched).toBe(2);
+        expect(v.refusalMatched).toBe(1);
+        expect(qualifyFilterCountText(v)).toBe("2 of 3");
+        expect(qualifyFilterCountText(computeQualifyFilterView(dialog(), ""))).toBe("3");
+    });
+
+    it("survives a dialog with no groups at all", () => {
+        const v = computeQualifyFilterView([], "gan");
+        expect(v.show).toEqual([]);
+        expect(v.openRefusals).toBe(false);
+        expect(v.note).toBe("noMatch");
+    });
+
+    it("a group with a null heading contributes rows and no heading decision", () => {
+        const v = computeQualifyFilterView(
+            [{ heading: null, section: "fits", rows: [row("a", "Bar chart"), row("b", "Gantt chart")] }], "gan");
+        expect(v.show).toEqual(["b"]);
+        expect(v.showHeadings).toEqual([]);
+        expect(v.hideHeadings).toEqual([]);
     });
 });

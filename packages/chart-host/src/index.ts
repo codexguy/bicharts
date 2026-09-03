@@ -134,8 +134,14 @@ export {
     filterFitsChooser, listNeedsFilter, qualifyFilterGate, inlineFilterGate,
     FILTER_MIN_TERM_CHARS, FILTER_ROW_PX, FILTER_MIN_WIDTH_PX, FILTER_MIN_HEIGHT_PX,
     INLINE_FILTER_MIN_ROWS,
+    // ...and the whole filtered VIEW - which rows, which headings are left introducing nothing,
+    // whether the refusal block has to open, and which of the four sentences applies. Written
+    // twice in two hosts before it was written once here, and identical both times.
+    computeQualifyFilterView, qualifyFilterCountText,
     type QualifyFilterTier, type QualifyFilterResult, type QualifyFilterRead,
     type QualifyFilterGateReason, type QualifyFilterGateInput,
+    type QualifyFilterRow, type QualifyFilterGroup, type QualifyFilterView,
+    type QualifyFilterNoteKind,
 } from "./qualifyFilter";
 
 // What a click on a mark AMOUNTS to (2026-08-25). The dimming already tells the reader WHICH

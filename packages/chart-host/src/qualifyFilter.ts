@@ -263,6 +263,145 @@ export function qualifyFilterGate(i: QualifyFilterGateInput): { show: boolean; w
     return { show: true, why: "shown" };
 }
 
+
+// ────────────────────────────────────────────────────────────────────────────────
+//  WHAT THE FILTERED LIST LOOKS LIKE - the whole answer, computed once, for both hosts.
+//
+//  WHY THIS IS HERE AND NOT IN EACH HOST. It was written twice, in the two hosts, before it was
+//  written here, and the two copies were already the same forty lines: which rows survive, which
+//  HEADINGS are left introducing nothing, whether the refusal block has to be opened because the
+//  reader's term only matches down there, and which of the four things the note has to say. None
+//  of that is host-specific - the visual writes `style.display` and the add-in writes `hidden`,
+//  and that difference is the only difference.
+//
+//  It is also what makes the behaviour TESTABLE. The DOM writes are a private function over live
+//  elements in each host; this is a pure function over element HANDLES of any type, so the rules
+//  that actually mislead when they drift - a dangling heading, a sticky auto-expansion - can be
+//  driven directly instead of asserted against source text.
+// ────────────────────────────────────────────────────────────────────────────────
+
+/** One row, as the hosts record it while BUILDING the list - the element handle plus the text it
+ *  is matched on, carried beside the element rather than scraped back out of it later. */
+export interface QualifyFilterRow<E> {
+    el: E;
+    name: string;
+    description: string;
+}
+
+/** A heading and the rows it introduces, in render order. `section` separates the fitting list
+ *  from the refusal block behind "Show all chart types" - two independently visible surfaces
+ *  answering two different questions, and only one of them can be auto-opened. */
+export interface QualifyFilterGroup<E> {
+    heading: E | null;
+    section: "fits" | "refused";
+    rows: QualifyFilterRow<E>[];
+}
+
+/** WHICH SENTENCE THE HOST HAS TO SHOW. The host owns the words (it localizes); this owns the
+ *  decision, which is the half that can differ between two hosts without anyone noticing.
+ *
+ *  "none"         - a name tier answered, or nothing is being filtered. Say nothing: the reader's
+ *                   own word was found where they expected it and needs no explanation.
+ *  "descFallback" - no name matched; these matched on description. MUST be said - a silent
+ *                   fall-through is indistinguishable from bad matching.
+ *  "onlyRefusals" - nothing that FITS matches, but something in the refusal block does. Say where
+ *                   it went; that block is now open.
+ *  "noMatch"      - nothing anywhere. NEVER phrase this like "nothing fits your data": one is a
+ *                   statement about a typed string and is fixed with backspace, the other is a
+ *                   statement about the data and is not.
+ */
+export type QualifyFilterNoteKind = "none" | "descFallback" | "onlyRefusals" | "noMatch";
+
+export interface QualifyFilterView<E> {
+    /** Rows to show, and rows to hide. Two lists rather than one predicate so a host can write
+     *  them in one pass without asking a Set per element. */
+    show: E[];
+    hide: E[];
+    /** Headings to show, and headings that now introduce nothing. A heading with nothing under it
+     *  is a label for an empty category, and the rule it draws reads as a divider between two
+     *  things that are not there. */
+    showHeadings: E[];
+    hideHeadings: E[];
+    tier: QualifyFilterTier;
+    /** Matches and totals for the FITTING list - what the "12 of 137" counter is made of. */
+    matched: number;
+    total: number;
+    refusalMatched: number;
+    /**
+     * Does the refusal block need to be OPEN for this term?
+     *
+     * True only when the term matches nothing that fits and something that does not. "Why isn't
+     * my chart here" is the only question that section is open to ask, and the reader has just
+     * asked it by name - the server's own sentence about why it cannot be drawn is already
+     * rendered, one collapsed checkbox away.
+     *
+     * THE HOST MUST TREAT THIS AS AN OVERRIDE, NOT A SETTING: remember what the reader's own
+     * checkbox said before the first override, and put it back the moment this goes false. An
+     * auto-expansion that sticks leaves the reader with a section they never opened.
+     */
+    openRefusals: boolean;
+    note: QualifyFilterNoteKind;
+    /** The normalized term, for the host to interpolate into whichever sentence it shows. */
+    term: string;
+}
+
+/**
+ * The filtered view of a whole dialog: fitting rows, refusal rows, headings and the note.
+ *
+ * ORDER IS UNTOUCHED, as everywhere else here - `show` and `hide` come out in the order the
+ * groups were built, so a host writing them in sequence cannot reorder anything by accident.
+ */
+export function computeQualifyFilterView<E>(
+    groups: readonly QualifyFilterGroup<E>[],
+    term: string | null | undefined,
+): QualifyFilterView<E> {
+    const g = Array.isArray(groups) ? groups : [];
+    const read = (r: QualifyFilterRow<E>) => ({ name: r.name, description: r.description });
+    const collect = (section: "fits" | "refused"): QualifyFilterRow<E>[] => {
+        const out: QualifyFilterRow<E>[] = [];
+        for (const grp of g) if (grp.section === section) for (const r of grp.rows) out.push(r);
+        return out;
+    };
+    const fitRows = collect("fits");
+    const fit = filterQualifyRows(fitRows, term, read);
+    const ref = filterQualifyRows(collect("refused"), term, read);
+
+    const visible = new Set<E>();
+    for (const r of fit.rows) visible.add(r.el);
+    for (const r of ref.rows) visible.add(r.el);
+
+    const show: E[] = [], hide: E[] = [], showHeadings: E[] = [], hideHeadings: E[] = [];
+    for (const grp of g) {
+        let any = false;
+        for (const r of grp.rows) {
+            if (visible.has(r.el)) { show.push(r.el); any = true; } else { hide.push(r.el); }
+        }
+        if (grp.heading !== null) (any ? showHeadings : hideHeadings).push(grp.heading);
+    }
+
+    const filtering = fit.tier !== "all";
+    const openRefusals = filtering && fit.rows.length === 0 && ref.rows.length > 0;
+    let note: QualifyFilterNoteKind = "none";
+    if (filtering) {
+        if (fit.tier === "desc") note = "descFallback";
+        else if (fit.tier === "none") note = openRefusals ? "onlyRefusals" : "noMatch";
+    }
+
+    return {
+        show, hide, showHeadings, hideHeadings,
+        tier: fit.tier, matched: fit.rows.length, total: fitRows.length,
+        refusalMatched: ref.rows.length, openRefusals, note, term: fit.term,
+    };
+}
+
+/** The counter beside the box: "12 of 137" while filtering, the plain total otherwise.
+ *
+ *  Digits only, assembled here so both hosts show the same shape of number - the words around it
+ *  (there are none today) would be the host's business, the arithmetic is not. */
+export function qualifyFilterCountText(view: { tier: QualifyFilterTier; matched: number; total: number }): string {
+    return view.tier === "all" ? String(view.total) : `${view.matched} of ${view.total}`;
+}
+
 /**
  * The same question for a host whose chooser is an INLINE, SCROLLING PANEL - and it has no size
  * clause, for the reason `shouldOpenInlineChooserOnGenerate` already sets out at length.
