@@ -383,6 +383,15 @@ export type LLMClientHints =
          * that admits the type.
          */
         favorProjection?: string,
+        /**
+         * Does this host let the reader CHOOSE a grain, and send it back as `favorProjection`?
+         *
+         * Only a client that answers true is offered a projected type more than once. One that
+         * renders both rows and remembers only the chart name would let the reader pick a grain
+         * the server then re-decides - an offer nothing can honour. Absent or false is the safe
+         * answer, and the only answer before this existed.
+         */
+        supportsProjectionChoice?: boolean,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
