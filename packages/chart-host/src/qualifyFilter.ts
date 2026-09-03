@@ -149,9 +149,18 @@ export function filterQualifyRows<T>(
     return { rows: [], tier: "none", term: t };
 }
 
-/** Reads a fitting row (`charts[]`): `name` / `description`. */
-export const readQualifyChartRow: QualifyFilterRead<{ name?: string | null; description?: string | null }> =
-    (r) => ({ name: r.name, description: r.description });
+/** Reads a fitting row (`charts[]`): `name` / `description`.
+ *
+ *  GENERIC, and it has to be. Written as a `const` with an explicit `QualifyFilterRead<{...}>`
+ *  annotation it PINS the row type, and `filterQualifyRows` then infers T from the reader instead
+ *  of from the rows - so a caller passing its own richer row type gets back an array typed as the
+ *  reader's minimal shape and fails to assign it home. Caught by the MCP tool, which passes
+ *  `EligibleChart[]` and got `{name?, description?}[]` back. */
+export function readQualifyChartRow<T extends { name?: string | null; description?: string | null }>(
+    r: T,
+): { name?: string | null; description?: string | null } {
+    return { name: r.name, description: r.description };
+}
 
 /**
  * Reads a REFUSED row (`refused[]`). Its second field is the gate's SENTENCE rather than a
@@ -159,8 +168,11 @@ export const readQualifyChartRow: QualifyFilterRead<{ name?: string | null; desc
  * the reader's own columns, so "region" finding every type refused over Region is a useful
  * answer to "why isn't my chart here" - which is the only question that section is open to ask.
  */
-export const readQualifyRefusalRow: QualifyFilterRead<{ name?: string | null; reason?: string | null }> =
-    (r) => ({ name: r.name, description: r.reason });
+export function readQualifyRefusalRow<T extends { name?: string | null; reason?: string | null }>(
+    r: T,
+): { name?: string | null; description?: string | null } {
+    return { name: r.name, description: r.reason };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  IS THERE ROOM FOR THE BOX? Two conditions, and neither is guessed.
