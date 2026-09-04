@@ -1591,7 +1591,11 @@ export class IndexedText implements IValueCollection {
     // pandas uses row 0 as the header and every column reference KeyErrors (v1->v2 upgrade
     // running cached v1 Python code). Built via Papa so escaping matches the data rows.
     public getCSVHeaderLine(): string {
-        return Papa.unparse([this._cols.map(c => this.STR(c.name))]);
+        // Under emitLegacyAggAliases this line is being written FOR code that names the host's
+        // column, so it carries that name INSTEAD of the collapsed one - one name per column,
+        // never both. A CSV header is positional; a second column would shift every field.
+        return Papa.unparse([this._cols.map(c =>
+            this.STR(this.emitLegacyAggAliases && c.hostName ? c.hostName : c.name))]);
     }
 
     public addRow(colvals: any[], originalIdx?: number) {

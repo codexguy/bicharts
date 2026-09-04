@@ -141,4 +141,11 @@ describe("cached code that still names the host's column keeps working", () => {
         expect(row["Sum of Sum of Revenue"]).toBe(10);
         idx.emitLegacyAggAliases = false;
     });
+
+    it("the CSV header SUBSTITUTES the host name - a positional header can hold only one", () => {
+        expect(idx.getCSVHeaderLine()).toBe("State,Sum of Revenue");
+        idx.emitLegacyAggAliases = true;
+        expect(idx.getCSVHeaderLine()).toBe("State,Sum of Sum of Revenue");
+        idx.emitLegacyAggAliases = false;
+    });
 });
