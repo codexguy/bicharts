@@ -164,13 +164,23 @@ export function shouldOpenChooserOnGenerate(i: ChooserGateInput): boolean {
  * a card that CLIPS, so past a certain smallness its buttons are simply not on screen and the
  * reader is trapped. A panel that flows inside a scrolling pane, with a wrapping button row,
  * cannot reach that state: swept across 63 pane sizes down to 200x120, every one stayed usable
- * - the footer wrapped from one line to three (38px to 86px) and stayed inside the panel, and
- * the list kept four or more rows because it carries its own max-height and scrolls.
+ * - the footer wrapped from one line to three (38px to 86px) and stayed inside the panel.
  *
- * So a size clause here would not protect anybody; it would only switch the feature off for a
- * default task pane, which is narrower than the modal's floor. Two hosts, two layouts, two
- * honest answers - written next to each other so the difference reads as a decision rather than
- * as one of them having forgotten.
+ * So a size clause here would not protect anybody. Two hosts, two layouts, two honest answers -
+ * written next to each other so the difference reads as a decision rather than as one of them
+ * having forgotten.
+ *
+ * TWO CLAIMS THIS COMMENT USED TO MAKE HAVE BEEN WITHDRAWN (2026-09-04), because the modal's
+ * re-measure discredits the sweep they came from rather than this function:
+ *
+ *   * "a default task pane is narrower than the modal's floor" - it no longer is. The floor moved
+ *     to 320x220 and an ordinary task pane clears it, so the two gates now agree on the pane that
+ *     used to be the whole argument. The asymmetry survives only below the card's drawable
+ *     minimum, which is the only place it ever described something real.
+ *   * "the list kept four or more rows" - measured the same way the modal's rows were, which is
+ *     to say without the DESCRIPTION every row carries. Whatever that number is, it is not four,
+ *     and no claim is made here in its place. It was never the reason for having no size clause:
+ *     the panel scrolls and the footer wraps, and THAT is the reason.
  */
 export function shouldOpenInlineChooserOnGenerate(i: { enabled: boolean; hasData: boolean }): boolean {
     return i.enabled === true && i.hasData === true;
