@@ -19,6 +19,7 @@ import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH } from "./util";
+import { collapseRepeatedAggPrefix } from "./aggregation";
 
 // ============================================================================
 // ValueNature classification (Continuous / Ordinal / Categorical)
@@ -508,6 +509,21 @@ export class IndexedText implements IValueCollection {
      * callers construct IndexedText with no arguments and are unaffected.
      */
     public dedupRows: boolean = true;
+
+    /**
+     * ALSO key each row by the host's ORIGINAL column name, for columns the doubled-prefix
+     * collapse renamed (see setColumns). OFF by default, and it must stay off for anything
+     * freshly generated: the shape carries only the collapsed name, so new code asks for that,
+     * and a second key would show up as a duplicate column in anything that walks the row (a
+     * pandas DataFrame built from the dataset, most obviously).
+     *
+     * A host turns it on for ONE reason — it is about to re-render code that was generated
+     * BEFORE the collapse existed and that therefore reads `row["Sum of Sum of Revenue"]`.
+     * `codeNeedsLegacyAggNames` answers that question from the code text, and charts in exactly
+     * that state were measured to exist before this shipped (2026-09-04). Self-retiring:
+     * regenerating any one of them stops the flag ever being set for it again.
+     */
+    public emitLegacyAggAliases: boolean = false;
 
     private STR(v: any): string {
         if (v === null || v === undefined) {
@@ -1514,6 +1530,13 @@ export class IndexedText implements IValueCollection {
             const obj: Record<string, any> = {};
             this._cols.forEach((col, index) => {
                 obj[col.name] = row[index];
+                // Compatibility key for code generated before the collapse - see
+                // emitLegacyAggAliases. Written AFTER the canonical name so a (guarded-against,
+                // but cheap to be sure of) collision can never overwrite the real column.
+                if (this.emitLegacyAggAliases && col.hostName && col.hostName !== col.name
+                    && !Object.prototype.hasOwnProperty.call(obj, col.hostName)) {
+                    obj[col.hostName] = row[index];
+                }
             });
             return obj;
         });
@@ -1611,7 +1634,39 @@ export class IndexedText implements IValueCollection {
         this._leafCardinality = null;
     }
 
+    /**
+     * THE ONE PLACE A COLUMN NAME ENTERS THE ENGINE, which is why the doubled-aggregation-prefix
+     * collapse lives here (2026-09-04). Every host reaches the profiler through this method -
+     * the visual's buildIndex, ingest's decoders, the MCP client - so a rule applied here is
+     * applied on every surface with no host edit at all.
+     *
+     * IT HAS TO BE THIS SEAM AND NOT THE SHAPE. The name is not a label, it is a KEY: the same
+     * list feeds the shape the server gates on, the prompt the model reads, and `toObjectArray`
+     * / `getCSVAsync`, whose keys the generated code indexes by. Collapsing it anywhere later
+     * would rename the column in the prompt and leave the data holding the old key, and the
+     * chart would draw nothing. Renaming here keeps all four in step by construction.
+     *
+     * A COLLISION IS LEFT ALONE. Bind `Sum of Revenue` as a dimension and Sum() it as a measure
+     * and the host hands us `Sum of Revenue` and `Sum of Sum of Revenue`; collapsing the second
+     * onto the first would silently merge two columns into one key and drop a column's data.
+     * The host's name wins in that case - an ugly name is a far smaller harm than a lost column.
+     *
+     * Idempotent (a collapsed name has nothing left to collapse), so the matrix-recovery path's
+     * repeated setColumns calls are safe.
+     */
     public setColumns(cols: LLMColumnWithValue[]): void {
         this._cols = cols;
+        if (!cols || cols.length === 0) return;
+        const taken = new Set<string>(cols.map(c => this.STR(c?.name)));
+        for (const c of cols) {
+            if (!c) continue;
+            const original = this.STR(c.name);
+            const collapsed = collapseRepeatedAggPrefix(original);
+            if (!collapsed || collapsed === original || taken.has(collapsed)) continue;
+            taken.delete(original);
+            taken.add(collapsed);
+            c.hostName = original;
+            c.name = collapsed;
+        }
     }
 }

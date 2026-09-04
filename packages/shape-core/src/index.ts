@@ -42,6 +42,11 @@ export {
     nameLooksPositional,
     stripHostAggPrefix,
     hasDefaultAggPrefix,
+    // "Sum of Sum of Revenue" -> "Sum of Revenue" (2026-09-04). IndexedText.setColumns applies
+    // it, so every host gets the rename for free; both are exported because a host that renders
+    // CACHED code must ask the second question too - see IndexedText.emitLegacyAggAliases.
+    collapseRepeatedAggPrefix,
+    codeNeedsLegacyAggNames,
     INTENSIVE_WORD_TOKENS,
     INTENSIVE_SUFFIX_TOKENS,
     POSITIONAL_WORD_TOKENS,

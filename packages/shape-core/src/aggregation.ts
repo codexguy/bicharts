@@ -167,6 +167,99 @@ export function hasDefaultAggPrefix(name: string | null | undefined): boolean {
     return !!name && DEFAULT_AGG_PREFIX.test(String(name));
 }
 
+// ── "Sum of Sum of Revenue" (2026-09-04) ─────────────────────────────────────────────────────
+//
+// A pre-aggregated table is an ordinary thing to be handed — a pivot export, a warehouse
+// summary, a sheet somebody built in Excel — and its columns are NAMED for the aggregation that
+// made them: `Sum of Revenue`, `Count of Orders`. Drop one into a measure well and the host
+// prepends its own label to the name that already carries one. This is common enough in Power BI
+// to be treated as ordinary user behaviour rather than an edge case, and there is no legitimate
+// reason for `Sum of Sum of ` to reach a chart.
+//
+// WIDER THAN `DEFAULT_AGG_PREFIX` ON PURPOSE, and the two must not be merged. That one is
+// deliberately narrow because it feeds an INFERENCE — "additive, but only because the host
+// summed it by default" — and Average/Min/Max are outside it because CHOOSING one is real
+// evidence about the quantity. This one feeds a RENAME, where the only question is "did a host
+// write this label", so every label a host writes belongs in it.
+//
+// ONLY A REPEAT OF THE SAME LABEL COLLAPSES. `Sum of Average of Latency` is a true sentence
+// about a genuinely twice-aggregated column and survives untouched; `Sum of Sum of Revenue`
+// says nothing its single prefix does not.
+const HOST_AGG_LABELS: readonly string[] = [
+    "count (distinct)", "count distinct", "distinct count", "standard deviation",
+    "average", "variance", "median", "product", "stddev", "std dev",
+    "count", "sum", "avg", "min", "minimum", "max", "maximum", "var",
+];
+
+/** Longest label first, so `count distinct of X` cannot match as `count` and leave `distinct of
+ *  X` behind. Anchored at the start: a name that merely CONTAINS "sum of" is untouched. */
+const HOST_AGG_PREFIX = new RegExp(
+    "^\\s*(" + [...HOST_AGG_LABELS].sort((a, b) => b.length - a.length)
+        .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"))
+        .join("|") + ")\\s+of\\s+",
+    "i");
+
+/**
+ * `Sum of Sum of Revenue` -> `Sum of Revenue`. Any number of repeats of the SAME label collapse
+ * to one; a different label, or no label at all, is returned untouched.
+ *
+ * Case and spacing are compared loosely (a host writing `Sum of sum of X` is one host writing
+ * the same word twice) but the SURVIVING text is the caller's own first prefix, never a
+ * canonicalised one: this removes a duplication, it does not restyle a name.
+ */
+export function collapseRepeatedAggPrefix(name: string | null | undefined): string {
+    if (name === null || name === undefined) return "";
+    const s = String(name);
+    const first = HOST_AGG_PREFIX.exec(s);
+    if (!first) return s;
+    const key = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+    const label = key(first[1]);
+    let rest = s.slice(first[0].length);
+    let dropped = 0;
+    // Bounded: every pass consumes at least one prefix, and a name carrying more than a handful
+    // has stopped being a name. The guard is belt-and-braces against a pathological input.
+    while (dropped < 8) {
+        const next = HOST_AGG_PREFIX.exec(rest);
+        if (!next || key(next[1]) !== label) break;
+        const tail = rest.slice(next[0].length);
+        // "Sum of Sum of" with nothing after it is not a doubled prefix, it is the whole name.
+        if (tail.trim() === "") break;
+        rest = tail;
+        dropped++;
+    }
+    return dropped === 0 ? s : s.slice(0, first[0].length) + rest;
+}
+
+/**
+ * THE OTHER HALF OF THE RENAME, and the reason it is safe to ship. Code generated before the
+ * collapse existed reads the host's ORIGINAL key - `row["Sum of Sum of Revenue"]` - and a
+ * cached chart re-renders that stored code against a freshly measured dataset. Renaming the key
+ * under it would draw an empty chart, silently, on a report nobody touched.
+ *
+ * So a host asks this before it renders, and sets `IndexedText.emitLegacyAggAliases` from the
+ * answer: does this particular code still name a column the way the host did, when the engine
+ * has since renamed it? Only then does the dataset carry the extra key.
+ *
+ * Measured before it was written (2026-09-04) rather than assumed: across shipped generations
+ * about 3% were handed a doubled name, and most of those hold stored code that REFERENCES it,
+ * including charts real people still open. A plain-substring test over the code is exactly the
+ * right instrument: it is what "this code will index that key" means, it cannot false-negative,
+ * and its false positives (the name inside a comment or a title string) cost one harmless extra
+ * key on a chart that is already in the affected population.
+ */
+export function codeNeedsLegacyAggNames(
+    code: string | null | undefined,
+    cols: ReadonlyArray<{ name?: string; hostName?: string } | null | undefined> | null | undefined,
+): boolean {
+    if (!code || !cols) return false;
+    const text = String(code);
+    for (const c of cols) {
+        const host = c?.hostName;
+        if (host && host !== c?.name && text.includes(host)) return true;
+    }
+    return false;
+}
+
 function normalizeForNameTest(name: string | null | undefined): string {
     const base = stripHostAggPrefix(name);
     return base.length === 0 ? "" : base.replace(CAMEL_BOUNDARY, " ");

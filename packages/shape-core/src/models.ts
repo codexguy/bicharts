@@ -22,6 +22,17 @@ export type VegaRendererPayload =
 export type LLMColumnWithValue =
     {
         name: string,
+        // What the HOST called this column, when the engine renamed it (2026-09-04). Set only
+        // by the doubled-aggregation-prefix collapse in IndexedText.setColumns - `Sum of Sum of
+        // Revenue` arrives, `Sum of Revenue` is what the shape, the prompt, the generated code
+        // and the dataset all then use. Absent whenever the host's name survived unchanged, so
+        // its PRESENCE is the signal that a rename happened.
+        //
+        // Ships on the wire and the server does not model it, so it is dropped there silently -
+        // deliberately: nothing server-side may act on it, because the server never sees the
+        // data and the renamed column IS the data's column. It exists for the host (the legacy
+        // alias below) and for triage, where "the host called it X" is otherwise unrecoverable.
+        hostName?: string,
         dataType: string,
         modelDesc?: string,
         lowValue?: any,
