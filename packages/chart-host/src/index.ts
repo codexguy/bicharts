@@ -164,6 +164,27 @@ export {
 // element into a target, so it cannot regress a chart that already works.
 export { ensureCrossfilterHitTargets, type HitTargetReport } from "./hitTargets";
 
+// CAN THE LABELS ON THE MARKS BE READ? Generated code picks an in-mark label's colour from the
+// mark's NOMINAL hue, and the mark's ACTUAL rendered fill is often something else - a
+// low-opacity band over white, a translucent pill over a tile, an arc whose hole is canvas. Only
+// a post-render read of the real DOM knows the difference. Written and proven in the Power BI
+// visual across a run of incidents (each named in the module), none of it Power-BI-specific, so
+// it lives here now and the other hosts stop shipping unreadable labels. createChartHost runs
+// `applyLabelContrast` after every render; the pure decision is exported for a host that measures
+// its own DOM, and the constants so a host's telemetry reads the same as the visual's.
+export {
+    applyLabelContrast, LABEL_CONTRAST_DONE_ATTR, LABEL_CONTRAST_CAP,
+    type LabelContrastOptions, type LabelContrastReport,
+} from "./labelContrastDom";
+export {
+    decideLabelColor, toRGBA, compositeOver, relativeLuminance, contrastRatio,
+    isPillBackdropAlpha, pillBacksGlyph, backingHoldsGlyph, cellSuppressesNormalize, glyphSampleGrid,
+    DARK_TEXT, LIGHT_TEXT, MIN_CONTRAST, WHITE_TEXT_BG_LUM,
+    PILL_MIN_ALPHA, PILL_OPAQUE_ALPHA, PILL_MIN_COVERAGE, PAGE_MATCH_TOLERANCE,
+    BACKING_MAJORITY, GLYPH_SAMPLE_N,
+    type LabelDecision,
+} from "./labelContrast";
+
 // A chart that ran clean and painted nothing (2026-09-01). The mark contract
 // asking a question about itself: all three hosts run the same generated code against the same
 // classes, so all three can go blank the same way and a copy per host is three chances to

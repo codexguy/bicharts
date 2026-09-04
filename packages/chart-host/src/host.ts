@@ -33,6 +33,7 @@ import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
 import { fitRenderedChart, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
+import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -162,6 +163,25 @@ export interface ChartHostConfig {
     fit?: boolean | FitRenderedChartOptions;
     /** The fit result after each render - what was grown, and how the chart measured. */
     onFit?: (result: FitRenderedChartResult) => void;
+    /**
+     * CAN THE LABELS ON THE MARKS BE READ? Runs after every render, BEFORE the hit-target heal
+     * (which injects transparent rects this pass must not mistake for backdrops).
+     *
+     * Generated code picks an in-mark label's colour from the mark's NOMINAL hue; the mark's
+     * ACTUAL rendered fill - a 0.18-opacity band over white, a translucent pill over a tile, an
+     * arc whose hole is canvas - is something else, and only a post-render read of the real DOM
+     * knows it. This resolves which shapes really back each label (geometry, not bounding
+     * boxes), composites the real stack over the page, and recolours to black or white only
+     * where the label would otherwise be unreadable or a tile's labels would read as mixed.
+     *
+     * DEFAULT ON, because the alternative is text nobody can read, and the pass only ever sets a
+     * text's fill. Pass `false` for a host that owns its own label colours, or an options object
+     * to name the page background it composites onto (`pageBg`) - a themed or high-contrast
+     * canvas is not white, and every readability answer is measured against it.
+     */
+    labelContrast?: boolean | LabelContrastOptions;
+    /** What the label-contrast pass did after each render - counts, so a host can log them. */
+    onLabelContrast?: (report: LabelContrastReport) => void;
 }
 
 export interface ChartHost {
@@ -619,6 +639,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     ensureAffordanceStyles();
 
     const fitOpts: boolean | FitRenderedChartOptions = config.fit ?? true;
+    const labelContrastOpts: boolean | LabelContrastOptions = config.labelContrast ?? true;
 
     const stopAnim = () => { const s = (container as any)[CONTAINER_SLOT_ANIM_STOP]; if (typeof s === "function") { try { s(); } catch { /* chart timer already dead */ } } };
 
@@ -663,6 +684,24 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
             } catch (err) {
                 throw explainRenderFailure(err, d3);
+            }
+            // CAN THE LABELS ON THE MARKS BE READ? First of the post-render passes, and BEFORE
+            // the hit-target heal on purpose: that heal injects fill:'transparent' rects over
+            // tagged groups, and although this pass treats alpha-0 as "not a backdrop", the
+            // order keeps the two from ever having to know about each other. The page
+            // background comes from the resolved options - the same value the chart itself
+            // was handed - unless the host names one; a themed canvas is not white, and every
+            // readability answer is measured against it. Never throws; reported, never fatal.
+            if (labelContrastOpts !== false) {
+                try {
+                    const lc = labelContrastOpts === true ? {} : { ...labelContrastOpts };
+                    if (!lc.pageBg) {
+                        const bg = (resolved as any).backgroundColor ?? (resolved as any).themeBg;
+                        if (typeof bg === "string" && bg) lc.pageBg = bg;
+                    }
+                    const r = applyLabelContrast(container, lc);
+                    config.onLabelContrast?.(r);
+                } catch { /* a contrast pass must never break a render that already succeeded */ }
             }
             // A DECLARED mark that cannot receive a click is not a mark. Heal the two
             // habits that leave one unhittable (an inert <g> whose painted children are
