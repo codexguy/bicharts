@@ -33,8 +33,9 @@ export {
     FLIP_MODE_DEFAULT,
     APPROXIMATE_POSITIONS_DEFAULT,
     VALUE_AXIS_BASELINE_DEFAULT,
+    SEASONAL_MARKERS_DEFAULT,
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode,
-    type ApproximatePositions, type ValueAxisBaseline,
+    type ApproximatePositions, type ValueAxisBaseline, type SeasonalMarkers,
     type ColorScaleScope, type RenderOptions, type ViewStateProvider,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";

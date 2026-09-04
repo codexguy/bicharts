@@ -19,6 +19,7 @@ import {
     FLIP_MODE_DEFAULT,
     APPROXIMATE_POSITIONS_DEFAULT,
     VALUE_AXIS_BASELINE_DEFAULT,
+    SEASONAL_MARKERS_DEFAULT,
 } from "./contract";
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
@@ -99,6 +100,16 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
             return v === "zero" || v === "fit" || v === "auto"
                 ? (v as RenderOptions["valueAxisBaseline"])
                 : VALUE_AXIS_BASELINE_DEFAULT;
+        })(),
+        // Same shape, and the same reason for it: an unrecognised string must never reach a chart
+        // as a live mode. Failing open to "auto" is the conservative direction here — "auto" is
+        // the setting that makes the chart PROVE the grid before it names a period, so a garbled
+        // value withdraws the claim rather than asserting one.
+        seasonalMarkers: ((): RenderOptions["seasonalMarkers"] => {
+            const v = (p.seasonalMarkers == null ? "" : String(p.seasonalMarkers)).toLowerCase();
+            return v === "auto" || v === "always" || v === "never"
+                ? (v as RenderOptions["seasonalMarkers"])
+                : SEASONAL_MARKERS_DEFAULT;
         })(),
 
         // ---- animation: booleans, default+clamp numerics, "" default enum ----

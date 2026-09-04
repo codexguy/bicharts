@@ -229,6 +229,35 @@ export const APPROXIMATE_POSITIONS_DEFAULT: ApproximatePositions = "mark";
 // bars keeps its floor whatever this says.
 export type ValueAxisBaseline = "zero" | "fit" | "auto";
 export const VALUE_AXIS_BASELINE_DEFAULT: ValueAxisBaseline = "fit";
+
+// Whether a chart may give a lag or a cycle a CALENDAR NAME - the "wk" tag on lag 7 of a
+// correlogram, "Lag 12 - annual", a period rule on a cycle plot. A lag is a count of
+// OBSERVATIONS, and it means "one week" only when every step in the series is exactly one day, so
+// the claim is a measurement rather than a label. "auto" (the default) lets the chart make it only
+// where it has PROVED both halves: the sampling grid is even - every gap between consecutive
+// timestamps equal - AND the lag is a genuine local peak clearing the significance band. "always"
+// names the inferred period even on an uneven grid, for the reader who knows their weekday-only
+// series carries a weekly cycle and wants it marked regardless. "never" suppresses period naming
+// outright.
+//
+// Genesis (release-tests page "200 D3 group 3", 2026-09-04): a 44-point api-latency ACF over a
+// BUSINESS-DAY grid - gaps of 1 day four times a week and 3 across the weekend - was drawn with
+// its x-axis titled "Lag (days)" and lag 7 tagged "wk". Both were false. Seven observations there
+// span nine or eleven calendar days; that series' week is FIVE observations; and the ACF was a
+// smooth monotone decay (.909 .834 .733 .660 .586 .538 .475 ...) with no spike at lag 7 or
+// anywhere else, so the tag announced a weekly cycle that the data does not contain. The archetype
+// had asked the model for a SEASONAL_PERIOD literal under the comment "12 monthly, 7 daily, 4
+// quarterly" - a calendar word standing where a measurement belongs. The chart now measures the
+// grid itself, from timestamps it already holds, and this knob only says what to do with the
+// answer.
+//
+// LIVE, like valueAxisBaseline and maxMapPoints: whether an annotation is ASSERTED is a drawing
+// decision, not a generation decision, so a cached chart honours a change of mind with no
+// regeneration - which on a freemium tier is the difference between changing your mind and
+// spending a credit.
+export type SeasonalMarkers = "auto" | "always" | "never";
+export const SEASONAL_MARKERS_DEFAULT: SeasonalMarkers = "auto";
+
 // Colour Scale Scope for animated continuous scales: "" = ONE global domain over
 // every period (default; a colour means the same value in every frame); "frame" =
 // re-scale each keyframe to its own min-max (in-frame contrast lens; the chart must
@@ -316,6 +345,9 @@ export interface RenderOptions {
     // See ValueAxisBaseline. Also live: an axis domain is a drawing decision, not a generation
     // decision, so a cached chart must re-draw under the new rule without being regenerated.
     valueAxisBaseline?: ValueAxisBaseline;
+    // See SeasonalMarkers. Live for the same reason: naming a lag "wk" is an assertion the chart
+    // makes while drawing, so withdrawing permission must not cost a regeneration.
+    seasonalMarkers?: SeasonalMarkers;
     // Live-restyle knobs (changing any of these = re-render, never a regeneration).
     colorScaleLow?: string;
     colorScaleHigh?: string;

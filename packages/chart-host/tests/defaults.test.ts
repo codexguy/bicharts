@@ -308,7 +308,7 @@ describe("resolveOptions - the whitelist covers the contract", () => {
         expect(resolveOptions({ pageSize: "50" }).pageSize).toBe(50);
     });
 
-    it("the three live knobs keep their own defaults and reject junk", () => {
+    it("the four live knobs keep their own defaults and reject junk", () => {
         expect(resolveOptions({}).approximatePositions).toBe("mark");
         expect(resolveOptions({ approximatePositions: "aggregate" }).approximatePositions).toBe("aggregate");
         expect(resolveOptions({ approximatePositions: "skip" }).approximatePositions).toBe("skip");
@@ -320,6 +320,17 @@ describe("resolveOptions - the whitelist covers the contract", () => {
         expect(resolveOptions({ valueAxisBaseline: "auto" }).valueAxisBaseline).toBe("auto");
         expect(resolveOptions({ valueAxisBaseline: "FIT" }).valueAxisBaseline).toBe("fit");
         expect(resolveOptions({ valueAxisBaseline: "tight" }).valueAxisBaseline).toBe("fit");
+
+        // seasonalMarkers fails open to "auto" DELIBERATELY, and that direction is the assertion
+        // worth pinning: "auto" is the mode that makes a chart prove the sampling grid before it
+        // names a lag "wk", so junk must withdraw the claim, never grant one. If a later refactor
+        // makes "always" the fallback, every garbled value starts asserting a weekly cycle.
+        expect(resolveOptions({}).seasonalMarkers).toBe("auto");
+        expect(resolveOptions({ seasonalMarkers: "always" }).seasonalMarkers).toBe("always");
+        expect(resolveOptions({ seasonalMarkers: "never" }).seasonalMarkers).toBe("never");
+        expect(resolveOptions({ seasonalMarkers: "ALWAYS" }).seasonalMarkers).toBe("always");
+        expect(resolveOptions({ seasonalMarkers: "weekly" }).seasonalMarkers).toBe("auto");
+        expect(resolveOptions({ seasonalMarkers: "" }).seasonalMarkers).toBe("auto");
 
         // A pass-through, so the caller's object must arrive by reference and untouched.
         const dest = { precision: null, precisionCounts: {} as any, coarseExamples: [], unplaced: 2,
