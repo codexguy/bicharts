@@ -492,6 +492,10 @@ export interface IValueCollection {
     // or -1 if no original index was supplied. Used to build per-row Power BI
     // SelectionIds for cross-filter / drill-through on interactive renderers.
     getOriginalRowIndex(i: number): number;
+    // ON THE INTERFACE because the HOST is who sets it, and a host holds this type rather than
+    // the class (2026-09-04). See the field on IndexedText for what it does and when to set it;
+    // optional so an existing implementer stays valid.
+    emitLegacyAggAliases?: boolean;
 }
 
 export class IndexedText implements IValueCollection {
