@@ -190,14 +190,11 @@ export const FILTER_ROW_PX = 32;
  * THE SMALLEST CARD THE FILTER BOX IS USABLE IN - measured 2026-09-03, and NOT arithmetic off
  * `CHOOSER_MIN_*`.
  *
- * The chooser's own floor (400 x 240) was measured with three pinned elements. The filter row is
- * a FOURTH, in a card that clips, so the old envelope does not survive the addition and could not
- * be adjusted by adding 32px to it - the coupling between the two dimensions moves too.
+ * The chooser's floor was measured with three pinned elements. The filter row is a FOURTH, in a
+ * card that clips, so that envelope does not survive the addition and could not be adjusted by
+ * adding 32px to it - the coupling between the two dimensions moves too.
  *
- * Same harness as the 2026-09-01 chooser sweep, re-run over 195 sizes with the row present. The
- * run reproduces the chooser's published coupling exactly when the row is hidden (320-340 wide
- * needs 280 tall, 360-380 needs 260, 400+ needs 220), which is what says the harness is measuring
- * the same card and not a different one.
+ * Same harness as the 2026-09-01 chooser sweep, re-run over 195 sizes with the row present.
  *
  * ONE CRITERION IS TIGHTER, and it is the reason this is a separate floor rather than a bigger
  * version of the old one: the chooser sweep asked for TWO visible list rows, this asks for
@@ -210,6 +207,28 @@ export const FILTER_ROW_PX = 32;
  * 420 x 300 is that envelope at its cheapest width, with one sweep step (20px) of margin on the
  * height for the reason `CHOOSER_MIN_*` states: the measurement used one font stack and one
  * string, every host localizes the title, and a longer translation wraps sooner than the sample.
+ *
+ * ⚠ THIS FLOOR INHERITED THE CHOOSER SWEEP'S DEFECT, AND HAS NOT BEEN RE-MEASURED (2026-09-04).
+ * This comment used to argue that reproducing the chooser's published coupling when the row is
+ * hidden (320-340 wide needs 280 tall, 360-380 needs 260, 400+ needs 220) proved the harness was
+ * measuring the same card. It proved the two sweeps SHARED A CARD, which is a different claim,
+ * and the re-measure behind `CHOOSER_MIN_*` shows the card they shared was not the one the
+ * product draws: rows were sized without the DESCRIPTION each one carries, so a row measured
+ * ~22px against a real 48. Every "N visible rows" number on both sweeps is therefore about twice
+ * as generous as the screen, and this floor's criterion is the tighter one, so it is the more
+ * affected of the two.
+ *
+ * IT IS LEFT ALONE ON PURPOSE, because the fix is not a re-run. Re-measuring "three visible rows"
+ * against 48px rows pushes this floor past any tile a report actually uses, which would retire a
+ * just-shipped control rather than place it. THE OPEN QUESTION IS THE CRITERION, NOT THE NUMBER:
+ * "three visible rows" was a proxy for "the reader can still skim the list", and on a card whose
+ * rows are twice as tall it no longer describes that. A plausible replacement is its inverse -
+ * offer the filter precisely once the list has STOPPED being skimmable, which is nearer to what
+ * a reader reaches for a filter box for. Settle that before re-deriving this constant.
+ *
+ * NOTE THE FRAME, when comparing the two numbers: this floor is measured on the CARD, and
+ * `CHOOSER_MIN_*` on the CONTAINER. The card is 95% of the container less 32px of padding, so
+ * 420 here is about a 476px tile - the two floors are further apart than the bare numbers read.
  *
  * ERRING HIGH IS THE CHEAP DIRECTION, exactly as it is for the chooser. Below this floor the
  * reader gets the chooser they have today, unchanged; above it wrongly, they get a clipped

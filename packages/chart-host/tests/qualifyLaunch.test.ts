@@ -66,6 +66,44 @@ describe("there has to be room to draw the chooser", () => {
     });
 });
 
+describe("the floor is the ESCAPABILITY floor, not a legibility one (re-measured 2026-09-04)", () => {
+    // These are the sizes that moved, pinned as sizes rather than as arithmetic on the
+    // constants: the point of the re-measure is which REAL tiles changed answer, and a test
+    // written against CHOOSER_MIN_* would go on passing if someone put the old numbers back.
+
+    it("opens on a 400px-wide tile, which is what a 400px tile actually measures", () => {
+        // THE CASE THAT STARTED THE RE-MEASURE. An author drags a tile to 400 x 360 - the
+        // roundest width there is - and Power BI's chrome takes a flat 10px, so the drawable
+        // surface the host measures is 390. Under the old 400 floor that tile silently never
+        // got the chooser while the 420 tile beside it did, which read as a bug and was one.
+        expect(chooserFitsViewport(390, 320)).toBe(true);
+    });
+
+    it("still opens where it always did", () => {
+        // The old floor exactly. Nothing that had the chooser loses it - this change only ever
+        // adds tiles, which is what makes it safe to ship without auditing every report.
+        expect(chooserFitsViewport(400, 240)).toBe(true);
+        expect(chooserFitsViewport(1230, 474)).toBe(true);
+    });
+
+    it("keeps the margin the sweep left, in both dimensions", () => {
+        // Measured escapability holds from 300 x 190. The shipped floor sits one sweep step
+        // above that on each side, so a longer localized title has somewhere to wrap into.
+        // Anything inside the margin stays declined, deliberately.
+        expect(chooserFitsViewport(310, 220)).toBe(false);
+        expect(chooserFitsViewport(320, 210)).toBe(false);
+        expect(chooserFitsViewport(300, 190)).toBe(false);
+    });
+
+    it("a KPI card and a banner strip are still too small to draw a modal in", () => {
+        // The shapes real tiles take at the small end. The banner fails on height alone even
+        // though it is enormously wide - the card's three buttons need a line, and the pinned
+        // chrome above them needs somewhere to be.
+        expect(chooserFitsViewport(300, 200)).toBe(false);
+        expect(chooserFitsViewport(1230, 120)).toBe(false);
+    });
+});
+
 describe("the gate in front of Generate", () => {
     const roomy = { enabled: true, width: 900, height: 600, hasData: true };
 
@@ -109,12 +147,30 @@ describe("an inline scrolling panel has no size clause, and that is measured", (
     });
 
     it("differs from the modal gate exactly where the layouts differ", () => {
-        // A default task pane is narrower than the modal's floor. Applying the card's number to
-        // a flowing panel would switch the feature off for the common case and protect nobody -
-        // the panel cannot trap a reader, because it wraps and scrolls.
-        const tiny = { enabled: true, hasData: true, width: 320, height: 500 };
-        expect(shouldOpenChooserOnGenerate(tiny)).toBe(false);
-        expect(shouldOpenInlineChooserOnGenerate(tiny)).toBe(true);
+        // Applying the card's number to a flowing panel would switch the feature off for the
+        // common case and protect nobody - the panel cannot trap a reader, because it wraps and
+        // scrolls.
+        //
+        // THE BAND WHERE THEY DIFFER NARROWED WITH THE 2026-09-04 RE-MEASURE, and the narrowing
+        // is the point rather than an inconvenience: once the modal's floor answers the same
+        // question the panel's absence of one answers - can the reader get out - the two hosts
+        // stop disagreeing anywhere the card can actually be drawn. This case used 320 x 500,
+        // which BOTH gates now open, and moving it to a genuinely narrower pane is what keeps it
+        // testing the asymmetry instead of testing a number that moved.
+        const narrow = { enabled: true, hasData: true, width: 300, height: 500 };
+        expect(shouldOpenChooserOnGenerate(narrow)).toBe(false);
+        expect(shouldOpenInlineChooserOnGenerate(narrow)).toBe(true);
+    });
+
+    it("a default task pane now clears the modal floor too, and that is the intended consequence", () => {
+        // Recorded because it is the visible half of the re-measure: at 400 x 240 an ordinary
+        // Office task pane was under the card's floor, so the two hosts reached opposite answers
+        // on the SAME pane and only the panel's own no-floor rule made Excel usable. They now
+        // agree there. The asymmetry survives only below the card's drawable minimum, which is
+        // the only place it was ever describing something real.
+        const pane = { enabled: true, hasData: true, width: 340, height: 600 };
+        expect(shouldOpenChooserOnGenerate(pane)).toBe(true);
+        expect(shouldOpenInlineChooserOnGenerate(pane)).toBe(true);
     });
 });
 

@@ -63,25 +63,57 @@ export function launchFavorStyle<T>(outcome: QualifyLaunchOutcome, autoSentinel:
 }
 
 /**
- * THE SMALLEST TILE THE CHOOSER IS USABLE IN, measured rather than guessed (2026-09-01).
+ * THE SMALLEST TILE THE CHOOSER IS USABLE IN, measured rather than guessed - and RE-MEASURED on
+ * 2026-09-04, because the first measurement was taken on a card the product does not draw.
  *
- * A sweep of 168 tile sizes in headless Chromium, rendering the real card DOM and CSS, asking
- * three questions of each: do the three launch buttons sit on one line inside the card, are at
- * least two list rows visible, and is nothing in the pinned chrome clipped. The measured floor
- * is 320 x 220 - but the two dimensions are COUPLED, because under 400 px the card's title
- * wraps to a second line and eats the list's height: at 320-340 wide the height floor rises to
- * 280, at 360-380 to 260, and only at 400+ does 220 hold.
+ * WHAT THE FIRST SWEEP GOT WRONG (it shipped 400 x 240). It asked three questions of 168 tile
+ * sizes - do the three launch buttons sit on one line inside the card, are at least two list
+ * rows visible, is nothing in the pinned chrome clipped - and found that two rows fit at
+ * 400 x 220. Two rows only fit there if a row is ~22px tall, and a real row is 48: every row
+ * carries its type's DESCRIPTION, which wraps to a second line at any width this dialog will
+ * ever open at. That text has been in the list since 2026-07-11, seven weeks BEFORE the floor
+ * was measured. So the sweep sized the card against a list half the height of the one on
+ * screen, and the coupling it inferred from the wrapping TITLE, though real, is not what binds.
  *
- * 400 x 240 is that envelope with one sweep step of margin on the height. The margin is not
- * decoration: the measurement used one font stack and one string, and every host localizes the
- * title, so a longer translation wraps sooner than the sample did.
+ * WHAT THE RE-MEASURE SAYS. 4,050 layouts - 675 sizes (280-520 x 160-420 in 10px steps) x three
+ * description lengths (p25 / p50 / p75 over the 108 active types) x two base font sizes (14 and
+ * 16px) - same DOM, same compiled CSS. The structure is identical at both font sizes:
  *
- * ERRING HIGH IS THE CHEAP DIRECTION. Below the floor the host generates immediately, which is
- * the behaviour it had before the chooser existed - so a tile wrongly judged too small costs a
- * feature, while one wrongly judged big enough costs a dialog whose buttons are off the card.
+ *     not trapped (buttons on one line, pinned chrome unclipped, card not overflowing)  300 x 190
+ *     >= 1 full list row visible                                                        330 x 330
+ *     >= 2 full list rows visible                          340 x 420, and UNREACHABLE below 410
+ *                                                          wide once a description runs to p75
+ *
+ * 400 x 240 satisfies NEITHER - fifty pixels too tall to be about escapability, ninety too short
+ * to be about legibility. A 400 x 240 tile leaves 77px of list; two rows and their group heading
+ * need 126.
+ *
+ * SO THE FLOOR ANSWERS THE ONLY QUESTION A FLOOR CAN ANSWER HERE: can the reader get out of this
+ * card. The list is `overflow-y: auto` with `min-height: 0` and scrolls at every size, so "how
+ * much of it do I see at once" is not a thing a gate decides - scrolling handles it. What
+ * scrolling cannot handle is a card that CLIPS its own buttons, and that is precisely the pair
+ * of questions that hold from 300 x 190 down.
+ *
+ * 320 x 220 is that floor with one sweep step of margin on both dimensions - and it is also,
+ * exactly, the absolute floor the FIRST sweep reported before inflating it for the coupling.
+ * Two independent measurements agreeing on the escapability floor is the part of the original
+ * that survived. The margin is not decoration: both sweeps used one font stack and one English
+ * title, and every host localizes it.
+ *
+ * THIS IS THE ARGUMENT THE EXCEL PANE ALREADY MAKES, which is why the two hosts now differ by a
+ * card rather than by a philosophy - see shouldOpenInlineChooserOnGenerate below, whose whole
+ * reason for having no size clause is that a scrolling panel cannot trap anyone. The modal's
+ * list scrolls too; its CARD is the part that clips, and this floor is about the card.
+ *
+ * ERRING HIGH IS STILL THE CHEAP DIRECTION where it is genuinely cheap - below the floor the
+ * host generates immediately, which is what it did before this feature existed, so a tile
+ * wrongly judged too small costs a feature while one wrongly judged big enough costs a dialog
+ * with its buttons off the card. What the re-measure changes is the band over which that trade
+ * was being made blind: at 400 x 240 the chooser was withheld from tiles that show MORE of the
+ * list than tiles it was being offered on.
  */
-export const CHOOSER_MIN_WIDTH_PX = 400;
-export const CHOOSER_MIN_HEIGHT_PX = 240;
+export const CHOOSER_MIN_WIDTH_PX = 320;
+export const CHOOSER_MIN_HEIGHT_PX = 220;
 
 /**
  * Is there room to DRAW the chooser here?
