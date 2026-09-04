@@ -5,6 +5,33 @@
 // visual and the MCP client must profile identically. (If Shared's versions ever
 // change, mirror the change here; a divergence would make the two hosts disagree.)
 
+/** The WORDS in a column name, lowercased — "OlympicYear" → ["olympic", "year"], "fiscal_year"
+ *  → ["fiscal", "year"]. NOT a Shared mirror: package-owned, and the ONE reading of a name.
+ *
+ *  Collapsed from FOUR copies (2026-09-04) — geoDetector, ordinalDetector, isIdentifierName, and
+ *  in raw-regex form the temporal year-name test. The fourth is why this moved: it matched
+ *  /\b(year|yr|fy)\b/ against the RAW name, and `\b` cannot fire between two word characters, so
+ *  neither "OlympicYear" (camelCase) nor "fiscal_year" (an underscore IS a word character) ever
+ *  matched. On an integer column of Olympic years the name path was the only one open — the
+ *  consecutive-fill fallback wants every integer in the range and the Games are every four years —
+ *  so isTemporal came back false and every chart type that requires a date was refused on that
+ *  shape. Three name tests already read names as words; the fourth did not, and nothing made them
+ *  agree.
+ *
+ *  Two boundaries and no others — camelCase, then the `_ - . /` separators. A consumer that
+ *  re-derives this rule for itself has to match it exactly: this flag is read first and such a
+ *  consumer only falls back to its own copy, so widening one side alone decides the same column
+ *  two different ways depending on which side sees it. */
+export function nameWords(name: string): string[] {
+    if (!name) return [];
+    return name
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")   // camelCase → words
+        .replace(/[_\-./]+/g, " ")                 // separators → space
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(t => t.length > 0);
+}
+
 /** Null/undefined-safe stringify. Mirrors Shared.STR. */
 export function STR(v: any): string {
     if (v !== undefined && v !== null) {

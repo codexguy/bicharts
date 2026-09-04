@@ -41,6 +41,7 @@
 // geoPoint never imports geoDetector — so there is no import cycle.
 import { isKnownCity, normalizeZip5 } from "./geoPoint";
 import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
+import { nameWords } from "./util";
 // The country tables + the shared normalizer moved to geoCountryNames when the World
 // point map needed them too — geoPoint could not import them back without a cycle.
 import {
@@ -146,17 +147,9 @@ export const ZIP_NAME_TOKENS = new Set(["zip", "zipcode", "postal", "postcode", 
 const COUNTY_NAME_TOKENS = new Set(["county", "fips", "borough", "parish"]);
 const CITY_NAME_TOKENS = new Set(["city", "cities", "town", "municipality", "metro", "location", "place"]);
 
-function tokenizeName(name: string): string[] {
-    return name
-        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-        .replace(/[_\-./]+/g, " ")
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(t => t.length > 0);
-}
 export function hasAnyToken(columnName: string | undefined, tokens: Set<string>): boolean {
     if (!columnName) return false;
-    for (const t of tokenizeName(columnName)) if (tokens.has(t)) return true;
+    for (const t of nameWords(columnName)) if (tokens.has(t)) return true;
     return false;
 }
 

@@ -18,7 +18,7 @@ import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } fr
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
-import { STR, GET_RANDOM, SIMPLE_STRING_HASH } from "./util";
+import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords } from "./util";
 import { collapseRepeatedAggPrefix } from "./aggregation";
 
 // ============================================================================
@@ -81,12 +81,7 @@ const IDENTIFIER_NAME_TOKENS: Set<string> = new Set([
 
 export function isIdentifierName(name: string): boolean {
     if (!name) return false;
-    const tokens = name
-        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")   // camelCase → words
-        .replace(/[_\-./]+/g, " ")                 // separators → space
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(t => t.length > 0);
+    const tokens = nameWords(name);
     if (tokens.length === 0) return false;
     return IDENTIFIER_NAME_TOKENS.has(tokens[tokens.length - 1]);
 }
@@ -100,7 +95,11 @@ export type ValueNature = "Continuous" | "Ordinal" | "Categorical";
 // gates (HasDate / NeedsTimeProgression) trust this flag first. Conservative on
 // the year-integer branch (real values in a plausible calendar range) so a
 // non-time integer can't masquerade as a time axis.
-const TEMPORAL_YEAR_NAME = /\b(year|yr|fy|fiscal\s*year|calendar\s*year)\b/i;
+// Tested against nameWords(), not the raw name (2026-09-04) — "OlympicYear" and "fiscal_year" are
+// year columns and `\b` could see neither. Whole WORDS only, so "yearly" and "Yearbook" stay out,
+// and no letter-to-digit split, so "FY2024" is still not a year name.
+const TEMPORAL_YEAR_WORDS: Set<string> = new Set(["year", "yr", "fy"]);
+const hasYearName = (name: string): boolean => nameWords(name).some(w => TEMPORAL_YEAR_WORDS.has(w));
 // 2024 | 2024-Q1 | 2024Q1 | Q1-2024 | 2024-01 | 2024-1 | 202401 | 2024-W12 |
 // Jan 2024 | January-2024  (case-insensitive)
 const TEMPORAL_PERIOD_RE =
@@ -273,7 +272,7 @@ export function classifyTemporal(args: {
         // year dimension whatever it's called — a real measure almost never occupies every
         // integer in its range. Name-independent path catches 'Jahr' / 'Año' / unnamed years.
         const inYearRange = lo >= 1900 && hi <= 2100;
-        if (inYearRange && distinctCount >= 2 && TEMPORAL_YEAR_NAME.test(name)) return true;
+        if (inYearRange && distinctCount >= 2 && hasYearName(name)) return true;
         if (inYearRange && distinctCount >= 3 && distinctCount === (hi - lo + 1)) return true;
 
         // Integer PERIOD KEYS: endpoints fit YYYYMM or YYYYMMDD, and (when we have the actual

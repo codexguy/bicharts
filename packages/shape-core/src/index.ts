@@ -108,7 +108,7 @@ export type { PointBind, PointRoleResolution } from "./geoPointRoles";
 export { monthLookupFor, normalizeMonthKey } from "./monthNames";
 
 // Pure utilities (shared so adapters can hash/stringify identically to the engine).
-export { STR, SIMPLE_STRING_HASH, GET_RANDOM, isDeterministicRefusal } from "./util";
+export { STR, SIMPLE_STRING_HASH, GET_RANDOM, isDeterministicRefusal, nameWords } from "./util";
 
 // THE INGEST FRONT DOOR — many source shapes, one measured result. Adapters no longer need
 // to hand-build columns and feed addRow themselves; a decoder translates what the source

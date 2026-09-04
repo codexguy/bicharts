@@ -33,6 +33,8 @@
 // existing obfuscation pipeline (orderedDomain stays undefined on the
 // shipped column).
 
+import { nameWords } from "./util";
+
 type OrdinalPattern = {
     name: string;
     // Canonical pattern values in their inherent order, lowercased + space-
@@ -243,18 +245,9 @@ const ORDINAL_NAME_TOKENS: Set<string> = new Set([
     "generation", "seniority", "position", "sequence", "seq", "priority",
 ]);
 
-function tokenizeName(name: string): string[] {
-    return name
-        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")   // camelCase → words
-        .replace(/[_\-./]+/g, " ")                  // separators → space
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(t => t.length > 0);
-}
-
 export function isOrdinalFriendlyName(name: string): boolean {
     if (!name) return false;
-    for (const tok of tokenizeName(name)) {
+    for (const tok of nameWords(name)) {
         if (ORDINAL_NAME_TOKENS.has(tok)) return true;
     }
     return false;
