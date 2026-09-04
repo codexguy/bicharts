@@ -26,7 +26,7 @@ describe("askApplyImprovements", () => {
         expect(overlay()).toBeNull();
     });
 
-    it("No, Escape and a backdrop click all resolve false", async () => {
+    it("No and Escape resolve false", async () => {
         let p = askApplyImprovements(bigContainer(), "r");
         button("No thanks").click();
         expect(await p).toBe(false);
@@ -34,9 +34,20 @@ describe("askApplyImprovements", () => {
         p = askApplyImprovements(bigContainer(), "r");
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
         expect(await p).toBe(false);
+    });
 
-        p = askApplyImprovements(bigContainer(), "r");
+    // WAS: "a backdrop click resolves false". Changed deliberately 2026-09-04, not relaxed —
+    // the proposal is offered once per generate, so a stray click destroyed a question that
+    // could never be asked again. Fail-closed still governs everything that SPENDS.
+    it("a BACKDROP click does not answer the question at all", async () => {
+        const p = askApplyImprovements(bigContainer(), "r");
         overlay()!.click();
+        expect(overlay()).not.toBeNull();          // still on screen, still asking
+        let settled = false;
+        void p.then(() => { settled = true; });
+        await new Promise((r) => setTimeout(r, 0));
+        expect(settled).toBe(false);
+        button("No thanks").click();
         expect(await p).toBe(false);
     });
 
@@ -46,6 +57,21 @@ describe("askApplyImprovements", () => {
         expect(overlay()).not.toBeNull();
         button("No thanks").click();
         await p;
+    });
+
+    it("no click escapes the dialog — the live chart underneath must not see it", async () => {
+        // The host's own container handler toggles summary panels and clears advisories on a
+        // click, so a reader who misses the buttons must not reorganise the chart behind them.
+        const host = bigContainer();
+        let seen = 0;
+        host.addEventListener("click", () => { seen++; });
+        const p = askApplyImprovements(host, "r");
+        overlay()!.click();                                          // backdrop
+        (overlay()!.firstElementChild as HTMLElement).click();       // card
+        expect(seen).toBe(0);
+        button("No thanks").click();
+        expect(await p).toBe(false);
+        expect(seen).toBe(0);
     });
 
     it("shows the judge's own words and states the cost", async () => {

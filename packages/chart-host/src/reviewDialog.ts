@@ -5,10 +5,18 @@
 // its contract is identical in every host because the money is identical in every host:
 //
 //   * Nothing has been charged when it opens.
-//   * EVERY ambiguous answer is No: the No button, Escape, a backdrop click, a dialog that
-//     throws while building, a second dismissal racing the first, and a surface too small to
-//     ask in legibly. Only a deliberate click on Apply resolves true — and only that
-//     resolution should lead a host to the one call that bills.
+//   * EVERY ambiguous answer is No: the No button, Escape, a dialog that throws while
+//     building, a second dismissal racing the first, and a surface too small to ask in
+//     legibly. Only a deliberate click on Apply resolves true — and only that resolution
+//     should lead a host to the one call that bills.
+//   * A BACKDROP CLICK IS NOT AN ANSWER AT ALL (2026-09-04). It used to resolve false,
+//     on the reading that an ambiguous gesture must fail closed. That reading was wrong here,
+//     and the difference is that DECLINING IS NOT FREE THE WAY REFUSING TO CHARGE IS: a
+//     proposal is offered once per generate and the host has already recorded the version as
+//     reviewed, so a stray click does not defer the question — it destroys it, with no way
+//     back. Fail-closed governs what may SPEND; it has nothing to say about what may DISCARD.
+//     So the backdrop swallows its click (the host beneath must not read it as a click on the
+//     chart either) and the question stands until someone answers it: No, Escape, or Apply.
 //   * The judge's own sentence is shown verbatim — it is the only thing that says WHAT would
 //     change — above a plain statement of the cost, because the cost is the fact being
 //     decided.
@@ -128,8 +136,12 @@ export function askApplyImprovements(
             };
             no.addEventListener("click", () => finish(false));
             yes.addEventListener("click", () => finish(true));
-            ov.addEventListener("click", (e) => { if (e.target === ov) finish(false); });
-            card.addEventListener("click", (e) => e.stopPropagation());
+            // EVERY click that lands anywhere in this dialog STOPS HERE — backdrop and card
+            // alike. Neither dismisses (see the header), and neither may travel on to the host:
+            // the surface under this overlay is a live chart whose own click handler toggles
+            // panels and clears advisories, and a reader reaching for the question must not
+            // reorganise the chart behind it by missing.
+            ov.addEventListener("click", (e) => e.stopPropagation());
             doc.addEventListener("keydown", onKey, true);
 
             row.append(no, yes);
