@@ -301,7 +301,7 @@ export function qualifyFilterGate(i: QualifyFilterGateInput): { show: boolean; w
 //  WHY THIS IS HERE AND NOT IN EACH HOST. It was written twice, in the two hosts, before it was
 //  written here, and the two copies were already the same forty lines: which rows survive, which
 //  HEADINGS are left introducing nothing, whether the refusal block has to be opened because the
-//  reader's term only matches down there, and which of the four things the note has to say. None
+//  reader's term only matches down there, and which of the five things the note has to say. None
 //  of that is host-specific - the visual writes `style.display` and the add-in writes `hidden`,
 //  and that difference is the only difference.
 //
@@ -333,15 +333,20 @@ export interface QualifyFilterGroup<E> {
  *
  *  "none"         - a name tier answered, or nothing is being filtered. Say nothing: the reader's
  *                   own word was found where they expected it and needs no explanation.
- *  "descFallback" - no name matched; these matched on description. MUST be said - a silent
- *                   fall-through is indistinguishable from bad matching.
+ *  "descFallback" - no name matched ANYWHERE; these matched on description. MUST be said - a
+ *                   silent fall-through is indistinguishable from bad matching.
  *  "onlyRefusals" - nothing that FITS matches, but something in the refusal block does. Say where
  *                   it went; that block is now open.
+ *  "descAndRefusalName" - both at once, and the state that made this a five-way rather than a
+ *                   four-way decision (2026-09-04). The fitting list answered on DESCRIPTION and
+ *                   the refusal block answered on a NAME, so "no name matches" is a lie told over
+ *                   the top of a visible name match, and the reader's own word needs BOTH halves
+ *                   said: why the rows above look unrelated, and where the row they typed went.
  *  "noMatch"      - nothing anywhere. NEVER phrase this like "nothing fits your data": one is a
  *                   statement about a typed string and is fixed with backspace, the other is a
  *                   statement about the data and is not.
  */
-export type QualifyFilterNoteKind = "none" | "descFallback" | "onlyRefusals" | "noMatch";
+export type QualifyFilterNoteKind = "none" | "descFallback" | "onlyRefusals" | "descAndRefusalName" | "noMatch";
 
 export interface QualifyFilterView<E> {
     /** Rows to show, and rows to hide. Two lists rather than one predicate so a host can write
@@ -361,10 +366,16 @@ export interface QualifyFilterView<E> {
     /**
      * Does the refusal block need to be OPEN for this term?
      *
-     * True only when the term matches nothing that fits and something that does not. "Why isn't
-     * my chart here" is the only question that section is open to ask, and the reader has just
+     * True when the block holds a match the fitting list cannot show the reader. "Why isn't my
+     * chart here" is the only question that section is open to ask, and the reader has just
      * asked it by name - the server's own sentence about why it cannot be drawn is already
      * rendered, one collapsed checkbox away.
+     *
+     * TWO WAYS TO EARN IT, and the second was missing until 2026-09-04: nothing that fits
+     * matched at all, OR the only NAME match is down there while the fitting list answered on
+     * description. A description match above is not a substitute for the row the reader typed -
+     * it is a weaker tier, and leaving the block shut hides the actual answer behind a checkbox
+     * the reader has no reason to tick.
      *
      * THE HOST MUST TREAT THIS AS AN OVERRIDE, NOT A SETTING: remember what the reader's own
      * checkbox said before the first override, and put it back the moment this goes false. An
@@ -411,10 +422,21 @@ export function computeQualifyFilterView<E>(
     }
 
     const filtering = fit.tier !== "all";
-    const openRefusals = filtering && fit.rows.length === 0 && ref.rows.length > 0;
+    // THE REFUSAL BLOCK'S TIER IS PART OF THE ANSWER, and reading only `fit` is how this shipped
+    // wrong.
+    //
+    // Genesis (release-tests page "215 T9 TERNARY PLOT GATE", 2026-09-04): three unrelated
+    // measures bound, "tern" typed. `Ternary plot` sat on screen under "Poor fit for these
+    // fields" carrying the gate's own sentence, and the line above the list read "No name
+    // matches - showing types whose description mentions 'tern'". That was TRUE of the fitting
+    // list on its own - matching is plain substring, so a fitting type whose description says
+    // "pattern" answers on the description tier - and plainly false to a reader looking at the
+    // name they typed. A weaker tier above must not silence a stronger one below.
+    const nameOnlyBelow = fit.tier === "desc" && (ref.tier === "name" || ref.tier === "namePart");
+    const openRefusals = filtering && ref.rows.length > 0 && (fit.rows.length === 0 || nameOnlyBelow);
     let note: QualifyFilterNoteKind = "none";
     if (filtering) {
-        if (fit.tier === "desc") note = "descFallback";
+        if (fit.tier === "desc") note = nameOnlyBelow ? "descAndRefusalName" : "descFallback";
         else if (fit.tier === "none") note = openRefusals ? "onlyRefusals" : "noMatch";
     }
 

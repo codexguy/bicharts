@@ -376,3 +376,91 @@ describe("computeQualifyFilterView", () => {
         expect(v.hideHeadings).toEqual([]);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//  A NAME MATCH IN THE REFUSAL BLOCK, UNDER A DESCRIPTION MATCH ABOVE.
+//
+//  Genesis (release-tests page "215 T9 TERNARY PLOT GATE", 2026-09-04), which is what that page
+//  is for. Three unrelated measures bound, "tern" typed: `Ternary plot` sat on screen under
+//  "Poor fit for these fields" with its refusal sentence, and the line above the list read
+//  "No name matches - showing types whose description mentions 'tern'".
+//
+//  BOTH HALVES WERE TRUE OF THE FITTING LIST AND ONLY OF THE FITTING LIST. Matching is plain
+//  substring, so a fitting type whose description says "pattern" answers "tern" on the
+//  description tier; the note was decided from that tier alone and never asked what the refusal
+//  block had found. The reader was told there was no name match while reading one.
+//
+//  The fixture below is that dialog in miniature - `Heatmap` carries the "pattern" that makes
+//  the fitting list answer weakly, `Ternary plot` carries the name.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+function ternaryDialog(): QualifyFilterGroup<string>[] {
+    return [
+        { heading: "h-main", section: "fits", rows: [
+            row("r-bar", "Bar chart", "One bar per category."),
+            row("r-heat", "Heatmap", "A grid shaded to show the pattern across two categories."),
+            row("r-pyr", "Pyramid", "Stacks bands into a triangle."),
+            row("r-scatter", "Scatter plot", "One point per row."),
+        ] },
+        { heading: "h-refused", section: "refused", rows: [
+            row("r-ternary", "Ternary plot", "places each row inside a triangle by how its three parts split a total, and these measures do not sum to a constant - so there is no position to place a row at."),
+        ] },
+    ];
+}
+
+describe("computeQualifyFilterView - a weaker tier above must not silence a stronger one below", () => {
+    it("does NOT say 'no name matches' while a refused row is CALLED the term", () => {
+        const v = computeQualifyFilterView(ternaryDialog(), "tern");
+        // The fitting list really did answer on description - the old note was not a mis-tier,
+        // it was a true statement about the wrong list.
+        expect(v.tier).toBe("desc");
+        expect(v.show).toEqual(["r-heat", "r-ternary"]);
+        expect(v.refusalMatched).toBe(1);
+        expect(v.note).toBe("descAndRefusalName");
+    });
+
+    it("OPENS the refusal block, because it holds the only NAME match", () => {
+        expect(computeQualifyFilterView(ternaryDialog(), "tern").openRefusals).toBe(true);
+    });
+
+    it("still counts the FITTING list only, so the counter reads past the refusal match", () => {
+        const v = computeQualifyFilterView(ternaryDialog(), "tern");
+        expect(qualifyFilterCountText(v)).toBe("1 of 4");
+    });
+
+    it("keeps the plain description fallback when the refusal matched on its REASON, not its name", () => {
+        // "no name matches" is TRUE of both lists here, so the old sentence is the right one and
+        // there is nothing below worth forcing open.
+        const v = computeQualifyFilterView(ternaryDialog(), "triangle");
+        expect(v.show).toEqual(["r-pyr", "r-ternary"]);
+        expect(v.note).toBe("descFallback");
+        expect(v.openRefusals).toBe(false);
+    });
+
+    it("says NOTHING when the fitting list answered by name, even if a refusal did too", () => {
+        // Both lists carry a "plot". The reader's word is where they expected it; a refusal block
+        // forced open on every shared word would be noise.
+        const v = computeQualifyFilterView(ternaryDialog(), "plot");
+        expect(v.tier).toBe("name");
+        expect(v.note).toBe("none");
+        expect(v.openRefusals).toBe(false);
+    });
+
+    it("goes back to false and silent the moment the term stops needing it", () => {
+        // The host restores the reader's own checkbox from this edge, so it has to fall as
+        // cleanly as it rises - on backspace, and on a term the fitting list answers by name.
+        expect(computeQualifyFilterView(ternaryDialog(), "tern").openRefusals).toBe(true);
+        expect(computeQualifyFilterView(ternaryDialog(), "").openRefusals).toBe(false);
+        expect(computeQualifyFilterView(ternaryDialog(), "").note).toBe("none");
+        expect(computeQualifyFilterView(ternaryDialog(), "plot").openRefusals).toBe(false);
+    });
+
+    it("the pre-existing empty-fitting-list path is untouched - that one is still onlyRefusals", () => {
+        // "terna" reaches no fitting row on any tier, which is the case the four-way decision
+        // already handled correctly and which this change must not absorb.
+        const v = computeQualifyFilterView(ternaryDialog(), "terna");
+        expect(v.matched).toBe(0);
+        expect(v.note).toBe("onlyRefusals");
+        expect(v.openRefusals).toBe(true);
+    });
+});
