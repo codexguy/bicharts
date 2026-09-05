@@ -220,3 +220,140 @@ export function planFrameGrow(
     if (!(ctmScale > 0) || !isFinite(ctmScale)) return none("no-scale");
     return { grow: true, heightPx, viewBoxH: viewBoxH + delta / ctmScale, reason: "grow" };
 }
+
+/*
+    A SCROLLING ROW BODY TAKES ITS AXIS WITH IT (2026-09-04) - the pure half of the axis pin.
+
+    The row-scrollable family (a schedule chart, a table with embedded marks) is told to size ONE
+    <svg> to its content and let the host scroll it. That is correct for the rows - the row is the
+    datum - and it silently costs the reader the one thing that makes a bar a date range rather than
+    a coloured stripe: the time axis is drawn INSIDE that svg, so it scrolls away with the rows.
+    Measured on three real 90-task schedule charts, each with its axis somewhere different (top,
+    bottom, bottom): the axis was on screen for about 1-2% of the scroll range, one wheel notch at
+    one end. Every schedule tool pins its timescale as a header for exactly this reason.
+
+    The pin copies the horizontal axis into an overlay that sits at the viewport edge nearest the
+    original WHILE THE ORIGINAL IS OUT OF VIEW, and hides itself when the original scrolls back in.
+    That is the sticky-header contract: it never covers anything the reader could otherwise see at
+    the same time as the axis, and there is never a second axis on screen. Everything here is
+    numbers-in, numbers-out; the DOM half (which group is the axis, the clone, the overlay) is in
+    `fitDom.ts`, and the split is the same one the frame grow uses.
+*/
+
+// A row needs at least this many labels to be an axis worth pinning. One label is a caption.
+export const AXIS_PIN_MIN_LABELS = 2;
+// Breathing room around the label row so descenders and the tick line are inside the band.
+export const AXIS_PIN_BAND_PAD_PX = 2;
+// A band taller than this fraction of the viewport is not a header row, it is the chart. A pin
+// that ate 40% of a 250px tile would hide the rows it exists to label.
+export const AXIS_PIN_MAX_BAND_FRACTION = 0.4;
+// How far a thin track (the axis's domain line) may sit from the label row and still belong to
+// the band. A d3 axis puts its domain 6-9px from the labels; a gridline 300px away is not a track.
+export const AXIS_PIN_TRACK_REACH_PX = 12;
+
+export interface LabelRowBox { left: number; top: number; right: number; bottom: number; }
+
+/**
+ * Does a row of label boxes run ACROSS the chart rather than DOWN it? A horizontal axis spreads
+ * its label centres over x; a y-axis spreads them over y, and pinning a y-axis would pin the
+ * ROWS - the exact thing the scroll exists to reveal. Ties are vertical: a single label has no
+ * direction and is not an axis.
+ */
+export function isHorizontalLabelRow(boxes: LabelRowBox[]): boolean {
+    if (!boxes || boxes.length < 2) return false;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const b of boxes) {
+        const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
+        if (!isFinite(cx) || !isFinite(cy)) return false;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+    }
+    return (maxX - minX) > (maxY - minY);
+}
+
+export interface AxisBand { top: number; bottom: number; }
+
+/**
+ * The vertical band a label row occupies, padded, widened to take in a thin track (the domain
+ * line) that sits within reach of the labels. Tracks further away are ignored on purpose: a
+ * gridline drawn as a full-height tick line is part of the plot, not of the header.
+ */
+export function labelBand(boxes: LabelRowBox[], tracks: LabelRowBox[] = [],
+                          pad: number = AXIS_PIN_BAND_PAD_PX,
+                          trackReach: number = AXIS_PIN_TRACK_REACH_PX): AxisBand | null {
+    if (!boxes || boxes.length === 0) return null;
+    let top = Infinity, bottom = -Infinity;
+    for (const b of boxes) {
+        if (!isFinite(b.top) || !isFinite(b.bottom)) continue;
+        if (b.top < top) top = b.top;
+        if (b.bottom > bottom) bottom = b.bottom;
+    }
+    if (!isFinite(top) || !isFinite(bottom) || bottom <= top) return null;
+    for (const t of tracks || []) {
+        if (!isFinite(t.top) || !isFinite(t.bottom)) continue;
+        const gap = t.bottom < top ? top - t.bottom : t.top > bottom ? t.top - bottom : 0;
+        if (gap > trackReach) continue;
+        if (t.top < top) top = t.top;
+        if (t.bottom > bottom) bottom = t.bottom;
+    }
+    return { top: top - pad, bottom: bottom + pad };
+}
+
+export interface AxisPinCandidate {
+    /** The caller's handle for this axis - returned in the plan. */
+    index: number;
+    /** One box per VISIBLE tick label, in any one consistent coordinate space. */
+    labels: LabelRowBox[];
+    /** Thin tracks that may belong to the band (a horizontal domain line). Optional. */
+    tracks?: LabelRowBox[];
+}
+
+export interface AxisPinPlan {
+    pin: boolean;
+    index: number;
+    band: AxisBand | null;
+    reason: string;
+}
+
+/**
+ * Which axis to pin, and the band it occupies. Coordinates are whatever the caller measured in;
+ * the plan only compares them, and `viewportH` (same units) bounds the band. With two horizontal
+ * axes the one with more labels wins - it is the one carrying the scale.
+ */
+export function planAxisPin(candidates: AxisPinCandidate[], viewportH: number,
+                            minLabels: number = AXIS_PIN_MIN_LABELS,
+                            maxFraction: number = AXIS_PIN_MAX_BAND_FRACTION): AxisPinPlan {
+    const none = (reason: string): AxisPinPlan => ({ pin: false, index: -1, band: null, reason });
+    if (!isFinite(viewportH) || viewportH <= 0) return none("unmeasurable");
+    let sawAxis = false, best: AxisPinCandidate | null = null;
+    for (const c of candidates || []) {
+        if (!c || !c.labels || c.labels.length < minLabels) continue;
+        sawAxis = true;
+        if (!isHorizontalLabelRow(c.labels)) continue;
+        if (!best || c.labels.length > best.labels.length) best = c;
+    }
+    if (!best) return none(sawAxis ? "vertical-only" : "no-axis");
+    const band = labelBand(best.labels, best.tracks || []);
+    if (!band) return none("unmeasurable");
+    if ((band.bottom - band.top) > viewportH * maxFraction) return none("band-too-tall");
+    return { pin: true, index: best.index, band, reason: "pinned" };
+}
+
+export type AxisPinEdge = "top" | "bottom";
+
+/**
+ * Where the pinned copy sits for this scroll position, or null when the original axis is in view
+ * and the copy must get out of the way. `band` is in CONTENT coordinates (the scroll origin), the
+ * viewport is [scrollTop, scrollTop + viewportH]. The copy appears as soon as the original is CUT
+ * by an edge, not only once it has fully left: a half-visible label row reads worse than a whole
+ * one drawn over it.
+ */
+export function axisPinPlacement(band: AxisBand, scrollTop: number, viewportH: number): AxisPinEdge | null {
+    if (!band || !isFinite(band.top) || !isFinite(band.bottom)) return null;
+    if (!isFinite(scrollTop) || !isFinite(viewportH) || viewportH <= 0) return null;
+    if (band.top < scrollTop) return "top";
+    if (band.bottom > scrollTop + viewportH) return "bottom";
+    return null;
+}

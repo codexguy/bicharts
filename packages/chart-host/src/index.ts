@@ -216,3 +216,15 @@ export {
     fitRenderedChart, fitReadingFor, measureContainerBoxes, svgInkReach, ctmScaleOf,
     type FitReading, type InkReach, type FitRenderedChartOptions, type FitRenderedChartResult,
 } from "./fitDom";
+// THE AXIS STAYS WHILE THE ROWS SCROLL (2026-09-04). The row-scrollable family sizes one <svg>
+// to its content and lets the host scroll it - correct for the rows, and it takes the time axis
+// with them: on a 90-task schedule chart the axis was on screen for ~2% of the scroll range.
+// `fitRenderedChart` now pins a copy of the horizontal axis at the viewport edge while the
+// original is scrolled out, and hides it when the original is back. The pure planner is here for
+// a host that scrolls on its own terms; `pinScrolledAxis` is the DOM half it calls.
+export {
+    AXIS_PIN_MIN_LABELS, AXIS_PIN_BAND_PAD_PX, AXIS_PIN_MAX_BAND_FRACTION, AXIS_PIN_TRACK_REACH_PX,
+    isHorizontalLabelRow, labelBand, planAxisPin, axisPinPlacement,
+    type LabelRowBox, type AxisBand, type AxisPinCandidate, type AxisPinPlan, type AxisPinEdge,
+} from "./fit";
+export { pinScrolledAxis, unpinScrolledAxis, type AxisPinReport } from "./fitDom";

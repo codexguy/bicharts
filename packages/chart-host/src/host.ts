@@ -32,7 +32,7 @@ import { createMarkResolver } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
-import { fitRenderedChart, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
+import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
@@ -807,6 +807,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             container.removeEventListener(XFILTER_REFRESH_EVENT, onXf);
             container.removeEventListener("click", onClick);
             subs.clear();
+            unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
             container.innerHTML = "";
         },
     };
