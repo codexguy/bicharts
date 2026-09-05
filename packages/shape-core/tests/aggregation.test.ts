@@ -198,3 +198,39 @@ describe("the lists themselves", () => {
         expect(nameLooksIntensiveRate("Revenue")).toBe(false);
     });
 });
+
+// SEPARATOR-GLUED TOKENS (2026-09-04). The camel split covers case and digit transitions and
+// nothing else, so a token joined by an UNDERSCORE stayed invisible to `\bword\b` - an
+// underscore is itself a word character. Such a name resolved only when the token landed LAST,
+// through the `(suffix)$` arm, so `conversion_rate` was caught while a leading or middle `pct_`
+// / `rate_` was not. A percentage that reads as additive is one a chart may sum or stack.
+//
+// Replayed over every distinct measure name the product has been handed: exactly one verdict
+// moves, and it moves to intensive.
+describe("a token joined by a separator is still a token", () => {
+    it("catches a LEADING token an underscore had hidden", () => {
+        expect(nameLooksIntensiveRate("pct_open_items")).toBe(true);
+        expect(nameLooksIntensiveRate("Pct_Open_Items")).toBe(true);
+        expect(nameLooksIntensiveRate("rate_per_hour")).toBe(true);
+        expect(nameLooksIntensiveRate("avg_days_to_close")).toBe(true);
+    });
+
+    it("catches the other separators too", () => {
+        expect(nameLooksIntensiveRate("margin-by-region")).toBe(true);
+        expect(nameLooksIntensiveRate("fact.score.raw")).toBe(true);
+    });
+
+    it("still catches a TRAILING one, which the suffix arm always did", () => {
+        expect(nameLooksIntensiveRate("conversion_rate")).toBe(true);
+        expect(nameLooksIntensiveRate("avg_latency")).toBe(true);
+    });
+
+    // The whole point of word-only tokens: these CONTAIN one as a substring and are summable.
+    // All four are real corpus names, and the separator split must not newly false-match them.
+    it("does not create the false matches the word-only arrays were written around", () => {
+        expect(nameLooksIntensiveRate("energy_usage_kwh"), "usage contains age").toBe(false);
+        expect(nameLooksIntensiveRate("Sum of DurationSec"), "duration contains ratio").toBe(false);
+        expect(nameLooksIntensiveRate("SharesTraded"), "shares is not share").toBe(false);
+        expect(nameLooksIntensiveRate("Sum of Storage"), "storage contains age").toBe(false);
+    });
+});

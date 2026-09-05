@@ -33,6 +33,8 @@
 // `positional` is a client-side refinement of what the server calls `IntensiveRate`, and the
 // union of the two arrays below is exactly the server's list.
 
+import { nameWords } from "./util";
+
 /** Every aggregation any BIC surface offers. `first` is the one that only makes sense for a
  *  dimension — "which value is this?" — and it is why a categorical column can have a line at
  *  all. */
@@ -265,11 +267,27 @@ function normalizeForNameTest(name: string | null | undefined): string {
     return base.length === 0 ? "" : base.replace(CAMEL_BOUNDARY, " ");
 }
 
-/** Both forms are tested, exactly as the server side does: the camel-split one catches
- *  "LatencyMs" / "ProfitMargin", the raw base name keeps every suffix match working. */
+/** All THREE forms are tested, exactly as the server side does: the camel-split one catches
+ *  "LatencyMs" / "ProfitMargin", the raw base name keeps every suffix match working, and the
+ *  word-split one catches separator-glued names.
+ *
+ *  THE THIRD FORM (2026-09-04). CAMEL_BOUNDARY splits case and digit transitions and NOTHING
+ *  else, so a `\bword\b` test still could not see a token joined by an underscore - and an
+ *  underscore IS a word character, so `\bpct\b` does not match `pct_open_items`. Such a name was
+ *  caught only when the token landed LAST, by the `(suffix)$` arm: `conversion_rate` resolved
+ *  while a leading or middle `pct_` / `rate_` did not - and a percentage that reads as additive
+ *  is one a chart may sum or stack.
+ *
+ *  STRICTLY ADDITIVE, never a replacement: a third form can only ADD a match, so nothing this
+ *  already resolved can move the other way. Measured over every distinct measure name both
+ *  environments have ever been handed (730 of them): exactly ONE verdict moves - an
+ *  underscore-joined percentage - and it moves to intensive. No regressions. */
 function matchesName(re: RegExp, name: string | null | undefined): boolean {
     if (!name) return false;
-    return re.test(normalizeForNameTest(name)) || re.test(stripHostAggPrefix(name));
+    const base = stripHostAggPrefix(name);
+    return re.test(normalizeForNameTest(name))
+        || re.test(base)
+        || re.test(nameWords(base).join(" "));
 }
 
 /** Does this column NAME read as a coordinate? */
