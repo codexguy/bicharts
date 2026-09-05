@@ -46,6 +46,15 @@ export interface BicChartProps {
      * default could pick between them, which is why this is a prop rather than a flag.
      */
     viewState?: ChartHostConfig["viewState"];
+    /**
+     * CAN THE LABELS ON THE MARKS BE READ? Default on: after every render a label sitting on a
+     * mark it cannot be read against is recoloured black or white. Pass `false` for a page that
+     * owns its label colours, or `{ pageBg }` to name the canvas the chart sits on - a dark or
+     * themed page is not white, and readability is measured against it. See createChartHost.
+     */
+    labelContrast?: ChartHostConfig["labelContrast"];
+    /** What the label-contrast pass did after each render - counts, for a page that logs. */
+    onLabelContrast?: ChartHostConfig["onLabelContrast"];
     /** Identity within a <BicChartGroup> — the key other charts filter by. */
     id?: string;
     /** Take this group member's selection as a filter on THIS chart's rows. */
@@ -149,8 +158,8 @@ function payloadFor(g: GroupCtx, sourceIdxs: number[] | null) {
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, viewState, id, filteredBy, respondsWith,
-            onSelect, className, style } = props;
+    const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
+            id, filteredBy, respondsWith, onSelect, className, style } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -180,6 +189,8 @@ export function BicChart(props: BicChartProps) {
     // Keep the newest callback without making it a rebuild trigger.
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
+    const onLabelContrastRef = useRef(onLabelContrast);
+    onLabelContrastRef.current = onLabelContrast;
 
     // GEOMETRY — core render() is synchronous by contract, so the host can only attach what
     // is already cached; a cold cache used to mean a bubble map that painted its marks over
@@ -205,7 +216,9 @@ export function BicChart(props: BicChartProps) {
     useLayoutEffect(() => {
         const el = ref.current;
         if (!el || (!code && !renderFn) || !data) return;
-        const host = createChartHost(el, { code, renderFn, data, options, d3, geoKind, viewState });
+        const host = createChartHost(el, { code, renderFn, data, options, d3, geoKind, viewState,
+                                           labelContrast,
+                                           onLabelContrast: r => onLabelContrastRef.current?.(r) });
         hostRef.current = host;
         const off = host.selection.onChange((payloadIdxs, source) => {
             // "host" = a programmatic clear WE issued (below) to drop a stale highlight.
@@ -226,8 +239,10 @@ export function BicChart(props: BicChartProps) {
             host.destroy();
             hostRef.current = null;
         };
+        // labelContrast is a HOST config, read once at creation, so flipping it is a rebuild
+        // (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind]);
+    }, [code, renderFn, d3, geoKind, labelContrast]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions.
