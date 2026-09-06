@@ -352,13 +352,40 @@ describe("computeQualifyFilterView", () => {
         expect(v.hideHeadings).toHaveLength(3);
     });
 
-    it("counts the FITTING list only - the refusal block has its own answer", () => {
+    it("counts the FITTING list, and says how many more the term reached below it", () => {
+        // THE RATIO IS THE FITTING LIST AND THE "(+1)" IS NOT IN ITS DENOMINATOR. 3 is the types
+        // that fit; the catalogue behind the checkbox is a different population, so the two
+        // numbers are printed apart rather than summed into a ratio true of no list on screen.
         const v = computeQualifyFilterView(dialog(), "chart");
         expect(v.total).toBe(3);
         expect(v.matched).toBe(2);
         expect(v.refusalMatched).toBe(1);
-        expect(qualifyFilterCountText(v)).toBe("2 of 3");
+        expect(qualifyFilterCountText(v)).toBe("2 of 3 (+1)");
         expect(qualifyFilterCountText(computeQualifyFilterView(dialog(), ""))).toBe("3");
+    });
+
+    it("SAYS ZERO IS NOT NOTHING - the case that put the count on screen", () => {
+        // Genesis (2026-09-06): the counter read
+        // "0 of 19" with a matching row visible three lines below it. True of the fitting list,
+        // read as a claim about the dialog.
+        const v = computeQualifyFilterView(dialog(), "gan");
+        expect(v.matched).toBe(0);
+        expect(v.refusalMatched).toBe(1);
+        expect(qualifyFilterCountText(v)).toBe("0 of 3 (+1)");
+    });
+
+    it("adds nothing when the term reached nothing below, filtered or not", () => {
+        expect(qualifyFilterCountText(computeQualifyFilterView(dialog(), "bar"))).toBe("1 of 3");
+        expect(qualifyFilterCountText(computeQualifyFilterView(dialog(), "zzzz"))).toBe("0 of 3");
+        // The unfiltered counter is the plain total and never carries the suffix - nothing has
+        // been filtered, so there is no "more" to be below.
+        expect(qualifyFilterCountText(computeQualifyFilterView(dialog(), ""))).toBe("3");
+    });
+
+    it("a caller that passes no refusalMatched still gets the bare ratio", () => {
+        // The field is optional so the shape stays assignable from anything carrying the counter's
+        // three numbers - a host mid-upgrade, or a test fixture.
+        expect(qualifyFilterCountText({ tier: "name", matched: 2, total: 9 })).toBe("2 of 9");
     });
 
     it("survives a dialog with no groups at all", () => {
@@ -380,8 +407,7 @@ describe("computeQualifyFilterView", () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 //  A NAME MATCH IN THE REFUSAL BLOCK, UNDER A DESCRIPTION MATCH ABOVE.
 //
-//  Genesis (release-tests page "215 T9 TERNARY PLOT GATE", 2026-09-04), which is what that page
-//  is for. Three unrelated measures bound, "tern" typed: `Ternary plot` sat on screen under
+//  Genesis (2026-09-04). Three unrelated measures bound, "tern" typed: `Ternary plot` sat on screen under
 //  "Poor fit for these fields" with its refusal sentence, and the line above the list read
 //  "No name matches - showing types whose description mentions 'tern'".
 //
@@ -423,9 +449,14 @@ describe("computeQualifyFilterView - a weaker tier above must not silence a stro
         expect(computeQualifyFilterView(ternaryDialog(), "tern").openRefusals).toBe(true);
     });
 
-    it("still counts the FITTING list only, so the counter reads past the refusal match", () => {
+    it("the counter now says the refusal match too, so the note is not the only place it appears", () => {
+        // The ratio is still the FITTING list alone - 4 is the types that fit, and the row the
+        // reader typed is not in that denominator. What changed is that the count beside it is no
+        // longer discarded: this is the case where the note ALREADY explains where the row went,
+        // and the counter used to contradict it by omission.
         const v = computeQualifyFilterView(ternaryDialog(), "tern");
-        expect(qualifyFilterCountText(v)).toBe("1 of 4");
+        expect(v.total).toBe(4);
+        expect(qualifyFilterCountText(v)).toBe("1 of 4 (+1)");
     });
 
     it("keeps the plain description fallback when the refusal matched on its REASON, not its name", () => {

@@ -425,7 +425,7 @@ export function computeQualifyFilterView<E>(
     // THE REFUSAL BLOCK'S TIER IS PART OF THE ANSWER, and reading only `fit` is how this shipped
     // wrong.
     //
-    // Genesis (release-tests page "215 T9 TERNARY PLOT GATE", 2026-09-04): three unrelated
+    // Genesis (2026-09-04): three unrelated
     // measures bound, "tern" typed. `Ternary plot` sat on screen under "Poor fit for these
     // fields" carrying the gate's own sentence, and the line above the list read "No name
     // matches - showing types whose description mentions 'tern'". That was TRUE of the fitting
@@ -447,12 +447,43 @@ export function computeQualifyFilterView<E>(
     };
 }
 
-/** The counter beside the box: "12 of 137" while filtering, the plain total otherwise.
+/**
+ * The counter beside the box: "12 of 137" while filtering, the plain total otherwise - and
+ * "0 of 19 (+1)" when the term also reached the refusal block.
  *
- *  Digits only, assembled here so both hosts show the same shape of number - the words around it
- *  (there are none today) would be the host's business, the arithmetic is not. */
-export function qualifyFilterCountText(view: { tier: QualifyFilterTier; matched: number; total: number }): string {
-    return view.tier === "all" ? String(view.total) : `${view.matched} of ${view.total}`;
+ * Digits only, assembled here so both hosts show the same shape of number - the words around it
+ * (there are none today) would be the host's business, the arithmetic is not.
+ *
+ * THE PARENTHESISED COUNT IS THE SAME DEFECT THE NOTE WAS ALREADY FIXED FOR, one control over.
+ *
+ * Genesis (2026-09-06): a card with six rows and one measure
+ * bound, "box" typed. `Box plot` was on screen under "Poor fit for these fields" carrying the
+ * gate's own sentence, the note said where it had gone - and the counter beside the input read
+ * "0 of 19". That was TRUE of the fitting list, which is all this function had ever been given,
+ * and it is read as a claim about the DIALOG: a reader who takes the number and stops has been
+ * told nothing was found, three lines above the row they asked for. The same shape of error as
+ * the `descAndRefusalName` note (a weaker scope silencing a stronger one), and the count it
+ * needed was already being computed for the log and simply never reached the screen.
+ *
+ * IT FIRES ON EVERY FILTERED TERM WITH A REFUSAL MATCH, not only when the fitting list came back
+ * empty - and that is deliberate, because the collapsed case is the one with no other signal at
+ * all. When `openRefusals` is true the reader can see the row and the note explains it; when the
+ * fitting list answered by name the block stays shut and the note stays silent (correctly - a
+ * section forced open on every shared word would be noise), so this "(+1)" is the ONLY thing
+ * telling them the checkbox below has something of theirs behind it.
+ *
+ * NEVER FOLDED INTO `matched`. "0 of 19" and the "(+1)" count two different populations - 19 is
+ * the types that FIT, and the catalogue behind the checkbox is not in that denominator. Adding
+ * them would produce a ratio that is true of no list on screen.
+ */
+export function qualifyFilterCountText(
+    view: { tier: QualifyFilterTier; matched: number; total: number; refusalMatched?: number },
+): string {
+    if (view.tier === "all") return String(view.total);
+    const below = typeof view.refusalMatched === "number" && view.refusalMatched > 0
+        ? ` (+${view.refusalMatched})`
+        : "";
+    return `${view.matched} of ${view.total}${below}`;
 }
 
 /**
