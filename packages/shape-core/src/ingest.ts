@@ -151,9 +151,21 @@ function inferDataType(samples: any[]): EngineDataType {
     }
 
     if (nonblank === 0) return "String";
-    // Dates tolerate a few stragglers; numbers do not — one non-numeric value means the
-    // column is not safely numeric, and coercing it would silently null real data.
-    if (dates / nonblank > 0.9) return "DateTime";
+    // NOTHING TOLERATES A STRAGGLER, DATES LEAST OF ALL. This read
+    // `dates / nonblank > 0.9`, under a comment saying dates tolerate a few stragglers where
+    // numbers do not, and the asymmetry was backwards. The argument given for numbers — "one
+    // non-numeric value means the column is not safely numeric, and coercing it would silently
+    // null real data" — applies to dates WITH MORE FORCE, because `convert` below runs
+    // Date.parse on every value and turns NaN into null. A numeric straggler is a value we
+    // decline to coerce; a date straggler is a value we DELETE.
+    //
+    // And the straggler is never a typo. It is the row reading `Total`, `Opening Balance`,
+    // `YTD` or `All periods` — the labelled row a finance export puts at the end of an
+    // otherwise perfectly dated series. Twelve months plus one label is 92.3%, clear of the
+    // old bar. Such a column is a labelled SEQUENCE, and calling it a date axis costs the
+    // label row its only identifying value AND costs the shape its one categorical column,
+    // which is what decides whether a chart like a waterfall is offered at all.
+    if (dates === nonblank) return "DateTime";
     if (ints === nonblank) return "Integer";
     if (nums === nonblank) return "Decimal";
     return "String";
