@@ -42,6 +42,11 @@
 import { isKnownCity, normalizeZip5 } from "./geoPoint";
 import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 import { nameWords } from "./util";
+// The 3-digit prefixes the bundled ZIP-3 basemap can actually draw, generated from the geometry
+// asset itself (scripts/buildZip3PrefixSet.mjs). A ZIP is only a JOINABLE region key when its
+// prefix is in here - format alone was reporting unmappable ZIPs as a 100% match to a gate whose
+// whole job is refusing maps full of holes.
+import { US_ZIP3_PREFIXES } from "./geoUsZip3Prefixes.generated";
 // The country tables + the shared normalizer moved to geoCountryNames when the World
 // point map needed them too — geoPoint could not import them back without a cycle.
 import {
@@ -247,6 +252,16 @@ export function detectGeo(
     let anyCountry = 0;
     // 4-digit values, held aside: a ZIP whose leading zero integer storage ate, or just a year.
     let zip4 = 0;
+    // ZIPs whose 3-digit prefix the bundled basemap can actually DRAW. Counted beside `zip`,
+    // never instead of it: `zip` still decides WHAT KIND the column is (and so whether a point
+    // map is offered), while this is what gets REPORTED as geoMatchPct. See the loop.
+    let zipDrawable = 0;
+    // The prefix of a value the ZIP counter accepted. Through normalizeZip5 rather than a blind
+    // slice, because the counter accepts three forms - "90210", "90210-1234" and a bare 3-4
+    // digit value whose leading zero was eaten by integer storage - and only the normalizer pads
+    // them back. Slicing "2108" raw gives "210" (Pennsylvania) where the truth is "021"
+    // (Massachusetts): the same silent-misplacement class the ZIP-3 archetype warns about.
+    const zip3PrefixOf = (raw: string): string => (normalizeZip5(raw) ?? "").slice(0, 3);
     let iso2AndUsps = 0;      // values valid as BOTH an ISO-2 and a USPS code
     let cNameAndSName = 0;    // values matching BOTH a country and a US-state name
     let stateBoth = 0;        // values valid as BOTH a USPS code and a state name/abbrev
@@ -273,7 +288,18 @@ export function detectGeo(
         if (isCName && isSName) cNameAndSName++;
         if (countryIso3(raw)) anyCountry++;
         if (isUsps && isSName) stateBoth++;
-        if (/^\d{5}(-\d{4})?$/.test(raw) || (zipHint && /^\d{3,4}$/.test(raw))) zip++;
+        if (/^\d{5}(-\d{4})?$/.test(raw) || (zipHint && /^\d{3,4}$/.test(raw))) {
+            zip++;
+            // AND, SEPARATELY: CAN WE DRAW IT? A ZIP used to be counted on FORMAT alone, so a
+            // five-digit string with no polygon behind it was reported as a match - and
+            // geoMatchPct is a GATE input (the server refuses a choropleth under
+            // LLMGeoMinMatchPct) and a picker score. Military APO/FPO ZIPs (090-099, 340,
+            // 962-966) are real and deliverable and have no place on a map of the United
+            // States, so a column of them cleared every geo gate on the way to a map that
+            // could draw none of it. The choropleth gate's own stated reason is that "an
+            // unmatched region leaves a HOLE in the map"; this makes the number it reads true.
+            if (US_ZIP3_PREFIXES.has(zip3PrefixOf(raw))) zipDrawable++;
+        }
         // A bare 4-digit value is a ZIP whose LEADING ZERO integer storage ate - 02108
         // becomes 2108, which happens to every New England ZIP the moment the column is
         // typed as a number. Held aside and redeemed below ONLY beside genuine 5-digit
@@ -296,8 +322,17 @@ export function detectGeo(
         if (isKnownCity(nm, "world")) cityWorldHits++;
     }
 
-    // Redeem stripped-leading-zero ZIPs only in the company of real ones.
-    if (!zipHint && zip > 0) zip += zip4;
+    // Redeem stripped-leading-zero ZIPs only in the company of real ones. A redeemed 4-digit
+    // value pads to 0xxxx, so its prefix is 00x - and 000-005 carry no geometry while 006-009
+    // (Puerto Rico and the Virgin Islands) do. Redeem the drawable count through the SAME test
+    // rather than assuming, or every New England column typed as a number would report as
+    // undrawable.
+    if (!zipHint && zip > 0) {
+        zip += zip4;
+        for (const raw of distinct) {
+            if (/^\d{4}$/.test(raw) && US_ZIP3_PREFIXES.has(zip3PrefixOf(raw))) zipDrawable++;
+        }
+    }
 
     const pct = (n: number) => (n / total) * 100;
     const cands: Candidate[] = [];
@@ -418,7 +453,13 @@ export function detectGeo(
     return finalize(winner.kind, winner.matched, ambiguous);
 
     function finalize(kind: GeoKind, matched: number, amb: boolean): GeoDetectionResult {
-        const r: GeoDetectionResult = { geoKind: kind, geoMatchPct: Math.round(pct(matched) * 10) / 10 };
+        // THE ZIP SUBSTITUTION LIVES HERE, in the ONE place every path funnels through, rather
+        // than at the four call sites that pass `zip` - a rule enforced at four call sites is a
+        // rule three of them will eventually keep. `matched` decided the KIND above (so a column
+        // of unmappable ZIPs is still a ZIP column, and still gets its point map, which reads no
+        // match percentage at all); what is REPORTED is what the basemap can paint.
+        const reported = kind === "us-zip5" ? zipDrawable : matched;
+        const r: GeoDetectionResult = { geoKind: kind, geoMatchPct: Math.round(pct(reported) * 10) / 10 };
         if (amb) r.geoAmbiguous = true;
         return r;
     }
@@ -515,9 +556,39 @@ export type GeoIsoColumn = {
 };
 
 /**
+ * Is a NORMALIZED value actually on the basemap we bundle for its kind?
+ *
+ * A SECOND QUESTION FROM THE ONE toGeoIso ANSWERS, and the distinction is the whole point.
+ * toGeoIso normalizes: "00501" is a real, deliverable ZIP (Holtsville NY, the IRS one) and it
+ * normalizes cleanly, so toGeoIso is right to return it and the test that pins its zero-padding
+ * is right to expect it. But the ZIP-3 basemap carries no `005` region, so as a CHOROPLETH JOIN
+ * KEY it resolves to nothing. Asking the two questions in one place is what let a five-digit
+ * string with no polygon be reported as a 100% match to a gate whose entire job is refusing maps
+ * full of holes.
+ *
+ * Only ZIP has a rule here today, because ZIP is the only kind whose asset is a strict SUBSET of
+ * its format space: 896 of the 1000 prefixes the format allows, the missing ones being those
+ * USPS never assigned plus the military APO/FPO ranges (090-099, 340, 962-966) - real,
+ * deliverable, and nowhere on a map of the United States. Every other join kind resolves through
+ * a dictionary that IS the asset's key set (states, countries) or is already membership-tested
+ * (county FIPS checks the state prefix), so `true` is the honest answer for them rather than a
+ * gap. If a future kind ships an asset narrower than its dictionary, its rule goes here.
+ */
+function isOnBundledBasemap(norm: string, geoKind: GeoKind): boolean {
+    return geoKind === "us-zip5" ? US_ZIP3_PREFIXES.has(norm.slice(0, 3)) : true;
+}
+
+/**
  * Build the aligned __geoIso__ column for a full column of values under a known
  * geoKind. Pure — the visual appends `iso` beside __rowIdx__ and surfaces
  * `unmatched` via options.geoUnmatched (Phase 1 §3a).
+ *
+ * MATCHED MEANS DRAWABLE HERE, not merely well-formed. This column IS the join, and its
+ * `unmatched` count is what the choropleth annotates, so a value that normalizes but has no
+ * region on the bundled basemap must land in `unmatched` - otherwise the row is reported matched,
+ * joins a feature id that does not exist, and vanishes from a chart whose own annotation says
+ * nothing is missing. That is the silent-drop failure this function's contract promises to handle
+ * deterministically, one step further along than it was looking.
  */
 export function buildGeoIsoColumn(values: (string | null | undefined)[], geoKind: GeoKind): GeoIsoColumn {
     const iso: (string | null)[] = new Array(values.length);
@@ -525,7 +596,9 @@ export function buildGeoIsoColumn(values: (string | null | undefined)[], geoKind
     const unmatched: string[] = [];
     let matchedRows = 0;
     for (let i = 0; i < values.length; ++i) {
-        const norm = toGeoIso(values[i], geoKind);
+        const normalized = toGeoIso(values[i], geoKind);
+        const norm = normalized !== null && isOnBundledBasemap(normalized, geoKind)
+            ? normalized : null;
         iso[i] = norm;
         if (norm !== null) {
             matchedRows++;
