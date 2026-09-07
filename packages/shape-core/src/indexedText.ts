@@ -1169,15 +1169,25 @@ export class IndexedText implements IValueCollection {
                 col.avgLength = datalen / nonblank;
             }
             if (this._rows.length > 0) {
+                // A DATE-DECLARED COLUMN MAY NOT HOLD A DATE, and a profiler must not die of it.
+                // `new Date(x).toISOString()` throws RangeError on an unparseable value, and the
+                // throw takes down the WHOLE getColumnsWithStats call - so one odd cell costs the
+                // caller every statistic for every column, not just this one. Seen for real: a
+                // host that types a bare time of day ("9:00") as DateTime. Fall back to the raw
+                // value, which is what a non-DateTime column does anyway.
+                const isoDayOrRaw = (v: any): any => {
+                    const d = new Date(v);
+                    return isNaN(d.getTime()) ? v : d.toISOString().slice(0, 10) + "T00:00:00.000Z";
+                };
                 if (col.dataType != "DateTime" || hastime || !minval) {
                     col.lowValue = minval;
                 } else {
-                    col.lowValue = new Date(minval).toISOString().slice(0, 10) + "T00:00:00.000Z";
+                    col.lowValue = isoDayOrRaw(minval);
                 }
                 if (col.dataType != "DateTime" || hastime || !maxval) {
                     col.highValue = maxval;
                 } else {
-                    col.highValue = new Date(maxval).toISOString().slice(0, 10) + "T00:00:00.000Z";
+                    col.highValue = isoDayOrRaw(maxval);
                 }
                 col.medianValue = sorted.length === 0 ? null : sorted.length % 2 === 0 ? (col.dataType == "Integer" ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : (sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
                 col.numericPrecision = prec;

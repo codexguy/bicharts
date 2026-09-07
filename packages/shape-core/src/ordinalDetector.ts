@@ -483,6 +483,27 @@ function isCodeStructured(raw: string): boolean {
     return /\p{Nd}/u.test(s);                       // ≥ 1 digit
 }
 
+// A SINGLE CHARACTER IS A CODE, and withholding it costs more than it protects.
+//
+// A three-value result column of H / A / D (home win, away win, draw) failed every test above:
+// not an allowlist token, and no digit, so the whole column was withheld. The server then
+// described it as "3 distinct, average length 1" and nothing more - and the model did what
+// anyone would with a three-value football result column, which is assume W/D/L. That guess
+// became a hardcoded colour map; the real categories fell through to a fallback that reused a
+// colour already assigned; and the shipped legend carried two identical grey swatches under
+// different labels. A chart nobody could read, because we would not say three letters.
+//
+// SCOPED TO EXACTLY ONE CHARACTER, deliberately. The digit requirement above exists to exclude
+// TWO-letter tokens, because those can be a person's initials - a residual risk this file weighed
+// and chose to avoid, and that decision stands untouched. One character cannot identify anybody:
+// it carries a handful of bits, and what ships is a column's distinct SET, never a value attached
+// to a row. M/F, Y/N, N/S/E/W, A-F grades and H/A/D become sayable; JC and MB do not. The
+// ≤15-distinct cap bounds the column either way.
+function isSingleCharacterToken(raw: string): boolean {
+    const s = raw.trim();
+    return s.length === 1 && /[\p{L}\p{Nd}]/u.test(s);
+}
+
 export function safeDistinctValuesToShip(rawDistinct: string[]): string[] | null {
     if (!rawDistinct || rawDistinct.length === 0) return null;
     const seen = new Set<string>();
@@ -492,7 +513,8 @@ export function safeDistinctValuesToShip(rawDistinct: string[]): string[] | null
         const s = String(v);
         if (seen.has(s)) continue;
         const norm = normalize(s);
-        const safe = norm === "" || ALWAYS_SAFE_TOKENS.has(norm) || isCodeStructured(s);
+        const safe = norm === "" || ALWAYS_SAFE_TOKENS.has(norm)
+                     || isCodeStructured(s) || isSingleCharacterToken(s);
         if (!safe) return null;                     // one unsafe value disqualifies the whole column
         seen.add(s);
         out.push(s);
