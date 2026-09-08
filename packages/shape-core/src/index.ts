@@ -118,3 +118,11 @@ export { ingest, engineTypeForSqlType } from "./ingest";
 export type {
     DataSource, IngestOptions, IngestResult, ColumnDescriptor, SqlColumnMeta, EngineDataType,
 } from "./ingest";
+
+// WHAT A HOST WOULD SEND, minus the reader's own credentials - the shared redactor behind
+// "See what's sent" in the Power BI visual and the Excel task pane. Pure: object in, object
+// out, no rendering, because the two hosts render it very differently (a 95% overlay vs a
+// narrow inline block). See payloadPreview.ts for why it SUBTRACTS from a real payload
+// rather than re-listing the fields it believes are sent.
+export { payloadPreview, PREVIEW_OMITTED_FIELDS } from "./payloadPreview";
+export type { PayloadPreviewOptions } from "./payloadPreview";

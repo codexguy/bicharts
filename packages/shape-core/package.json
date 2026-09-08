@@ -59,6 +59,11 @@
       "import": "./dist/util.mjs",
       "default": "./dist/util.mjs"
     },
+    "./payloadPreview": {
+      "types": "./dist/types/payloadPreview.d.ts",
+      "import": "./dist/payloadPreview.mjs",
+      "default": "./dist/payloadPreview.mjs"
+    },
     "./package.json": "./package.json",
     "./geoPointCities": {
       "types": "./dist/types/geoPointCities.generated.d.ts",

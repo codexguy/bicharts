@@ -74,6 +74,7 @@ await build({
         formatDetector: join(here, "src/formatDetector.ts"),
         monthNames: join(here, "src/monthNames.ts"),
         util: join(here, "src/util.ts"),
+        payloadPreview: join(here, "src/payloadPreview.ts"),
     },
     bundle: true,
     splitting: true,
