@@ -296,6 +296,24 @@ export type LLMColumnWithValue =
         // name the server already has, thresholds applied SERVER-side, low-cardinality dims
         // only, privacy-safe at every tier because no value is recoverable from it.
         spreadDiscrimination?: { otherColumn: string, spreadRatio: number }[]
+        // NON-BLANK GROUP COUNT (2026-09-08), measure columns only. How many distinct values of
+        // each low-cardinality categorical hold AT LEAST ONE non-blank value of this measure.
+        //
+        // The question it answers is "how many marks could a chart that draws one per group
+        // actually draw from this column", and nothing else on the wire answers it. blankCount
+        // says HOW MANY rows are empty but never WHERE they fall, so a measure blank on 81% of
+        // rows whose remaining values all sit in ONE group is indistinguishable, by every count a
+        // consumer has, from one spread evenly across forty. The first draws a single mark under a
+        // full legend; the second is an ordinary sparse column.
+        //
+        // nonBlankGroupCount <= 1 means a per-group chart on this measure has exactly one mark to
+        // draw. Distinct from an ALL-blank measure (blankCount === rowCount), which is a different
+        // and separately-handled case.
+        //
+        // Same contract as its two siblings above: counts plus a column name the consumer already
+        // has, never a value, thresholds applied consumer-side, low-cardinality dims only - so it
+        // ships at every privacy tier.
+        nonBlankGroups?: { otherColumn: string, nonBlankGroupCount: number }[]
         // minGroupCount (2026-06-20): row count of this column's RAREST value — the
         // sparsest group a single-categorical distribution split (box/violin) would
         // draw. Pair-wise sparsity is on categoricalPairStats.minCellCount.

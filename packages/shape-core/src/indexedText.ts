@@ -806,6 +806,29 @@ export class IndexedText implements IValueCollection {
                 : (Math.abs(sorted[sorted.length - 1]) > 1e-9 ? Math.abs(sorted[sorted.length - 1]) : 1);
             c.relativeDispersion = Math.round(((p90 - p10) / denom) * 1000) / 1000;
 
+            // NON-BLANK GROUP COUNT (2026-09-08). How many groups of each low-cardinality
+            // dimension hold at least one non-blank value of this measure — i.e. how many marks a
+            // chart that draws one per group could actually draw from it. `blankCount` says how
+            // many rows are empty but never WHERE they fall, so a measure blank on most rows whose
+            // remaining values all sit in ONE group looks identical, to every count downstream, to
+            // one spread evenly across forty. The first is a single mark under a full legend.
+            //
+            // COMPUTED BEFORE the eta² early-return below, deliberately: a CONSTANT measure exits
+            // there (variance undefined), and a constant measure trapped in one group is exactly
+            // the case this needs to report. The blank test is the one blankCount itself uses, so
+            // the two can never disagree about which rows are empty.
+            const nonBlankGroups: { otherColumn: string, nonBlankGroupCount: number }[] = [];
+            for (const d of discrimDims) {
+                const seen = new Set<string>();
+                for (const row of this._rows) {
+                    const mv = row[mi];
+                    if (mv === null || mv === undefined || mv === "") continue;
+                    seen.add(this.STR(row[d.idx]) + "");
+                }
+                nonBlankGroups.push({ otherColumn: d.name, nonBlankGroupCount: seen.size });
+            }
+            if (nonBlankGroups.length > 0) c.nonBlankGroups = nonBlankGroups;
+
             let grand = 0; for (const x of xs) grand += x; grand /= xs.length;
             let ssTotal = 0; for (const x of xs) ssTotal += (x - grand) * (x - grand);
             if (ssTotal <= 1e-12) return;   // constant measure: eta² undefined
