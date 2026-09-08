@@ -181,3 +181,39 @@ export function qualifyRefusalHeadingFor(
 export function hasRefusalsToShow(rows: readonly QualifyRefusalRow[] | null | undefined): boolean {
     return orderRefusalsForDisplay(rows).length > 0;
 }
+
+/**
+ * THE SENTENCE FOR A REFUSAL THAT NAMES NO REQUIREMENT.
+ *
+ * A null reason is a REAL answer, not a gap: the server walks a chart's DECLARED structural
+ * requirements and stays silent rather than fabricating a cause when the blocker rests on a
+ * runtime signal it cannot see - a viewport, a facet budget, a raw-observation floor. Both
+ * refusal builders say in so many words that the client renders that null as a fallback
+ * sentence. No host did. All three tested `if (reason)` and skipped the element, so the row
+ * came out as a bare chart name under a heading that claimed to know why it was refused.
+ *
+ * It lives here, beside `refusalIsSelectable`, for the same reason that predicate does: three
+ * hosts answering one question, and a fallback that only two of them remember to write is the
+ * drift this module exists to prevent. Call `qualifyRefusalReason` rather than reading `.reason`
+ * - a host cannot forget a fallback it never has to supply.
+ *
+ * IT DOES NOT GUESS. "We turned this down and cannot point at one requirement" is exactly what
+ * happened, and it is more useful than silence: the reader learns the row is an ANSWER rather
+ * than a rendering that failed to load.
+ */
+export const QUALIFY_REFUSAL_UNSPECIFIED =
+    "refused for the fields as bound - no single requirement to name";
+
+/**
+ * The sentence to render beside a refused chart's name: the server's own words when it has them,
+ * and {@link QUALIFY_REFUSAL_UNSPECIFIED} when it does not. Never empty, which is the point.
+ *
+ * `fallback` lets a host localize without re-implementing the decision.
+ */
+export function qualifyRefusalReason(
+    reason: string | null | undefined,
+    fallback: string = QUALIFY_REFUSAL_UNSPECIFIED,
+): string {
+    const s = (reason ?? "").trim();
+    return s !== "" ? s : fallback;
+}

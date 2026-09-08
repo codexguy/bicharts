@@ -107,6 +107,10 @@ export {
     // either host decides whether a refused type gets a control or only a sentence.
     orderRefusalsForDisplay, refusalIsSelectable, hasRefusalsToShow,
     qualifyRefusalHeadingFor, newQualifyRefusalGroupState,
+    // ...and the sentence for a refusal that names no requirement. A null reason is a real
+    // answer, so every host has to write SOMETHING; leaving each one to remember that is how
+    // three surfaces came to render a bare chart name under a heading claiming to know why.
+    qualifyRefusalReason, QUALIFY_REFUSAL_UNSPECIFIED,
     type QualifyRefusalRow, type QualifyRefusalGroupState, type QualifyRefusalHeading,
 } from "./qualifyGroups";
 

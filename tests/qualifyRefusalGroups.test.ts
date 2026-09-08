@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     orderRefusalsForDisplay, refusalIsSelectable, hasRefusalsToShow,
     qualifyRefusalHeadingFor, newQualifyRefusalGroupState,
+    qualifyRefusalReason, QUALIFY_REFUSAL_UNSPECIFIED,
     type QualifyRefusalRow,
 } from "../packages/chart-host/src/qualifyGroups";
 
@@ -110,5 +111,37 @@ describe("hasRefusalsToShow", () => {
     it("is true when the section would carry a row of either kind", () => {
         expect(hasRefusalsToShow([waivable("Bullet")])).toBe(true);
         expect(hasRefusalsToShow([veto("Streamgraph")])).toBe(true);
+    });
+});
+
+// A REFUSED ROW IS NEVER A BARE NAME. The server documents that a null reason is
+// rendered by the client as a fallback sentence, and until this existed no host wrote one - all
+// three tested `if (reason)` and skipped the element, so a chart the engine had turned down for
+// a runtime signal it could not name appeared as a lone chart name under a heading that claimed
+// to know why. The fallback lives beside `refusalIsSelectable` because the failure was three
+// hosts each forgetting the same thing.
+describe("qualifyRefusalReason", () => {
+    it("uses the server's own sentence whenever there is one", () => {
+        expect(qualifyRefusalReason("a Gantt chart needs a date or time field, and this data has none"))
+            .toBe("a Gantt chart needs a date or time field, and this data has none");
+    });
+
+    it("never returns empty - the whole point", () => {
+        for (const empty of [undefined, null, "", "   "]) {
+            expect(qualifyRefusalReason(empty)).toBe(QUALIFY_REFUSAL_UNSPECIFIED);
+            expect(qualifyRefusalReason(empty).trim().length).toBeGreaterThan(0);
+        }
+    });
+
+    it("claims nothing it cannot support", () => {
+        // It must not read as a verdict about the FIELDS - that is the false claim the bare rows
+        // were making by sitting under "Poor fit for these fields" with nothing to say.
+        expect(QUALIFY_REFUSAL_UNSPECIFIED).toContain("no single requirement to name");
+    });
+
+    it("lets a host localize without re-deciding", () => {
+        expect(qualifyRefusalReason("", "pas un bon choix ici")).toBe("pas un bon choix ici");
+        expect(qualifyRefusalReason("the server's words", "pas un bon choix ici"))
+            .toBe("the server's words");
     });
 });
