@@ -33,10 +33,12 @@ export interface QualifyGroupState {
     previewClosed: boolean;
     projected: boolean;
     notRecommended: boolean;
+    /** A ranked (non-preview) row has been seen: from here on a badge is a badge, not a block. */
+    rankedSeen: boolean;
 }
 
 export function newQualifyGroupState(): QualifyGroupState {
-    return { preview: false, previewClosed: false, projected: false, notRecommended: false };
+    return { preview: false, previewClosed: false, projected: false, notRecommended: false, rankedSeen: false };
 }
 
 /**
@@ -46,7 +48,13 @@ export function newQualifyGroupState(): QualifyGroupState {
  *
  * ORDER OF THE CHECKS IS THE CONTRACT:
  *  1. "preview" opens the block - but never once the not-recommended block has opened, because a
- *     preview type the ontology ruled out is NOT floated and belongs where it landed.
+ *     preview type the ontology ruled out is NOT floated and belongs where it landed. AND NEVER
+ *     ONCE A RANKED ROW HAS BEEN SEEN. The preview BLOCK is the set of rows the server floated
+ *     to the top (preview TYPES, which cannot be scored); a preview LANE sits on a scorable type
+ *     that ranks on its own merits and is deliberately left where it ranks, carrying only its
+ *     badge. Before this clause, one badged lane mid-list opened "New - in preview" above row 13
+ *     and closed it with "Best fit for your data" above row 14 - two headings claiming a
+ *     grouping the list did not have.
  *  2. "main" closes it, at the first row that is not preview. Emitted only if a block opened.
  *  3. "projected" and 4. "notRecommended" are unchanged from the single-host original.
  */
@@ -54,10 +62,11 @@ export function qualifyGroupHeadingFor(
     row: QualifyGroupRow, state: QualifyGroupState,
 ): QualifyGroupHeading | null {
     const preview = row.isPreview === true;
-    if (preview && !state.preview && !state.notRecommended) {
+    if (preview && !state.preview && !state.notRecommended && !state.rankedSeen) {
         state.preview = true;
         return "preview";
     }
+    if (!preview) state.rankedSeen = true;
     if (state.preview && !state.previewClosed && !preview) {
         state.previewClosed = true;
         return "main";
