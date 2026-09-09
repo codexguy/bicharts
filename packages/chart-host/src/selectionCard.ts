@@ -29,6 +29,12 @@ import type { RenderPayload } from "./payload";
 import {
     classifyForAggregation, allowedAggregations, defaultAggregation, shareOfTotalIsHonest,
 } from "@bicharts/shape-core";
+// A DATE IS NOT A STRING (2026-09-09). `buildRenderPayload` coerces Date cells to `toISOString()`
+// because that is the wire the prompt contract states, and this file then read those same cells
+// with `String(raw)` - so a click on a weekly point answered `2025-08-31T00:00:00.000Z`. The
+// header's own job is to say what was clicked "in their own data's words"; that string is the
+// machine's. See sourceDateFormat.ts for why the SOURCE's format is what gets matched.
+import { formatSourceDate, type SourceFormats } from "./sourceDateFormat";
 
 /** Columns the payload appends for its own plumbing. Never a measure, never a dimension, never
  *  shown: `__rowIdx__` IS the row position, and the geo trio is host metadata. A card that
@@ -69,6 +75,16 @@ export interface SelectionCardOptions {
      *  cap already had (on the sample table the two coordinate columns took two of the four
      *  measure slots and pushed the real measures under "+2 more"). Default 2. */
     maxDimensions?: number;
+    /** THE SOURCE'S OWN DATE FORMATS, keyed by column name, plus the dialect they are written in
+     *  — Excel's `range.numberFormat` for the add-in, a `.NET` format string for the visual.
+     *
+     *  Optional, and the fallback is deliberately good rather than minimal: a host that supplies
+     *  nothing still gets a locale date instead of the ISO instant this replaced, so the MCP and
+     *  React hosts (a CSV has no cell formatting to read) and every chart cached before today
+     *  improve without anyone plumbing anything. What the map buys is AGREEMENT with the cells
+     *  the card is floating over — a sheet that shows `31-Aug-25` gets a card that says
+     *  `31-Aug-25`. */
+    sourceFormats?: SourceFormats | null;
 }
 
 export interface SelectionCardLine {
@@ -175,6 +191,35 @@ function isMeasureColumn(col: any): boolean {
 /** A real column the reader bound or typed, as opposed to payload plumbing. */
 function isRealColumn(col: any): boolean {
     return !!col && !isSynthetic(col.name);
+}
+
+/**
+ * IS THIS COLUMN A DATE THE PAYLOAD SERIALISED, as opposed to a date the reader TYPED?
+ *
+ * `dataType`, deliberately, and NOT `isTemporal`. The two disagree on exactly the case that
+ * matters: a full calendar date stored as TEXT is `isTemporal: true` with `dataType: "String"`,
+ * it keeps its own characters all the way through the payload, and those characters ARE the
+ * source's formatting — `15/03/2024` is what the cell says and what the card should say. Only a
+ * DateTime column went through `toISOString()` on the way to the wire, so only a DateTime column
+ * has something to undo.
+ */
+function isSerialisedDateColumn(col: any): boolean {
+    return /^datetime/i.test(String(col?.dataType ?? ""));
+}
+
+/** What a reader sees for one raw cell. Dates route through the source formatter; everything
+ *  else is the string it always was, blanks included. */
+function displayText(col: any, raw: any, opts: SelectionCardOptions): string {
+    if (raw == null || raw === "") return "(blank)";
+    if (isSerialisedDateColumn(col)) {
+        const shown = formatSourceDate(raw, {
+            format: opts.sourceFormats?.byColumn?.[String(col?.name ?? "")] ?? null,
+            dialect: opts.sourceFormats?.dialect,
+            culture: opts.cultureCode,
+        });
+        if (shown) return shown;
+    }
+    return String(raw);
 }
 
 /** Does the classifier withhold this column from arithmetic entirely? Coordinates today. */
@@ -296,8 +341,7 @@ export function computeSelectionCard(
         const seen: string[] = [];
         const set = new Set<string>();
         for (const p of positions) {
-            const raw = rows[p]?.[dimIdx];
-            const s = raw == null || raw === "" ? "(blank)" : String(raw);
+            const s = displayText(columns[dimIdx], rows[p]?.[dimIdx], opts);
             if (!set.has(s)) { set.add(s); seen.push(s); }
             if (seen.length > maxHeaderValues) break;
         }
@@ -372,13 +416,18 @@ export function computeSelectionCard(
         if (c === dimIdx) continue;                       // already the header
         if (!isRealColumn(columns[c]) || isMeasureColumn(columns[c])) continue;
         const name = String(columns[c]?.name ?? "");
+        // COUNTED ON THE RAW VALUE, RENDERED FROM THE FORMATTED ONE, and the split is deliberate.
+        // A date-only source format collapses three distinct timestamps to one string, so
+        // counting what is DISPLAYED would quietly turn "Distinct Order Date: 3" into a single
+        // value the moment dates started being formatted. The card's arithmetic is unchanged by
+        // this file's presentation; only the characters moved.
         const distinct = new Set<string>();
         let firstText = "";
         for (const p of positions) {
             const raw = rows[p]?.[c];
-            const s = raw == null || raw === "" ? "(blank)" : String(raw);
-            if (!distinct.size) firstText = s;
-            distinct.add(s);
+            const key = raw == null || raw === "" ? "(blank)" : String(raw);
+            if (!distinct.size) firstText = displayText(columns[c], raw, opts);
+            distinct.add(key);
         }
         if (!distinct.size) continue;
         const single = distinct.size === 1;

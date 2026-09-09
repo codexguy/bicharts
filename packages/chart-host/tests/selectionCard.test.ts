@@ -200,3 +200,92 @@ describe("normaliseAggregation", () => {
         expect(normaliseAggregation("Total")).toBe("sum");
     });
 });
+
+// A DATE ON THE CARD IS NOT THE DATE ON THE WIRE (2026-09-09). buildRenderPayload serialises a
+// Date cell with toISOString() because the prompt contract says so, and this file read the same
+// rows back with String() - so clicking a weekly point in Excel answered with the header
+// `2025-08-31T00:00:00.000Z`. Reported from a live add-in session on air-quality data.
+function datedPayload() {
+    const columns: any[] = [
+        { name: "Week", dataType: "DateTime", isMeasure: false },
+        { name: "Pollutant", dataType: "String", isMeasure: false },
+        { name: "Reading", dataType: "Double", isMeasure: true },
+        { name: "__rowIdx__", dataType: "Int64", isMeasure: false },
+    ];
+    const rows = [
+        ["2025-08-31T00:00:00.000Z", "NO2", 10, 0],
+        ["2025-08-31T00:00:00.000Z", "PM10", 20, 1],
+        ["2025-09-07T00:00:00.000Z", "NO2", 30, 2],
+    ];
+    return { columns, rows } as any;
+}
+
+describe("computeSelectionCard - dates read as dates, not as wire values", () => {
+    it("never puts the ISO instant in the header", () => {
+        const card = computeSelectionCard(datedPayload(), [0, 1], { cultureCode: "en-US" })!;
+        expect(card.header).not.toContain("T00:00");
+        expect(card.header).not.toContain("Z");
+        expect(card.header).toBe("Aug 31, 2025");
+    });
+
+    it("matches the SOURCE format when the host states one", () => {
+        const card = computeSelectionCard(datedPayload(), [0, 1], {
+            cultureCode: "en-US",
+            sourceFormats: { dialect: "excel", byColumn: { Week: "m/d/yyyy" } },
+        })!;
+        expect(card.header).toBe("8/31/2025");
+    });
+
+    it("formats a date sitting in a DIMENSION line too, not only the header", () => {
+        // The header is the first non-measure column; a second date column further along the
+        // table reaches the reader through dimensionLines, by the same String() route.
+        const p = datedPayload();
+        p.columns.splice(2, 0, { name: "Logged", dataType: "DateTime", isMeasure: false });
+        p.rows.forEach((r: any[], i: number) => r.splice(2, 0, `2025-08-3${i + 1}T00:00:00.000Z`));
+        const card = computeSelectionCard(p, [0], { cultureCode: "en-US" })!;
+        const line = card.dimensionLines.find(l => l.column === "Logged")!;
+        expect(line.valueText).toBe("Aug 31, 2025");
+    });
+
+    it("leaves a TEXT date exactly as the reader typed it", () => {
+        // A full date stored as text is isTemporal but dataType String: its own characters ARE
+        // the source's formatting, and parsing then reprinting it would impose a reading the
+        // author did not choose - `15/03/2024` is not March 15 everywhere.
+        const p = datedPayload();
+        p.columns[0] = { name: "Week", dataType: "String", isMeasure: false, isTemporal: true };
+        p.rows[0][0] = "31/08/2025";
+        const card = computeSelectionCard(p, [0], { cultureCode: "en-US" })!;
+        expect(card.header).toBe("31/08/2025");
+    });
+
+    it("counts DISTINCT on the raw value, so formatting cannot change a number", () => {
+        // A date-only format collapses two distinct timestamps to one string. The card may print
+        // them identically; it must not report one where there are two.
+        const p = datedPayload();
+        p.rows = [
+            ["2025-08-31T09:00:00.000Z", "NO2", 10, 0],
+            ["2025-08-31T17:00:00.000Z", "NO2", 20, 1],
+        ];
+        const card = computeSelectionCard(p, [0, 1], {
+            cultureCode: "en-US",
+            sourceFormats: { dialect: "excel", byColumn: { Week: "m/d/yyyy" } },
+        })!;
+        // Week is the header column, so the DIMENSION check needs a second date column.
+        const p2 = datedPayload();
+        p2.columns.splice(2, 0, { name: "Logged", dataType: "DateTime", isMeasure: false });
+        p2.rows = [
+            ["2025-08-31T00:00:00.000Z", "NO2", "2025-08-31T09:00:00.000Z", 10, 0],
+            ["2025-08-31T00:00:00.000Z", "NO2", "2025-08-31T17:00:00.000Z", 20, 1],
+        ];
+        const card2 = computeSelectionCard(p2, [0, 1], {
+            cultureCode: "en-US",
+            sourceFormats: { dialect: "excel", byColumn: { Logged: "m/d/yyyy" } },
+        })!;
+        const logged = card2.dimensionLines.find(l => l.column === "Logged")!;
+        expect(logged.label).toBe("Distinct Logged");
+        expect(logged.value).toBe(2);
+        // And the header still deduplicates on what it SHOWS, because listing the same string
+        // twice is not a header.
+        expect(card.header).toBe("8/31/2025");
+    });
+});

@@ -77,7 +77,11 @@ export { detectOrdinalDomain, safeDistinctValuesToShip, isOrdinalFriendlyName } 
 export { detectFormatSignature } from "./formatDetector";
 // The one place a date STRING becomes a Date. Exported because a host that reads text dates of
 // its own must use the same rule, or its profile and ours disagree about what day it is.
-export { parseDateStable } from "./util";
+//
+// `wholeDayFrame` is the companion READ-side rule and is exported for the same reason: it names
+// which clock a Date is midnight on, and anything that renders a date - not just anything that
+// profiles one - has to ask the same question or it prints a day the cell never showed.
+export { parseDateStable, wholeDayFrame, wholeDayIso } from "./util";
 // isJoinGeoKind is PUBLIC because a host must distinguish a region-JOIN kind from a
 // coordinate-feeding one: "city-name" is a GeoKind but not a join key, and building
 // __geoIso__ from it nulls every row, so the map draws empty.

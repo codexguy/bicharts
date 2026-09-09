@@ -160,6 +160,17 @@ export {
     type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
 } from "./selectionCard";
 
+// A date, printed the way its SOURCE prints it (2026-09-09). The payload's date cells are ISO
+// instants by contract, and anything that shows one to a reader has to undo that — the selection
+// card first, but a host tooltip or a host-drawn label is the same problem. Exported with its
+// `SourceFormats` shape because the host is the only thing that KNOWS the format: Excel reads
+// `range.numberFormat`, the visual reads the model's format string, and a CSV has none, which is
+// why the locale fallback is a first-class answer rather than an error path.
+export {
+    formatSourceDate, formatSourceDateFor,
+    type SourceFormats, type SourceFormatDialect, type SourceDateOptions,
+} from "./sourceDateFormat";
+
 // A DECLARED mark that cannot receive a click is not a mark (2026-08-30). Two codegen habits
 // leave a tagged element unhittable: an inert <g> whose painted children are all
 // pointer-events:none (the canonical legend swatch), and a painted element that is itself

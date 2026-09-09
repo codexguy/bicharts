@@ -18,7 +18,7 @@ import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } fr
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
-import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable } from "./util";
+import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso } from "./util";
 import { collapseRepeatedAggPrefix } from "./aggregation";
 
 // ============================================================================
@@ -558,37 +558,15 @@ export class IndexedText implements IValueCollection {
      * The calendar day a WHOLE-DAY Date stands for, as "YYYY-MM-DD" - or null when the Date
      * carries a real time of day.
      *
-     * THIS IS THE ONE PLACE A DATE IS ALLOWED TO BECOME A DAY, and it exists because the
-     * previous code asked `getHours()` - LOCAL time - of Dates that had been built in UTC.
-     * The Excel add-in converts a serial with `Date.UTC(1899,11,30)+days`; an ISO text date
-     * parses to UTC midnight; the visual's date-unshredder builds `Date.UTC(y,m,d)`. On any
-     * machine west of Greenwich every one of those read as 16:00 or 17:00 the PREVIOUS day, so
-     * `dateWithTime` was true for every date column, `valueNature` flipped from Ordinal to
-     * Continuous - a picker input - and the day printed one earlier than the cell showed.
-     *
-     * WHY BOTH FRAMES. A Date is whole-day if it is midnight in EITHER UTC or local time,
-     * because both kinds exist in the wild: the sources above build UTC midnight, while a
-     * Date parsed from a timezone-less ISO datetime (Power BI's host hands those over) is
-     * LOCAL midnight. Reading only UTC would have fixed Excel by breaking the visual. The day
-     * is then taken from the frame the Date is midnight in, which is the day the author meant.
-     *
-     * THE RESIDUAL EDGE, stated rather than hidden: a genuine timestamp that happens to fall
-     * exactly on the local-vs-UTC offset (17:00 PDT is 00:00Z) reads as a whole day. The
-     * column-level flag is an OR over every value, so a column is only misread if EVERY value
-     * sits on that exact minute - a dataset that is, for every practical purpose, a date column.
+     * THE RULE ITSELF NOW LIVES IN `util.wholeDayIso`, and this is a thin delegate rather than a
+     * second copy (2026-09-09). It moved because chart-host's selection card has to answer the
+     * same question - which clock does this Date print on - to render a date the way its source
+     * renders it, and a rule this subtle kept in two places disagrees the first time either is
+     * touched. The delegate stays so this class's own call sites, and the reasoning attached to
+     * them, do not have to change.
      */
     private wholeDayIso(date: any): string | null {
-        if (!(date instanceof Date) || isNaN(date.getTime())) return null;
-        const p2 = (n: number) => (n < 10 ? "0" : "") + n;
-        if (date.getUTCHours() === 0 && date.getUTCMinutes() === 0
-            && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0) {
-            return date.toISOString().slice(0, 10);
-        }
-        if (date.getHours() === 0 && date.getMinutes() === 0
-            && date.getSeconds() === 0 && date.getMilliseconds() === 0) {
-            return `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}`;
-        }
-        return null;
+        return wholeDayIso(date);
     }
 
     private hasTimeComponent(date: any): boolean {

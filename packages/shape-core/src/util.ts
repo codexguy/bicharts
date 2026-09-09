@@ -125,6 +125,54 @@ export function parseDateStable(s: string): Date | null {
     return utc;
 }
 
+/**
+ * WHICH CLOCK IS THIS DATE MIDNIGHT ON - "utc", "local", or null when it carries a time of day.
+ *
+ * THIS IS THE ONE PLACE A DATE IS ALLOWED TO BECOME A DAY, and it exists because the code that
+ * came before asked `getHours()` - LOCAL time - of Dates that had been built in UTC. The Excel
+ * add-in converts a serial with `Date.UTC(1899,11,30)+days`; an ISO text date parses to UTC
+ * midnight; the visual's date-unshredder builds `Date.UTC(y,m,d)`. On any machine west of
+ * Greenwich every one of those read as 16:00 or 17:00 the PREVIOUS day, so `dateWithTime` was
+ * true for every date column, `valueNature` flipped from Ordinal to Continuous - a picker input -
+ * and the day printed one earlier than the cell showed.
+ *
+ * WHY BOTH FRAMES. A Date is whole-day if it is midnight in EITHER UTC or local time, because
+ * both kinds exist in the wild: the sources above build UTC midnight, while a Date parsed from a
+ * timezone-less ISO datetime (Power BI's host hands those over) is LOCAL midnight. Reading only
+ * UTC would have fixed Excel by breaking the visual. The day is then taken from the frame the
+ * Date is midnight in, which is the day the author meant.
+ *
+ * THE RESIDUAL EDGE, stated rather than hidden: a genuine timestamp that happens to fall exactly
+ * on the local-vs-UTC offset (17:00 PDT is 00:00Z) reads as a whole day. Every column-level flag
+ * built on this is an OR over every value, so a column is only misread if EVERY value sits on
+ * that exact minute - a dataset that is, for every practical purpose, a date column.
+ *
+ * EXPORTED because two packages need the same answer and must not each keep their own. The
+ * profiler asks it to decide what a column IS; chart-host's selection card asks it to decide
+ * which clock to PRINT. Two copies of a rule this subtle disagree the first time either is
+ * touched, and the disagreement surfaces as a day-off date in one host only.
+ */
+export function wholeDayFrame(date: any): "utc" | "local" | null {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+    if (date.getUTCHours() === 0 && date.getUTCMinutes() === 0
+        && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0) return "utc";
+    if (date.getHours() === 0 && date.getMinutes() === 0
+        && date.getSeconds() === 0 && date.getMilliseconds() === 0) return "local";
+    return null;
+}
+
+/** The calendar day a WHOLE-DAY Date stands for, as "YYYY-MM-DD" - or null when it carries a
+ *  real time of day. The day is read from the frame `wholeDayFrame` names, which is the whole
+ *  point: the same Date has to print the same day on every machine. */
+export function wholeDayIso(date: any): string | null {
+    const frame = wholeDayFrame(date);
+    if (!frame) return null;
+    const d = date as Date;
+    if (frame === "utc") return d.toISOString().slice(0, 10);
+    const p2 = (n: number) => (n < 10 ? "0" : "") + n;
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
+
 /** ISO calendar dates, which Date.parse already reads as UTC: YYYY, YYYY-MM, YYYY-MM-DD. */
 const ISO_DATE_ONLY_RE = /^\s*\d{4}(-\d{2}(-\d{2})?)?\s*$/;
 /** A trailing `Z` or `+HH:MM` / `-HHMM` - an offset the author actually stated. */
