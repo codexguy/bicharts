@@ -243,3 +243,10 @@ export {
     type LabelRowBox, type AxisBand, type AxisPinCandidate, type AxisPinPlan, type AxisPinEdge,
 } from "./fit";
 export { pinScrolledAxis, unpinScrolledAxis, type AxisPinReport } from "./fitDom";
+
+// A CATEGORICAL PALETTE FROM THE SURFACE THE CHART SITS ON (2026-09-09). Proven in the Power BI
+// visual against the report theme; none of it was Power-BI-specific, and the hosts without it
+// were sending an empty palette and letting the model reach for d3.schemeCategory10. The visual
+// seeds each slot from its own theme colour; a host with only ONE resolvable accent (an Excel
+// table's fill) calls buildPaletteFromSeed and lets the walk do the spreading.
+export { MIN_DELTA_E, pickDistinctColorFromSeed, buildPaletteFromSeed, type PaletteResult } from "./palette";
