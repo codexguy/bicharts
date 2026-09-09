@@ -18,7 +18,7 @@ import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } fr
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
-import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords } from "./util";
+import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable } from "./util";
 import { collapseRepeatedAggPrefix } from "./aggregation";
 
 // ============================================================================
@@ -1239,7 +1239,10 @@ export class IndexedText implements IValueCollection {
                 // host that types a bare time of day ("9:00") as DateTime. Fall back to the raw
                 // value, which is what a non-DateTime column does anyway.
                 const isoDayOrRaw = (v: any): any => {
-                    const d = v instanceof Date ? v : new Date(v);
+                    // A string here is already a converted Date on every shipping path; the
+                    // fallback still goes through the stable parser so it cannot reintroduce
+                    // the machine-dependent instant the column was just cleaned of.
+                    const d = v instanceof Date ? v : (typeof v === "string" ? (parseDateStable(v) ?? new Date(v)) : new Date(v));
                     // wholeDayIso reads the day from the frame the Date is midnight in; a local-
                     // midnight Date put through toISOString() alone comes out a day early west of
                     // Greenwich. Falls back to the instant only for a value that is not whole-day,
@@ -1646,7 +1649,7 @@ export class IndexedText implements IValueCollection {
                         }
                     } else {
                         if (col.dataType == "DateTime" && !col.dateWithTime) {
-                            const d = v instanceof Date ? v : new Date(v);
+                            const d = v instanceof Date ? v : (typeof v === "string" ? (parseDateStable(v) ?? new Date(v)) : new Date(v));
                             v = (this.wholeDayIso(d) ?? d.toISOString().slice(0, 10)) + "T00:00:00.000Z";
                         }
                     }

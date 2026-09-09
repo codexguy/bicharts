@@ -27,6 +27,7 @@
 // lossier than reading the schema.
 import Papa from "papaparse";
 import { IndexedText, isIdentifierName } from "./indexedText";
+import { parseDateStable } from "./util";
 import type { LLMColumnWithValue } from "./models";
 
 /** Engine value types. Anything a decoder cannot map confidently becomes "String". */
@@ -181,7 +182,10 @@ function convert(v: any, dataType: string): any {
     switch (dataType) {
         case "Integer": return INT_RE.test(s) ? parseInt(s, 10) : null;
         case "Decimal": return NUM_RE.test(s) ? parseFloat(s.replace(/,/g, "")) : null;
-        case "DateTime": { const t = Date.parse(s); return isNaN(t) ? null : new Date(t); }
+        // parseDateStable, not Date.parse: a zone-less date-TIME and every non-ISO spelling
+        // are LOCAL to Date.parse, so the same text became a different instant on every
+        // machine. An ISO date is untouched - it is already UTC.
+        case "DateTime": return parseDateStable(s);
         default: return s;
     }
 }

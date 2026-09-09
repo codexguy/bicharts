@@ -89,3 +89,45 @@ export function GET_RANDOM(): number {
 export function isDeterministicRefusal(r: { isRefusal?: boolean | null } | null | undefined): boolean {
     return !!r && r.isRefusal === true;
 }
+
+/**
+ * Parse a date STRING to a Date that means the same thing on every machine.
+ *
+ * `Date.parse` is not one rule, it is three, and only the first is portable:
+ *   - an ISO DATE (`2024-03-15`, `2024-03`, `2024`) is UTC, by spec;
+ *   - an ISO DATE-TIME with no zone (`2024-03-15T10:30:00`) is LOCAL, by spec;
+ *   - anything else (`3/15/2024`, `March 15, 2024 10:30 AM`) is implementation-defined, and
+ *     every engine that matters reads it as LOCAL.
+ *
+ * So a CSV column of `3/15/2024 10:30 AM` became 17:30Z in Los Angeles and 01:30Z in Tokyo, and
+ * the profile that shipped differed by machine. The whole-day cases were rescued
+ * downstream by `wholeDayIso`, which accepts midnight in EITHER frame - but a value carrying a
+ * TIME has no such tell, and no read-side rule can recover an instant that was already wrong.
+ *
+ * THE RULE: when the text states a zone, believe it. When it does not, the text states a WALL
+ * CLOCK, and the only stable reading of a wall clock is to anchor it to UTC - the same reading
+ * everywhere, and the one the author wrote. An ISO date-only string is already UTC and is left
+ * exactly alone, because re-anchoring it would drag it a day backwards west of Greenwich, which
+ * is the very bug this file is closing.
+ */
+export function parseDateStable(s: string): Date | null {
+    const t = Date.parse(s);
+    if (isNaN(t)) return null;
+    const d = new Date(t);
+    // Already unambiguous: an ISO date (UTC by spec), or a stated offset / zone name.
+    if (ISO_DATE_ONLY_RE.test(s) || EXPLICIT_OFFSET_RE.test(s.trim()) || NAMED_ZONE_RE.test(s)) return d;
+    const utc = new Date(Date.UTC(
+        d.getFullYear(), d.getMonth(), d.getDate(),
+        d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()));
+    // Date.UTC maps years 0-99 onto 1900-1999; setUTCFullYear does not.
+    const y = d.getFullYear();
+    if (y >= 0 && y < 100) utc.setUTCFullYear(y);
+    return utc;
+}
+
+/** ISO calendar dates, which Date.parse already reads as UTC: YYYY, YYYY-MM, YYYY-MM-DD. */
+const ISO_DATE_ONLY_RE = /^\s*\d{4}(-\d{2}(-\d{2})?)?\s*$/;
+/** A trailing `Z` or `+HH:MM` / `-HHMM` - an offset the author actually stated. */
+const EXPLICIT_OFFSET_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+/** A named zone anywhere in the text ("... GMT-0700 (Pacific Daylight Time)", "10:30 UTC"). */
+const NAMED_ZONE_RE = /\b(?:GMT|UTC)\b/i;

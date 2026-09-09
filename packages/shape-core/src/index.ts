@@ -75,6 +75,9 @@ export type {
 export { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 export { detectOrdinalDomain, safeDistinctValuesToShip, isOrdinalFriendlyName } from "./ordinalDetector";
 export { detectFormatSignature } from "./formatDetector";
+// The one place a date STRING becomes a Date. Exported because a host that reads text dates of
+// its own must use the same rule, or its profile and ours disagree about what day it is.
+export { parseDateStable } from "./util";
 // isJoinGeoKind is PUBLIC because a host must distinguish a region-JOIN kind from a
 // coordinate-feeding one: "city-name" is a GeoKind but not a join key, and building
 // __geoIso__ from it nulls every row, so the map draws empty.
