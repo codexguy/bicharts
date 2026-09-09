@@ -532,6 +532,14 @@ export class IndexedText implements IValueCollection {
         if (v === null || v === undefined) {
             return "";
         }
+        // A Date's toString() is "Thu Mar 14 2024 17:00:00 GMT-0700 (Pacific Daylight Time)":
+        // the machine's locale, its timezone name, and a day that is wrong west of Greenwich.
+        // That string was the distinct-value MAP KEY, so it became topCategoryValues, avgLength
+        // and the sample every detector was handed. A whole-day Date keys by its calendar day;
+        // anything else by its ISO instant. Both read the same on every machine.
+        if (v instanceof Date) {
+            return this.wholeDayIso(v) ?? (isNaN(v.getTime()) ? "" : v.toISOString());
+        }
         return v.toString();
     }
 
@@ -546,16 +554,48 @@ export class IndexedText implements IValueCollection {
         return this._cols;
     }
 
+    /**
+     * The calendar day a WHOLE-DAY Date stands for, as "YYYY-MM-DD" - or null when the Date
+     * carries a real time of day.
+     *
+     * THIS IS THE ONE PLACE A DATE IS ALLOWED TO BECOME A DAY, and it exists because the
+     * previous code asked `getHours()` - LOCAL time - of Dates that had been built in UTC.
+     * The Excel add-in converts a serial with `Date.UTC(1899,11,30)+days`; an ISO text date
+     * parses to UTC midnight; the visual's date-unshredder builds `Date.UTC(y,m,d)`. On any
+     * machine west of Greenwich every one of those read as 16:00 or 17:00 the PREVIOUS day, so
+     * `dateWithTime` was true for every date column, `valueNature` flipped from Ordinal to
+     * Continuous - a picker input - and the day printed one earlier than the cell showed.
+     *
+     * WHY BOTH FRAMES. A Date is whole-day if it is midnight in EITHER UTC or local time,
+     * because both kinds exist in the wild: the sources above build UTC midnight, while a
+     * Date parsed from a timezone-less ISO datetime (Power BI's host hands those over) is
+     * LOCAL midnight. Reading only UTC would have fixed Excel by breaking the visual. The day
+     * is then taken from the frame the Date is midnight in, which is the day the author meant.
+     *
+     * THE RESIDUAL EDGE, stated rather than hidden: a genuine timestamp that happens to fall
+     * exactly on the local-vs-UTC offset (17:00 PDT is 00:00Z) reads as a whole day. The
+     * column-level flag is an OR over every value, so a column is only misread if EVERY value
+     * sits on that exact minute - a dataset that is, for every practical purpose, a date column.
+     */
+    private wholeDayIso(date: any): string | null {
+        if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+        const p2 = (n: number) => (n < 10 ? "0" : "") + n;
+        if (date.getUTCHours() === 0 && date.getUTCMinutes() === 0
+            && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0) {
+            return date.toISOString().slice(0, 10);
+        }
+        if (date.getHours() === 0 && date.getMinutes() === 0
+            && date.getSeconds() === 0 && date.getMilliseconds() === 0) {
+            return `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}`;
+        }
+        return null;
+    }
+
     private hasTimeComponent(date: any): boolean {
         if (!(date instanceof Date) || isNaN(date.getTime())) {
             return false;
         }
-        return (
-            date.getHours() !== 0 ||
-            date.getMinutes() !== 0 ||
-            date.getSeconds() !== 0 ||
-            date.getMilliseconds() !== 0
-        );
+        return this.wholeDayIso(date) === null;
     }
 
     public getColumnsWithStats(privacyLevel: string, locale?: string): LLMColumnWithValue[] {
@@ -1199,7 +1239,13 @@ export class IndexedText implements IValueCollection {
                 // host that types a bare time of day ("9:00") as DateTime. Fall back to the raw
                 // value, which is what a non-DateTime column does anyway.
                 const isoDayOrRaw = (v: any): any => {
-                    const d = new Date(v);
+                    const d = v instanceof Date ? v : new Date(v);
+                    // wholeDayIso reads the day from the frame the Date is midnight in; a local-
+                    // midnight Date put through toISOString() alone comes out a day early west of
+                    // Greenwich. Falls back to the instant only for a value that is not whole-day,
+                    // which on this branch (hastime is false) should not occur.
+                    const day = this.wholeDayIso(d);
+                    if (day) return day + "T00:00:00.000Z";
                     return isNaN(d.getTime()) ? v : d.toISOString().slice(0, 10) + "T00:00:00.000Z";
                 };
                 if (col.dataType != "DateTime" || hastime || !minval) {
@@ -1600,7 +1646,8 @@ export class IndexedText implements IValueCollection {
                         }
                     } else {
                         if (col.dataType == "DateTime" && !col.dateWithTime) {
-                            v = new Date(v).toISOString().slice(0, 10) + "T00:00:00.000Z";
+                            const d = v instanceof Date ? v : new Date(v);
+                            v = (this.wholeDayIso(d) ?? d.toISOString().slice(0, 10)) + "T00:00:00.000Z";
                         }
                     }
                     len -= this.STR(v).length;
