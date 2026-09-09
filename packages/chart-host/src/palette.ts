@@ -143,8 +143,42 @@ export function buildPaletteFromSeed(
     count: number,
     minDistance: number = MIN_DELTA_E,
 ): string[] {
+    return buildPalette(() => seedHex, count, minDistance);
+}
+
+/**
+ * WHERE EACH SLOT'S BASE COLOUR COMES FROM. Called with the slot index, 0-based.
+ *
+ * Returning a blank or nothing means "no base colour for this slot" - the builder then falls
+ * back to the last one that WAS supplied, so a host whose colour source runs dry degrades into
+ * spreading rather than into a gap.
+ */
+export type SeedForSlot = (slot: number) => string | null | undefined;
+
+/**
+ * The general form: a palette whose BASE COLOURS the host decides, slot by slot.
+ *
+ * THIS IS THE RICH FORM AND `buildPaletteFromSeed` IS THE DEGENERATE ONE. Read that sentence
+ * before "simplifying" a host onto the single-seed call, because the difference is a real loss
+ * and it is invisible in the output - both return a plausible list of distinct colours.
+ *
+ * Power BI hands a visual a DIFFERENT theme colour per slot (`colorPalette.getColor("1")`,
+ * `getColor("2")`, ...). Every one of those is a deliberate choice by whoever built the report
+ * theme, and feeding them in per slot means the walk usually settles at step 1 and RETURNS THEM
+ * UNCHANGED - the chart is coloured by the theme, not by our arithmetic. Collapse that host onto
+ * one seed and twenty authored colours become one authored colour plus nineteen derived ones:
+ * still distinct, still pretty, and no longer the report's.
+ *
+ * A host with no such API - an Excel workbook offers exactly one resolvable accent - passes a
+ * constant provider and the walk does the spreading. That is a fallback, not the design.
+ */
+export function buildPalette(
+    seedFor: SeedForSlot,
+    count: number,
+    minDistance: number = MIN_DELTA_E,
+): string[] {
     const out: string[] = [];
-    if (!seedHex || !(count > 0)) return out;
+    if (!(count > 0)) return out;
 
     const issued = new Set<string>();
     const issuedCs: colorsea.Color[] = [];
@@ -155,8 +189,22 @@ export function buildPaletteFromSeed(
 
     let sweep: string[] | null = null;
     let sweepAt = 0;
+    // The last base colour the host actually gave us. A provider is allowed to run out - Power
+    // BI's own palette wraps after a while, and a host may simply have fewer authored colours
+    // than slots - and carrying the last one forward is what turns "ran out" into "spread from
+    // here" rather than into a hole.
+    let lastSeed = "";
 
     for (let i = 0; i < count; i++) {
+        let seedHex = "";
+        try { seedHex = normalise(seedFor(i)); } catch { seedHex = ""; }
+        if (!seedHex) seedHex = lastSeed;
+        // NOTHING HAS EVER BEEN SUPPLIED. Not an error and not a guess: a host that cannot name
+        // a single colour has no palette to offer, and an invented one would be indistinguishable
+        // from a real one at exactly the moment the caller most needs to know the difference.
+        if (!seedHex) break;
+        lastSeed = seedHex;
+
         const { hex, registerHex } = pickDistinctColorFromSeed(seedHex, issued, minDistance);
         let chosen = hex;
         let register = registerHex;
@@ -169,6 +217,9 @@ export function buildPaletteFromSeed(
         // have several entries in identical colours.
         if (distance(chosen) < minDistance) {
             if (!sweep) sweep = sweepCandidates(seedHex);
+            // Rare in the per-slot form and routine in the single-seed one: with authored
+            // colours arriving per slot the walk normally settles at step 1 and never reaches
+            // here at all, which is the whole point of feeding them in separately.
             let best = chosen;
             let bestD = distance(chosen);
             // Candidates are consumed monotonically: `issued` only grows, so distances only
@@ -205,6 +256,17 @@ export function buildPaletteFromSeed(
  * or near-black mark is invisible against one of them, which is a worse outcome than being
  * off-theme.
  */
+/**
+ * A seed as a usable string, or "".
+ *
+ * Deliberately NOT a hex validator. Hosts hand back whatever their colour API returns and
+ * colorsea accepts several notations; rejecting anything that is not `#rrggbb` here would
+ * silently drop a colour the host meant, which is the failure this whole module is about.
+ */
+function normalise(seed: string | null | undefined): string {
+    return typeof seed === "string" ? seed.trim() : "";
+}
+
 function sweepCandidates(seedHex: string): string[] {
     const [h, s, l] = colorsea(seedHex).hsl();
     const baseHue = Number.isFinite(h) ? h : 210;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import colorsea from "colorsea";
-import { buildPaletteFromSeed, pickDistinctColorFromSeed, MIN_DELTA_E }
+import { buildPalette, buildPaletteFromSeed, pickDistinctColorFromSeed, MIN_DELTA_E }
     from "../packages/chart-host/src/palette";
 
 // THE PROPERTY THAT MATTERS IS PERCEPTUAL SEPARATION, not any particular hex.
@@ -101,6 +101,65 @@ describe("buildPaletteFromSeed", () => {
         expect(buildPaletteFromSeed("", 10)).toEqual([]);
         expect(buildPaletteFromSeed("#1f77b4", 0)).toEqual([]);
         expect(buildPaletteFromSeed("#1f77b4", -3)).toEqual([]);
+    });
+});
+
+describe("buildPalette - the host names the base colours", () => {
+    // A REPORT THEME'S COLOURS ARE AUTHORED, and the point of asking the host per slot is that
+    // they come back UNCHANGED. Power BI hands out a different colour per slot; feed those in
+    // separately and the walk settles at step 1 every time, so the chart is coloured by the
+    // theme rather than by our arithmetic.
+    //
+    // These are the tests that fail if someone ever "simplifies" a host with a colour API onto
+    // buildPaletteFromSeed. That change is invisible in the output - the single-seed form also
+    // returns a plausible list of distinct colours - so it needs a test, not a comment.
+    const THEME = ["#01b8aa", "#374649", "#fd625e", "#f2c80f", "#5f6b6d", "#8ad4eb"];
+
+    it("returns an authored theme verbatim", () => {
+        const p = buildPalette(i => THEME[i], THEME.length);
+        expect(p.map(c => c.toLowerCase())).toEqual(THEME);
+    });
+
+    it("is NOT what spreading from the first colour produces", () => {
+        // The regression guard proper. If these ever match, the per-slot seeding has been lost.
+        const authored = buildPalette(i => THEME[i], THEME.length);
+        const spread = buildPaletteFromSeed(THEME[0], THEME.length);
+        expect(authored.map(c => c.toLowerCase())).not.toEqual(spread.map(c => c.toLowerCase()));
+    });
+
+    it("still separates two authored colours a reader could not tell apart", () => {
+        // Deferring to the host is not the same as trusting it blindly: a theme with two
+        // near-identical entries would put both in one legend, which is the defect the walk
+        // exists to prevent. The FIRST is kept as authored; the second moves.
+        const p = buildPalette(i => (i === 0 ? "#1f77b4" : "#1f78b5"), 2);
+        expect(p[0].toLowerCase()).toBe("#1f77b4");
+        expect(deltaE(p[0], p[1])).toBeGreaterThanOrEqual(MIN_DELTA_E);
+    });
+
+    it("carries the last supplied colour forward when the host runs out", () => {
+        // A provider may have fewer authored colours than slots. That is "spread from here",
+        // not a hole in the palette.
+        const p = buildPalette(i => (i < 2 ? THEME[i] : ""), 8);
+        expect(p).toHaveLength(8);
+        expect(p.slice(0, 2).map(c => c.toLowerCase())).toEqual(THEME.slice(0, 2));
+        expect(tightestPair(p)).toBeGreaterThanOrEqual(MIN_DELTA_E);
+    });
+
+    it("answers empty when the host never names a colour, rather than inventing one", () => {
+        expect(buildPalette(() => "", 10)).toEqual([]);
+        expect(buildPalette(() => null, 10)).toEqual([]);
+    });
+
+    it("survives a provider that throws", () => {
+        // A host API can fail mid-call. Losing the palette from that point is acceptable;
+        // taking the render down with it is not.
+        const p = buildPalette(i => { if (i === 3) throw new Error("host went away"); return THEME[0]; }, 6);
+        expect(p.length).toBeGreaterThan(0);
+        expect(tightestPair(p)).toBeGreaterThanOrEqual(MIN_DELTA_E);
+    });
+
+    it("makes buildPaletteFromSeed exactly the constant-provider case", () => {
+        expect(buildPaletteFromSeed("#4472c4", 12)).toEqual(buildPalette(() => "#4472c4", 12));
     });
 });
 

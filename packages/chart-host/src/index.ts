@@ -249,4 +249,11 @@ export { pinScrolledAxis, unpinScrolledAxis, type AxisPinReport } from "./fitDom
 // were sending an empty palette and letting the model reach for d3.schemeCategory10. The visual
 // seeds each slot from its own theme colour; a host with only ONE resolvable accent (an Excel
 // table's fill) calls buildPaletteFromSeed and lets the walk do the spreading.
-export { MIN_DELTA_E, pickDistinctColorFromSeed, buildPaletteFromSeed, type PaletteResult } from "./palette";
+export {
+    MIN_DELTA_E, pickDistinctColorFromSeed,
+    // buildPalette is the RICH form - the host names each slot's base colour, which is
+    // what a report theme is. buildPaletteFromSeed is the fallback for a host that can
+    // resolve only one. Do not migrate a host from the first to the second.
+    buildPalette, buildPaletteFromSeed,
+    type PaletteResult, type SeedForSlot,
+} from "./palette";
