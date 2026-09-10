@@ -32,6 +32,7 @@ import { createMarkResolver } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
+import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
 import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 
@@ -139,6 +140,21 @@ export interface ChartHostConfig {
      * number only the browser knows, and this reads the COMPUTED width off the rendered element.
      */
     onHitBandCensus?: (census: HitBandCensus) => void;
+    /**
+     * HOW MUCH OF THIS CHART IS ONE SHADE (2026-09-09)? Runs after every render, counts only.
+     *
+     * The sibling question to the hit-band census, on the colour channel: a right-skewed measure
+     * on a linear ramp is accurate and unreadable, because the outliers eat the ramp and the
+     * dense bulk lands in one indistinguishable tint. It measures the OUTCOME, never the scale,
+     * so a well-spread scale of any kind reports well and a curved or hand-rolled ramp needs no
+     * special case; it declines outright on a categorical palette or a diverging ramp, which are
+     * a different question wearing the same numbers.
+     *
+     * The other half a server-side check cannot do. A code rule reads `scaleLinear()` and a
+     * domain built from `d3.max`; whether THAT washes out depends on the data, and the shape's
+     * own skew is measured on the raw column while the ramp encodes an aggregate.
+     */
+    onColourSpreadCensus?: (census: ColourSpreadCensus) => void;
     /** This chart declares time keyframes: frame one is allowed to be empty, so no blank verdict
      *  is issued for it. */
     animated?: boolean;
@@ -750,6 +766,13 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // countable there should be measured as it will actually behave.
             if (config.onHitBandCensus) {
                 try { config.onHitBandCensus(censusHitBands(container, doc)); }
+                catch { /* a census must never break a render */ }
+            }
+            // AND HOW MUCH OF IT IS ONE SHADE? Same position and the same contract as the hit
+            // band above: after every heal, counts only, and it says nothing at all rather than
+            // guessing when the fills are not a ramp.
+            if (config.onColourSpreadCensus) {
+                try { config.onColourSpreadCensus(censusColourSpread(container, doc)); }
                 catch { /* a census must never break a render */ }
             }
             // DOES IT FIT, AND IF NOT CAN THE READER GET AT THE REST (2026-09-03)? Runs

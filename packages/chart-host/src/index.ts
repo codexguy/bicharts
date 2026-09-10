@@ -215,6 +215,17 @@ export { censusMarks, isBlankRender, blankRenderFlag, type MarkCensus, type Blan
 // width bound to a scale is a number only the browser knows.
 export { censusHitBands, hitBandFlag, MIN_HIT_BAND_PX, type HitBandCensus } from "./hitBands";
 
+// HOW MUCH OF THIS CHART IS ONE SHADE (2026-09-09)? A right-skewed measure on a linear colour
+// ramp is accurate and unreadable: the outliers eat the ramp and the dense bulk lands in one
+// indistinguishable tint. The guardrail asking for a quantile/log scale exists and fires, and the
+// model writes scaleLinear anyway - instruction without verification. This measures the OUTCOME
+// rather than the mechanism, so a well-spread scale of any kind reports well and a curved or
+// hand-rolled ramp is not a special case. It also sees what no code check can: whether a scale
+// washes out depends on the DATA, and the shape's own Skewness is measured on the raw column
+// while the ramp encodes an AGGREGATE - 2.04 against 5.00 on the chart that raised this.
+export { censusColourSpread, colourSpreadFlag, SAME_SHADE_DELTA_E, MIN_RAMP_FILLS,
+    type ColourSpreadCensus } from "./colourSpread";
+
 // DOES THE CHART FIT ITS FRAME, AND WHAT DO YOU DO WHEN IT DOES NOT (2026-09-03). The outermost
 // <svg> clips at its own viewport in every browser and every host, so a chart that sets
 // `svg height = options.height` and draws a taller body loses the overflow outright - the rows
