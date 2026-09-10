@@ -31,7 +31,13 @@
 // argued once the distribution is on the table, and until then the audit says what it saw.
 
 import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
-import colorsea from "colorsea";
+// NOT colorsea, and not only for the bundle weight: colorsea substitutes the UNCORRECTED
+// chroma difference for the G-corrected one CIEDE2000 specifies, and the error GROWS as
+// chroma falls - 0.004 units at chroma 40+, 4.3 at chroma under 1. The pale end of a
+// sequential ramp is exactly that low-chroma region, and SAME_SHADE_DELTA_E is 5, so the
+// error is the same size as the thing being measured. deltaE.test.ts localises the
+// difference to that one term.
+import { hexToLab, deltaE2000, type Lab } from "./deltaE";
 
 /**
  * CIE2000 distance at which two fills stop being separable at a glance, side by side on a chart.
@@ -200,7 +206,7 @@ export function censusColourSpread(container: any, doc?: any): ColourSpreadCensu
         // could not place still counts against the share rather than quietly leaving the
         // denominator - the share can only come out lower for having capped.
         const top = [...cells.values()].sort((a, b) => b.n - a.n).slice(0, MAX_CELLS);
-        const cs = top.map(c => colorsea(hex(c.rgb)));
+        const cs = top.map(c => hexToLab(hex(c.rgb))).filter((l): l is Lab => l !== null);
         if (cs.length < MIN_RAMP_FILLS) return EMPTY;
 
         // Every pairwise distance once - the span, the ramp test and the crowd all read it.
@@ -208,7 +214,7 @@ export function censusColourSpread(container: any, doc?: any): ColourSpreadCensu
         let span = 0, lo = 0, hi = 1;
         for (let i = 0; i < cs.length; i++) {
             for (let j = i + 1; j < cs.length; j++) {
-                const v = cs[i].deltaE(cs[j], "CIE2000");
+                const v = deltaE2000(cs[i], cs[j]);
                 d[i][j] = v;
                 d[j][i] = v;
                 if (v > span) { span = v; lo = i; hi = j; }

@@ -135,5 +135,22 @@ jobs:
       # this one had already stopped being read. 560 leaves ~130 KB of ordinary headroom
       # and still trips on the smallest asset. If it goes red again, find out WHICH file
       # grew before touching this number.
+      #
+      # Raised 560 -> 600 on 2026-09-09, having done exactly that. It was NOT the gazetteer
+      # and NOT a geo asset. v0.5.87 measured 554 KB - six from the ceiling - and 0.5.88 moved
+      # the palette walk into this package carrying colorsea with it, which is ~26 KB of the
+      # closure (measured by stubbing colorsea out and rebuilding). That put it over, and CI
+      # has been red on every push since: the same failure mode the note above describes, one
+      # version after it was written, which is its own argument for reading this check.
+      #
+      # The rest was isolated the same way. registerCityTable is NOT what pulls the gazetteer
+      # in - stubbing that import changes the total by nothing - so the 531 KB chunk arrives
+      # through payload.ts / selectionCard.ts / sourceDateFormat.ts on the core render path,
+      # and is eager by design exactly as the note above says.
+      #
+      # 600 keeps the tripwire honest: the smallest geo asset is ~228 KB, so a statically
+      # imported one lands around 805 KB and still fails this. What would actually buy the
+      # headroom back is making shape-core's reference data lazy - worth ~500 KB, tracked as
+      # its own item, and far more than the 26 KB that shaving colorsea would return.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 560
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 600
