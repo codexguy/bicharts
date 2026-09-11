@@ -171,6 +171,13 @@ export {
     type SourceFormats, type SourceFormatDialect, type SourceDateOptions,
 } from "./sourceDateFormat";
 
+// THE CHART'S DESCRIPTION AND ITS GENERATION WARNING, joined as two statements rather than one
+// run-on sentence (2026-08-31). Every host shows the pair somewhere - a panel over the tile, a
+// status bar under the pane, a tool result - and where one sentence ends and the next begins is
+// the kind of one-line rule that gets rewritten slightly differently in each. The words around
+// it stay per host.
+export { composeSummaryText } from "./summaryText";
+
 // A DECLARED mark that cannot receive a click is not a mark (2026-08-30). Two codegen habits
 // leave a tagged element unhittable: an inert <g> whose painted children are all
 // pointer-events:none (the canonical legend swatch), and a painted element that is itself
