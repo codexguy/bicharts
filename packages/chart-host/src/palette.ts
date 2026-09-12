@@ -31,6 +31,32 @@ import { deltaEHex } from "./deltaE";
 export const MIN_DELTA_E = 10;
 
 /**
+ * THE LIGHTNESS A COLOUR THE WALK INVENTS MUST FALL INSIDE (HSL lightness, 0-100, exclusive).
+ *
+ * The walk's lightness step moves the seed up to 45 points, so from a light seed it could land on
+ * a near-white - and a categorical mark that is near-white on a white page, or near-black on a dark
+ * one, is not a colour a reader can find. Measured before this band existed: a green seed's
+ * twenty-slot palette put `#ebf4e5` (lightness 93) in slot 7, and a pool of Office theme colours led
+ * by a red put `#d5e5f4` (90) in slot 17.
+ *
+ * INVENTED COLOURS ONLY. A seed the host supplied comes back as supplied, however light or dark -
+ * that is a report author's decision - and the spare-colour sweep keeps its own, narrower band.
+ */
+export const LEGIBLE_LIGHTNESS: readonly [number, number] = [15, 85];
+
+export interface PaletteOptions {
+    /**
+     * The lightness band invented colours must sit in. Defaults to `LEGIBLE_LIGHTNESS`.
+     *
+     * `null` walks as the package did before the band existed, colour for colour. It exists for a
+     * host that STORED palettes the older walk produced and has to recognise one again by
+     * re-deriving it: change the walk under such a host and every stored palette silently stops
+     * matching. Nothing should draw with it.
+     */
+    lightnessBand?: readonly [number, number] | null;
+}
+
+/**
  * Pick a hex color for a palette slot.
  *
  * Strategy (ordered from "closest to theme" to "furthest from theme"):
@@ -61,9 +87,16 @@ export function pickDistinctColorFromSeed(
     seedHex: string,
     existing: ReadonlySet<string>,
     minDistance: number = MIN_DELTA_E,
+    options: PaletteOptions = {},
 ): PaletteResult {
     const existingCs = [...existing].map(c => colorsea(c));
     const seed = colorsea(seedHex);
+    const band = options.lightnessBand === undefined ? LEGIBLE_LIGHTNESS : options.lightnessBand;
+    const legible = (c: colorsea.Color): boolean => {
+        if (!band) return true;
+        const l = c.hsl()[2];
+        return l > band[0] && l < band[1];
+    };
 
     // Min CIE2000 deltaE between `c` and every issued color. Empty palette
     // → +Infinity so the seed wins on the first call.
@@ -83,6 +116,9 @@ export function pickDistinctColorFromSeed(
     let bestMinDist = minDeltaE(seed);
 
     const tryVariant = (c: colorsea.Color): PaletteResult | null => {
+        // An invented colour a reader could not find on the page is not a candidate at all -
+        // neither a pick nor the best-so-far a give-up registers.
+        if (!legible(c)) return null;
         const d = minDeltaE(c);
         if (d >= minDistance) {
             const hex = c.hex();
@@ -143,8 +179,9 @@ export function buildPaletteFromSeed(
     seedHex: string,
     count: number,
     minDistance: number = MIN_DELTA_E,
+    options: PaletteOptions = {},
 ): string[] {
-    return buildPalette(() => seedHex, count, minDistance);
+    return buildPalette(() => seedHex, count, minDistance, options);
 }
 
 /**
@@ -177,6 +214,7 @@ export function buildPalette(
     seedFor: SeedForSlot,
     count: number,
     minDistance: number = MIN_DELTA_E,
+    options: PaletteOptions = {},
 ): string[] {
     const out: string[] = [];
     if (!(count > 0)) return out;
@@ -206,7 +244,7 @@ export function buildPalette(
         if (!seedHex) break;
         lastSeed = seedHex;
 
-        const { hex, registerHex } = pickDistinctColorFromSeed(seedHex, issued, minDistance);
+        const { hex, registerHex } = pickDistinctColorFromSeed(seedHex, issued, minDistance, options);
         let chosen = hex;
         let register = registerHex;
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import colorsea from "colorsea";
-import { buildPalette, buildPaletteFromSeed, pickDistinctColorFromSeed, orderMostDistinct, MIN_DELTA_E }
+import { buildPalette, buildPaletteFromSeed, pickDistinctColorFromSeed, orderMostDistinct, MIN_DELTA_E, LEGIBLE_LIGHTNESS }
     from "../packages/chart-host/src/palette";
 import { deltaEHex } from "../packages/chart-host/src/deltaE";
 
@@ -94,6 +94,35 @@ describe("buildPaletteFromSeed", () => {
                 expect(l, `${seed} -> ${hex}`).toBeLessThan(90);
             }
         }
+    });
+
+    it("keeps every INVENTED colour inside the legible band, for chromatic seeds too", () => {
+        // The case the achromatic test above never reached: the walk's lightness step, from a
+        // coloured seed. A green seed's twenty slots used to put a lightness-93 near-white in
+        // slot 7. Slot 0 is the seed itself and is exempt - the host chose it.
+        const [lo, hi] = LEGIBLE_LIGHTNESS;
+        for (const seed of ["#70ad47", "#4472c4", "#ffc000", "#c2deaf", "#8ad4eb", "#264478", "#2a411a", "#c00000", "#7030a0"]) {
+            for (const hex of buildPaletteFromSeed(seed, 20).slice(1)) {
+                const l = colorsea(hex).hsl()[2];
+                expect(l, `${seed} -> ${hex}`).toBeGreaterThan(lo);
+                expect(l, `${seed} -> ${hex}`).toBeLessThan(hi);
+            }
+        }
+    });
+
+    it("still returns a light or dark SUPPLIED colour exactly as supplied", () => {
+        // The band is for colours the walk makes up, never a veto on the host's own.
+        expect(buildPaletteFromSeed("#f4f9ff", 3)[0]).toBe("#f4f9ff");
+        const theme = ["#1a1a1a", "#fafafa", "#01b8aa"];
+        expect(buildPalette(i => theme[i], 3)).toEqual(theme);
+    });
+
+    it("walks exactly as before the band when a host asks for no band", () => {
+        // For a host that stored palettes the older walk made and must recognise them by
+        // re-deriving. These are that walk's own outputs for this seed, recorded before the band.
+        expect(buildPaletteFromSeed("#70AD47", 8, MIN_DELTA_E, { lightnessBand: null })).toEqual(
+            ["#70ad47", "#768f65", "#64ea0a", "#7a7a7a", "#4d7731", "#c2deaf", "#2a411a", "#ebf4e5"]);
+        expect(buildPaletteFromSeed("#70AD47", 8)[7]).not.toBe("#ebf4e5");
     });
 
     it("answers empty for nonsense input rather than throwing", () => {

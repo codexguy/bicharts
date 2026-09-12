@@ -276,7 +276,10 @@ export {
     // For a host that assembles its OWN pool of surface colours with no authored order (an Excel
     // workbook's accents and their tints): most distinct first, then into buildPalette.
     orderMostDistinct,
-    type PaletteResult, type SeedForSlot,
+    // Invented colours stay off both page extremes; `lightnessBand: null` re-derives what the
+    // walk produced before the band, for a host recognising a palette it stored back then.
+    LEGIBLE_LIGHTNESS,
+    type PaletteResult, type SeedForSlot, type PaletteOptions,
 } from "./palette";
 // Perceptual distance between two hex colours (CIEDE2000, in-house - see deltaE.ts for why not
 // the library). Exported so a host can state a palette's separation in its own tests and logs
