@@ -258,6 +258,13 @@ export const VALUE_AXIS_BASELINE_DEFAULT: ValueAxisBaseline = "fit";
 export type SeasonalMarkers = "auto" | "always" | "never";
 export const SEASONAL_MARKERS_DEFAULT: SeasonalMarkers = "auto";
 
+// How many points a point map plots before it stops being offered, and what a cached map caps
+// itself at when it draws. A host that has a setting passes it; one that does not gets THIS, so
+// every host - and every chart whose own code carries an older fallback - agrees on one number.
+// 2000 (2026-09-12): an earthquake table of 1,100 epicentres sat just past the old 1000, which
+// was sized for a 60,000-row postcode column rather than for a table anybody would call a map.
+export const MAX_MAP_POINTS_DEFAULT = 2000;
+
 // Colour Scale Scope for animated continuous scales: "" = ONE global domain over
 // every period (default; a colour means the same value in every frame); "frame" =
 // re-scale each keyframe to its own min-max (in-frame contrast lens; the chart must
@@ -325,7 +332,8 @@ export interface RenderOptions {
         rolesBackfilled?: string[];
         rolesRefused?: string[];
     } | null;
-    // Point-map mark-count ceiling (Format > Data "Max Map Points", default 1000).
+    // Point-map mark-count ceiling (the host's "Max Map Points" setting; MAX_MAP_POINTS_DEFAULT
+    // when the host has none - resolveOptions fills it, so a chart never sees it absent).
     // The eligibility gate refuses to OFFER a point-map type above this many rows, but
     // a CACHED chart's row count is fixed at generation time while this dial can be
     // lowered afterward with no regeneration — so the chart itself must cap what it

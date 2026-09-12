@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { resolveOptions } from "../src/defaults";
-import { RenderOptions } from "../src/contract";
+import { RenderOptions, MAX_MAP_POINTS_DEFAULT } from "../src/contract";
 
 // BYTE-COMPARE lock: resolveOptions must reproduce EXACTLY the normalization that was
 // inline in the visual's option assembly, so routing the visual through it is
@@ -336,5 +336,23 @@ describe("resolveOptions - the whitelist covers the contract", () => {
         const dest = { precision: null, precisionCounts: {} as any, coarseExamples: [], unplaced: 2,
                        unplacedExamples: ["x"], ambiguousRows: 0 };
         expect(resolveOptions({ geoPointDest: dest }).geoPointDest).toBe(dest);
+    });
+});
+
+describe("maxMapPoints: one default for every host", () => {
+    // A host with no Max Map Points setting used to leave this undefined, and each map chart fell
+    // back to the number baked into its own code (1000) while the offer gate used another. The
+    // default now lives here, so the chart and the gate agree whatever the host sends.
+    it("fills the shared default when the host sends nothing usable", () => {
+        for (const raw of [undefined, null, "", 0, -5, "junk"]) {
+            expect(resolveOptions({ maxMapPoints: raw }).maxMapPoints, String(raw)).toBe(MAX_MAP_POINTS_DEFAULT);
+        }
+        expect(MAX_MAP_POINTS_DEFAULT).toBe(2000);
+    });
+
+    it("keeps a host's own positive setting, as a whole number", () => {
+        expect(resolveOptions({ maxMapPoints: 1000 }).maxMapPoints).toBe(1000);
+        expect(resolveOptions({ maxMapPoints: "5000" }).maxMapPoints).toBe(5000);
+        expect(resolveOptions({ maxMapPoints: 1500.4 }).maxMapPoints).toBe(1500);
     });
 });

@@ -20,6 +20,7 @@ import {
     APPROXIMATE_POSITIONS_DEFAULT,
     VALUE_AXIS_BASELINE_DEFAULT,
     SEASONAL_MARKERS_DEFAULT,
+    MAX_MAP_POINTS_DEFAULT,
 } from "./contract";
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
@@ -51,7 +52,15 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // tests/defaults.test.ts now compares the two lists, because four instances of one
         // omission is a missing check, not four mistakes.
         geoPointDest: p.geoPointDest,
-        maxMapPoints: p.maxMapPoints,
+        // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
+        // undefined, and every map chart then fell back to whatever number its own code carried -
+        // 1000 in every archetype written so far - while the offer gate used the server's. One
+        // default here makes the chart and the gate agree in every host. A positive value from
+        // the host wins; absent, blank, zero or junk means the shared default.
+        maxMapPoints: (() => {
+            const n = numberOr(p.maxMapPoints, 0);
+            return n > 0 ? Math.round(n) : MAX_MAP_POINTS_DEFAULT;
+        })(),
         // FIFTH AND SIXTH OCCURRENCES, and the two that argue hardest for the guard test: both
         // were passed by the visual AND read by the charts, and neither was ever declared here or
         // in the contract - so the contract-vs-whitelist check could not see them either. What

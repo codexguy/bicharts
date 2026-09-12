@@ -483,8 +483,8 @@ export type LLMClientHints =
         // Auto-regen diagnostic (2026-06-24): decision-term breakdown the server logs
         // to the server log so a spurious "Change Creates New" regen is DB-traceable.
         regenDiag?: string,
-        // Ceiling on how many distinct places a point map will plot (Format > Data "Max
-        // Map Points", default 1000) before the type stops being offered. A HARD gate —
+        // Ceiling on how many distinct places a point map will plot (the host's "Max Map
+        // Points" setting, default 2000) before the type stops being offered. A HARD gate —
         // applies even to an explicit chart-type pick, since it bounds mark count, not
         // aesthetics. Undefined on older clients → server falls back to its own default.
         maxMapPoints?: number,
