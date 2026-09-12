@@ -99,6 +99,52 @@ export const INTENSIVE_WORD_TOKENS: readonly string[] = [
     "age", "bmi", "temperature", "density", "pressure", "humidity", "ph",
     "velocity", "speed", "elevation", "altitude",
     "latency", "throughput", "bandwidth", "iops",
+    // ── THE SAME QUANTITIES IN THE LANGUAGES A MODEL IS AUTHORED IN (2026-09-12).
+    // Every token above is an English word, so a Dutch model's `Sum of Temperatuur` resolved
+    // ADDITIVE and nothing warned that a temperature was being totalled — the same gap that was
+    // closed for date-hierarchy level names, one list over.
+    //
+    // STORED ACCENT-FOLDED, and the matcher folds the name before testing, because the two
+    // regex engines disagree about non-ASCII: .NET's `\w` is Unicode-aware and JavaScript's is
+    // ASCII-only, so `\bmoyenne\b` behaves the same on both sides while a token with a LEADING
+    // accent matches server-side and never client-side. Measured, not assumed.
+    //
+    // LATIN SCRIPT ONLY, for the same reason: a Cyrillic, Greek or CJK token matches in .NET and
+    // silently never matches in JS, and CJK has no word boundaries for `\b` to find at all — it
+    // needs substring matching and its own false-positive analysis. Recorded as not-done rather
+    // than half-done.
+    //
+    // VETTED AGAINST THE CORPUS, not by eye: replayed over all 1,931 distinct bound column names
+    // in a production corpus, these move EIGHT names, every one correctly (a Dutch
+    // temperature, three localized averages, a Spanish engagement rate), and not one name the
+    // client had already measured as `additive`. Tokens that collide with a common English
+    // ADDITIVE word are deliberately absent — Spanish/Italian `media` (Media Spend), French
+    // `part` (Part Number), Italian `quota` (Sales Quota), German `alter`, and every token of
+    // three characters or fewer.
+    // temperature
+    "temperatuur", "temperatur", "temperatura", "teplota", "lampotila", "homerseklet", "sicaklik",
+    // pressure
+    "pression", "presion", "pressao", "pressione", "druck", "tryck", "tlak", "paine", "nyomas", "presiune",
+    // humidity
+    "humidite", "humedad", "umidade", "umidita", "feuchtigkeit", "vochtigheid", "kosteus", "vlhkost",
+    // speed / velocity
+    "vitesse", "velocidad", "velocidade", "velocita", "geschwindigkeit", "snelheid",
+    "hastighet", "hastighed", "rychlost", "nopeus", "sebesseg", "brzina", "predkosc",
+    // density
+    "densite", "densidad", "densidade", "densita", "dichte", "dichtheid", "hustota", "tiheys", "gustoca",
+    // average / mean / median
+    "moyenne", "mediane", "promedio", "mediana", "gemiddelde", "durchschnitt", "mittelwert",
+    "genomsnitt", "gennemsnit", "gjennomsnitt", "keskiarvo", "atlag", "ortalama", "prosjek",
+    "srednia", "prumer", "priemer", "medie",
+    // rate / ratio / share / percentage
+    "taux", "tasa", "taxa", "tasso", "verhaltnis", "verhouding", "aandeel", "anteil",
+    "andel", "osuus", "podil", "udzial", "udio", "pourcentage", "porcentaje", "percentual",
+    "prozent", "procent", "prosentti", "szazalek", "yuzde", "participacion", "participacao",
+    "pondere", "omjer", "arany", "oran", "rata",
+    // age
+    "leeftijd", "edad", "idade", "wiek", "eletkor", "varsta",
+    // score / index
+    "puntuacion", "pontuacao", "punteggio", "betyg", "ocena", "indice", "indeks", "wskaznik", "puan",
 ];
 /* parity:intensive-word:end */
 
@@ -140,10 +186,74 @@ export const POSITIONAL_SUFFIX_TOKENS: readonly string[] = ["latitude", "longitu
 //    only on the token arrays. The parity test pins the arrays; these functions are pinned by
 //    their own unit tests, using the same anchor cases the server side documents.
 
+/** Strip diacritics so a token stored as plain ASCII meets the accented spelling of the same
+ *  word: `Température` -> `Temperature`, `Média` -> `Media`.
+ *
+ *  LENGTH-PRESERVING, one code point in and one code point out, which the obvious
+ *  `normalize("NFD").replace(...)` is NOT — that shortens the string, and `stripHostAggPrefix`
+ *  below needs a match offset in the FOLDED text to slice the ORIGINAL. A character folds only
+ *  when its decomposition collapses back to a single code point; anything else is passed
+ *  through untouched, so a surrogate pair survives intact. The server mirrors this exactly. */
+export function foldAccents(s: string): string {
+    return Array.from(s).map(ch => {
+        const d = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
+        return d.length === 1 ? d : ch;
+    }).join("");
+}
+
+/* parity:localized-default-agg:begin */
+/** DEFAULT host aggregation prefixes in the languages a Power BI model is authored in
+ *  (2026-09-12) — the localized halves of "Sum of" and "Count of". Accent-folded and
+ *  lower-case; each entry already carries its own connector because languages differ there
+ *  ("somme DE", "summe VON", "som VAN") and some have none at all ("Toplam Volume").
+ *
+ *  Measured: 35 of the 1,931 distinct names in a production corpus carry a non-English
+ *  aggregation prefix, against 541 English ones. Before this the server read `Soma de Volume`
+ *  as a bare name with no host prefix, so the "a default Sum is not evidence" rule — the whole
+ *  reason `hasDefaultAggPrefix` exists — simply did not apply outside English. */
+export const LOCALIZED_DEFAULT_AGG_PREFIXES: readonly string[] = [
+    "somme de", "suma de", "soma de", "summe von", "som van", "somma di",
+    "summa av", "sum av", "sum af", "soucet z", "suma z", "totaal van", "total de",
+    "toplam", "osszeg",
+    "nombre de", "recuento de", "contagem de", "anzahl von", "aantal van",
+    "conteggio di", "antal av", "lukumaara", "pocet z",
+];
+/* parity:localized-default-agg:end */
+
+/* parity:localized-choice-agg:begin */
+/** DELIBERATE host aggregation prefixes — the localized halves of "Average of" / "Min of" /
+ *  "Max of". Kept apart from the defaults above for exactly the reason the English matcher
+ *  keeps them apart: choosing an average is real evidence that the quantity is intensive, where
+ *  a default Sum is evidence only about the host. `media` appears ONLY with a connector
+ *  ("media de", "media di") — bare, it is the English word in "Media Spend". */
+export const LOCALIZED_CHOICE_AGG_PREFIXES: readonly string[] = [
+    "moyenne de", "promedio de", "media de", "media di", "durchschnitt von",
+    "gemiddelde van", "medelvarde av", "genomsnitt av", "gennemsnit af",
+    "keskiarvo", "atlag", "ortalama", "prumer z", "srednia z", "medie de",
+    "minimum de", "minimo de", "minimo di", "minimum von",
+    "maximum de", "maximo de", "massimo di", "maximum von",
+];
+/* parity:localized-choice-agg:end */
+
+/** Longest first so "count distinct of" cannot match as "count", and whitespace-flexible. */
+function prefixAlternation(phrases: readonly string[]): string {
+    return [...phrases].sort((a, b) => b.length - a.length)
+        .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"))
+        .join("|");
+}
+
 /** Host aggregation prefixes Power BI prepends by DEFAULT to any numeric column dropped in a
  *  measure well. Average/Min/Max are deliberately absent: those are CHOICES, and a choice is
  *  real evidence about the quantity where a default is evidence about the host. */
-const DEFAULT_AGG_PREFIX = /^\s*(sum|count|count\s+distinct|distinct\s+count)\s+of\s+/i;
+const DEFAULT_AGG_PREFIX = new RegExp(
+    "^\\s*(?:(?:sum|count|count\\s+distinct|distinct\\s+count)\\s+of\\s+|(?:"
+    + prefixAlternation(LOCALIZED_DEFAULT_AGG_PREFIXES) + ")\\s+)", "i");
+
+// THERE IS DELIBERATELY NO "strip every host label" REGEX HERE. Stripping a DELIBERATE prefix
+// would throw away the evidence it carries: `Average of Margin` is intensive precisely BECAUSE
+// somebody chose an average, and the word test finds that only while the word is still in the
+// string. That is why the English matcher never stripped Average/Min/Max, and the localized
+// choice prefixes are treated identically — read by hostAggHint, never removed. (2026-09-12)
 
 /** camelCase / PascalCase / unit-suffix boundaries. A measure is very often written with no
  *  spaces at all — "LatencyMs", "ProfitMargin" — and a \bword\b test cannot see inside those. */
@@ -160,13 +270,21 @@ const POSITIONAL_RE = new RegExp(
  *  aggregation choice. */
 export function stripHostAggPrefix(name: string | null | undefined): string {
     if (!name) return "";
-    return String(name).replace(DEFAULT_AGG_PREFIX, "").trim();
+    const s = String(name);
+    // Matched against the FOLDED text so an accented localized prefix is recognised, then sliced
+    // off the ORIGINAL at the same offset — which is sound only because foldAccents preserves
+    // length. DEFAULT prefixes only, English and localized alike: a deliberate Average/Min/Max
+    // stays in the string because it is evidence about the quantity, not noise about the host.
+    const m = DEFAULT_AGG_PREFIX.exec(foldAccents(s));
+    return (m ? s.slice(m[0].length) : s).trim();
 }
 
 /** True when the name carries a DEFAULT aggregation prefix — the one Power BI applies without
- *  anyone choosing it, which is why a resulting "additive" verdict is not conclusive. */
+ *  anyone choosing it, which is why a resulting "additive" verdict is not conclusive. A
+ *  localized default ("Soma de", "Summe von") counts; a localized CHOICE ("Média de") does
+ *  not, exactly as "Average of" does not. */
 export function hasDefaultAggPrefix(name: string | null | undefined): boolean {
-    return !!name && DEFAULT_AGG_PREFIX.test(String(name));
+    return !!name && DEFAULT_AGG_PREFIX.test(foldAccents(String(name)));
 }
 
 // ── "Sum of Sum of Revenue" (2026-09-04) ─────────────────────────────────────────────────────
@@ -281,13 +399,21 @@ function normalizeForNameTest(name: string | null | undefined): string {
  *  STRICTLY ADDITIVE, never a replacement: a third form can only ADD a match, so nothing this
  *  already resolved can move the other way. Measured over every distinct measure name both
  *  environments have ever been handed (730 of them): exactly ONE verdict moves - an
- *  underscore-joined percentage - and it moves to intensive. No regressions. */
+ *  underscore-joined percentage - and it moves to intensive. No regressions.
+ *
+ *  A FOURTH THING, AND IT IS A FOLD RATHER THAN A FORM (2026-09-12): every form is
+ *  ACCENT-FOLDED before the test, so `Température` meets the token `temperature` and
+ *  `Média`/`Medie` meet theirs. It is what lets the localized tokens be stored as plain ASCII,
+ *  which in turn is what makes them behave identically in .NET and in JavaScript — see the note
+ *  on the token array. Replayed over all 1,931 distinct bound column names in a production
+ *  corpus, folding ALONE moves ZERO verdicts: it can only add a match, and only for an
+ *  accented spelling of a token that was already in the list. */
 function matchesName(re: RegExp, name: string | null | undefined): boolean {
     if (!name) return false;
     const base = stripHostAggPrefix(name);
-    return re.test(normalizeForNameTest(name))
-        || re.test(base)
-        || re.test(nameWords(base).join(" "));
+    return re.test(foldAccents(normalizeForNameTest(name)))
+        || re.test(foldAccents(base))
+        || re.test(foldAccents(nameWords(base).join(" ")));
 }
 
 /** Does this column NAME read as a coordinate? */

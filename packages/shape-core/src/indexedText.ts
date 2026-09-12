@@ -19,7 +19,8 @@ import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso } from "./util";
-import { collapseRepeatedAggPrefix } from "./aggregation";
+import { collapseRepeatedAggPrefix, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
+import { measureCadence } from "./cadence";
 
 // ============================================================================
 // ValueNature classification (Continuous / Ordinal / Categorical)
@@ -326,12 +327,24 @@ export type Additivity = "additive" | "part_of_whole" | "intensive_rate" | "unkn
 // a real signal, not a semantic guess. Explicit DAX measures arrive WITHOUT a
 // prefix (already scalar) → returns null and the caller heuristic takes over.
 export function hostAggHint(name: string): "sum" | "avg" | "count" | "min" | "max" | null {
-    const n = (name || "").trim().toLowerCase();
+    const n = foldAccents((name || "").trim().toLowerCase());
     if (n.startsWith("sum ") || n.startsWith("total ")) return "sum";
     if (n.startsWith("average ") || n.startsWith("avg. ")) return "avg";
     if (n.startsWith("count ") || n.startsWith("distinct count ") || n.startsWith("count (distinct) ")) return "count";
     if (n.startsWith("min ") || n.startsWith("minimum ")) return "min";
     if (n.startsWith("max ") || n.startsWith("maximum ")) return "max";
+    // THE SAME DECISION, WRITTEN IN THE MODEL'S LANGUAGE (2026-09-12). A localized
+    // AVERAGE prefix is the strongest evidence this file has that a quantity is already a mean:
+    // it routes straight to intensive_rate below, where a name token only reaches the server's
+    // fallback. `Media de <metric>` is a real name from that corpus and had neither.
+    if (LOCALIZED_CHOICE_AGG_PREFIXES.some(p => n.startsWith(p + " "))) {
+        if (/^(minimum|minimo)\b/.test(n)) return "min";
+        if (/^(maximum|maximo|massimo)\b/.test(n)) return "max";
+        return "avg";
+    }
+    if (LOCALIZED_DEFAULT_AGG_PREFIXES.some(p => n.startsWith(p + " ") || n === p)) {
+        return /^(nombre|recuento|contagem|anzahl|aantal|conteggio|antal|lukumaara|pocet)\b/.test(n) ? "count" : "sum";
+    }
     return null;
 }
 
@@ -706,6 +719,21 @@ export class IndexedText implements IValueCollection {
             if (col.isTemporal && col.dataType === "String" && !col.isMeasure) {
                 const det = detectTextDatePattern(vals.keys(), locale);
                 if (det) col.temporalTextPattern = det.pattern;
+            }
+            // HOW THOSE TIME VALUES ARE SPACED (2026-09-12). isTemporal says the
+            // column is an axis; this says whether the axis is CONTINUOUS or stops and starts,
+            // which is the difference between a line a consumer may draw and one that invents
+            // observations. Runs off the same distinct-value map every other signal here uses,
+            // so it costs one pass over the keys and no extra scan of the rows.
+            //
+            // runBounds names calendar dates and so rides the pl>=20 gate that lowValue /
+            // highValue already ride; every count and ratio in the descriptor ships below it.
+            if (col.isTemporal && !col.isMeasure) {
+                const cad = measureCadence(vals.keys(), {
+                    includeBounds: pl >= 20,
+                    pattern: col.temporalTextPattern,
+                });
+                if (cad) col.temporalCadence = cad;
             }
             this.updateColumnStats10(pl, col, nonblank, vals, prec, maxval, minval);
             this.updateColumnStats20(pl, arr, nonblank, sumval, col, datalen, hastime, minval, maxval, prec, vals, locale);

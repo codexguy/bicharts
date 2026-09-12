@@ -26,6 +26,13 @@ export {
 } from "./indexedText";
 export type { TextDateDetection } from "./indexedText";
 
+// TEMPORAL CADENCE (2026-09-12) — how a time column's values are SPACED and where
+// they stop. Public because the measurement is reusable standalone, and because
+// DEFAULT_GAP_FACTOR is a measured constant a consumer may need to reason about. The POLICY
+// that turns a hole into a broken line is the consumer's; this package only measures.
+export { measureCadence, parseTemporalPoint, DEFAULT_GAP_FACTOR, MAX_RUN_BOUNDS } from "./cadence";
+export type { TemporalCadence, TemporalRun } from "./cadence";
+
 // WHICH AGGREGATIONS ARE HONEST for a column (2026-09-01). The two axes a presentation surface
 // needs and that no single enum carried: what KIND of scale this is, and whether SUM means
 // anything over it. Public because the answer has to be identical in the selection card, in the

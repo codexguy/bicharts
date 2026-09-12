@@ -1,3 +1,6 @@
+import type { TemporalCadence } from "./cadence";
+export type { TemporalCadence, TemporalRun } from "./cadence";
+
 export type LLMRequestModifier =
     {
         code: string,
@@ -198,6 +201,22 @@ export type LLMColumnWithValue =
         isDatePart?: boolean,
         isReassembledDate?: boolean,
         dateGroupId?: string,
+        // HOW THE TIME VALUES ARE SPACED, and where they stop (2026-09-12). Set on a
+        // temporal non-measure column with at least three readable points; the measurement, and
+        // why no threshold on it lives here, are in cadence.ts.
+        //
+        // lowValue / highValue / distinctCount describe a time column as an interval and a
+        // count, and those three together cannot tell sixteen consecutive days from sixteen
+        // readings taken in two weeks a month apart. A consumer that CONNECTS points with a
+        // line needs that difference: the second draws a line over days nobody observed. A
+        // production sensor chart did exactly that — one monotone curve plus an OLS trend across a
+        // 23-day hole — while three separate rules in its own prompt forbade it, because
+        // nothing on the wire could tell the model the hole was there.
+        //
+        // Counts, ratios and an inferred period NAME, so the descriptor ships at every privacy
+        // tier. `runBounds` is the exception and names calendar dates, so it rides the pl>=20
+        // gate lowValue / highValue already ride; a consumer must still work without it.
+        temporalCadence?: TemporalCadence,
         // Per-column value-set OVERLAP statistic (2026-06-07). For each OTHER
         // non-measure column, the PERCENT of THIS column's distinct values that
         // also appear in that column. A STATISTIC about values (never the values
