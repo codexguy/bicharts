@@ -273,5 +273,12 @@ export {
     // what a report theme is. buildPaletteFromSeed is the fallback for a host that can
     // resolve only one. Do not migrate a host from the first to the second.
     buildPalette, buildPaletteFromSeed,
+    // For a host that assembles its OWN pool of surface colours with no authored order (an Excel
+    // workbook's accents and their tints): most distinct first, then into buildPalette.
+    orderMostDistinct,
     type PaletteResult, type SeedForSlot,
 } from "./palette";
+// Perceptual distance between two hex colours (CIEDE2000, in-house - see deltaE.ts for why not
+// the library). Exported so a host can state a palette's separation in its own tests and logs
+// with the same number the package decides by.
+export { deltaEHex } from "./deltaE";

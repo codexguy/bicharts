@@ -21,6 +21,7 @@
 // small swatch sizes (≈5 is JND).
 
 import colorsea from "colorsea";
+import { deltaEHex } from "./deltaE";
 
 /**
  * Minimum perceptual distance (CIE2000 deltaE) that any returned color must
@@ -237,6 +238,66 @@ export function buildPalette(
         issued.add(register);
         issuedCs.push(colorsea(register));
         out.push(chosen);
+    }
+    return out;
+}
+
+/**
+ * A POOL OF ACCEPTABLE COLOURS, ORDERED SO THE MOST DISTINCT COME FIRST.
+ *
+ * For a host that knows WHICH colours belong to the surface but not in what ORDER to use them.
+ * Excel is the case that needed it: a workbook's theme offers a grid of accents and their tints,
+ * none of which is ranked, and the order a host invents decides what a two- or five-series chart
+ * looks like. The order Office itself lists its accents in puts two blues four slots apart, so a
+ * five-series chart following that list gives two of its series nearly the same colour - which
+ * reads as one series.
+ *
+ * NEVER USE THIS ON AN AUTHORED ORDER. A report theme's slot order is somebody's decision, and
+ * `buildPalette` exists to honour it verbatim; re-sorting it here would override the author with
+ * arithmetic. This is only for a pool a host assembled itself.
+ *
+ * The method is greedy max-min (the farthest-point walk used for categorical colour sets): keep
+ * the lead, then repeatedly take the pool colour whose NEAREST already-chosen colour is farthest
+ * away, by CIEDE2000. Two properties follow and the tests pin both. The distance each pick adds is
+ * never larger than the one before it, so the early slots, which every chart uses, are the best
+ * separated. And every input colour is returned unchanged, so the palette is still the surface's
+ * own colours, only re-ordered.
+ *
+ * Deterministic: ties go to the colour listed earlier in the pool. Duplicates (case-insensitive)
+ * and anything that is not `#rgb` / `#rrggbb` are dropped, because a colour that cannot be
+ * measured cannot be placed. A blank or unmeasurable lead means "start from the pool's first
+ * colour". Feed the result to `buildPalette`, which still guarantees the minimum separation when
+ * two pool colours are too close to share a legend.
+ */
+export function orderMostDistinct(lead: string | null | undefined, pool: readonly string[]): string[] {
+    const seen = new Set<string>();
+    const valid: string[] = [];
+    const take = (c: unknown): void => {
+        const s = typeof c === "string" ? c.trim() : "";
+        // deltaEHex is NaN exactly when the string does not parse, so measuring a colour
+        // against itself is the parse test, with no second grammar to keep in step.
+        if (!s || !Number.isFinite(deltaEHex(s, s))) return;
+        const key = s.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        valid.push(s);
+    };
+    take(lead);
+    for (const c of pool ?? []) take(c);
+    if (!valid.length) return [];
+
+    const out = [valid[0]];
+    const rest = valid.slice(1);
+    // nearest[i] = distance from rest[i] to the closest colour already chosen. Updated
+    // incrementally, because choosing one colour can only shrink it.
+    const nearest = rest.map(c => deltaEHex(c, out[0]));
+    while (rest.length) {
+        let best = 0;
+        for (let i = 1; i < rest.length; i++) if (nearest[i] > nearest[best]) best = i;
+        const picked = rest.splice(best, 1)[0];
+        nearest.splice(best, 1);
+        out.push(picked);
+        for (let i = 0; i < rest.length; i++) nearest[i] = Math.min(nearest[i], deltaEHex(rest[i], picked));
     }
     return out;
 }
