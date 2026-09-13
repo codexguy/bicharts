@@ -234,6 +234,12 @@ export { censusHitBands, hitBandFlag, MIN_HIT_BAND_PX, type HitBandCensus } from
 // while the ramp encodes an AGGREGATE - 2.04 against 5.00 on the chart that raised this.
 export { censusColourSpread, colourSpreadFlag, SAME_SHADE_DELTA_E, MIN_RAMP_FILLS,
     type ColourSpreadCensus } from "./colourSpread";
+// IS EACH DOT DRAWN AT ITS VALUE? A force layout pushes a beeswarm's dots along both axes, so on a
+// dense column they drift off their values and pile against the band walls while the chart still
+// looks right. This reads each single-row dot back to its row, finds the value axis as the column a
+// straight line through the positions explains, and buckets the share more than a radius off it.
+export { censusValuePlacement, valuePlacementFlag, VALUE_AXIS_MIN_FIT,
+    type ValuePlacementCensus } from "./valuePlacement";
 
 // DOES THE CHART FIT ITS FRAME, AND WHAT DO YOU DO WHEN IT DOES NOT (2026-09-03). The outermost
 // <svg> clips at its own viewport in every browser and every host, so a chart that sets
@@ -287,3 +293,9 @@ export {
 // the library). Exported so a host can state a palette's separation in its own tests and logs
 // with the same number the package decides by.
 export { deltaEHex } from "./deltaE";
+// WHAT A BLANK COLOUR SCALE PICKER MEANS, AS TWO COLOURS. Nothing defined "automatic", so every
+// generation invented one - a brighter() green that clipped to lime, six classes nobody could tell
+// apart as painted. resolveOptions hands these to every chart as colorScaleAutoLow / High, and a
+// host's pickers show the same two values while the reader's own are blank.
+export { resolveAutoColorScale, autoRampMinStep, autoRampCanvas, AUTO_RAMP_CLASSES, AUTO_RAMP_DRAWN_OPACITY,
+    AUTO_RAMP_MIN_STEP_DELTA_E, type AutoColorScale, type AutoColorScaleInput } from "./autoRamp";

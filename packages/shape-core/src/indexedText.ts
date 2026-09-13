@@ -928,7 +928,16 @@ export class IndexedText implements IValueCollection {
         // correlation chart (scatter/regression/bubble) on collinear-only measures is a
         // trivial diagonal. A STATISTIC (a column name the server already has), never raw
         // values. Bounded O(measures² × rows); measures are few.
+        //
+        // BELOW THE COLLINEAR CUT, the pair still MOVES TOGETHER, and that is a different question
+        // with the same arithmetic. A fare that rises with trip distance at r 0.966 is not the same
+        // axis - it would make a real scatter - but colouring distance-plotted dots by fare repeats
+        // the y axis in a legend. correlatedWithMeasures carries every pair from CORRELATED_MIN_R up
+        // to the collinear cut WITH its signed r, so where "moves together" starts is decided by the
+        // server's configuration, not by this release.
         const COLLINEAR_R = 0.97;
+        const CORRELATED_MIN_R = 0.8;
+        const CORRELATED_PER_MEASURE = 8;
         const MIN_CORR_ROWS = 5;
         const measureIdx = this._cols.map((c, i) => ({ c, i })).filter(x => x.c.isMeasure);
         for (let a = 0; a < measureIdx.length; a++) {
@@ -953,8 +962,20 @@ export class IndexedText implements IValueCollection {
                     if (!cb.collinearWithMeasures) cb.collinearWithMeasures = [];
                     ca.collinearWithMeasures.push(cb.name);
                     cb.collinearWithMeasures.push(ca.name);
+                } else if (Math.abs(r) >= CORRELATED_MIN_R) {
+                    const ca = measureIdx[a].c, cb = measureIdx[b].c;
+                    const rounded = Math.round(r * 1000) / 1000;
+                    if (!ca.correlatedWithMeasures) ca.correlatedWithMeasures = [];
+                    if (!cb.correlatedWithMeasures) cb.correlatedWithMeasures = [];
+                    ca.correlatedWithMeasures.push({ otherColumn: cb.name, r: rounded });
+                    cb.correlatedWithMeasures.push({ otherColumn: ca.name, r: rounded });
                 }
             }
+        }
+        for (const { c } of measureIdx) {
+            if (!c.correlatedWithMeasures) continue;
+            c.correlatedWithMeasures.sort((p, q) => Math.abs(q.r) - Math.abs(p.r) || (p.otherColumn < q.otherColumn ? -1 : 1));
+            c.correlatedWithMeasures.length = Math.min(c.correlatedWithMeasures.length, CORRELATED_PER_MEASURE);
         }
 
         // VALUE-SET OVERLAP pass (2026-06-07). For each non-measure column, compute —

@@ -343,13 +343,19 @@ export type LLMColumnWithValue =
         // rate is 100%/0%). The recurring default-rate heatmap bug (recurring in production).
         isBinaryFlag?: boolean
         // collinearWithMeasures (Layer C, 2026-06-20): for a MEASURE, the names of the
-        // OTHER measures it is ~collinear with (|Pearson r| >= 0.98 over the rows where
+        // OTHER measures it is ~collinear with (|Pearson r| >= 0.97 over the rows where
         // both are present) — they encode the SAME axis (e.g. Views and 2×Views, a value
         // and its running total). Lets the server KNOW whether two INDEPENDENT continuous
         // axes exist: a correlation chart (scatter/regression/bubble) on collinear-only
         // measures is a trivial diagonal. Only present (and only on measures that ARE
         // collinear with something) when the client computed it; absent ⇒ no signal.
         collinearWithMeasures?: string[]
+        // correlatedWithMeasures: for a MEASURE, the other measures it MOVES WITH below the
+        // collinear cut - 0.8 <= |r| < 0.97, signed r to three places, strongest first, at most
+        // eight. Not the same axis (a scatter of the pair is a real chart), but a colour or size
+        // channel carrying one while the other sits on an axis repeats that axis in a legend. The
+        // server decides where "moves together" begins; absent ⇒ no such pair, or an older client.
+        correlatedWithMeasures?: { otherColumn: string, r: number }[]
         // isFreeText (Layer C, 2026-06-20): a non-measure categorical whose values are
         // WORDS (word-like format signature + non-trivial average length), as opposed to
         // IDs / codes / dates / booleans. A word cloud needs words; the server prefers

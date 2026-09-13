@@ -33,6 +33,7 @@ import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
 import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
+import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
 import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 
@@ -155,6 +156,17 @@ export interface ChartHostConfig {
      * own skew is measured on the raw column while the ramp encodes an aggregate.
      */
     onColourSpreadCensus?: (census: ColourSpreadCensus) => void;
+    /**
+     * IS EACH DOT DRAWN AT ITS VALUE? Runs after every render, counts only.
+     *
+     * A chart drawing one dot per row along a value axis promises that a dot's position IS its
+     * value, and a force layout breaks that promise without a trace in the code: collision pushes
+     * dots along both axes, so on a dense column they drift off their values and pile against the
+     * band walls. This reads each single-row circle back to its row, finds the value axis as the
+     * column a straight line through the positions explains, and reports the share of dots more than
+     * a radius off it. It declines on anything that is not that shape.
+     */
+    onValuePlacementCensus?: (census: ValuePlacementCensus) => void;
     /** This chart declares time keyframes: frame one is allowed to be empty, so no blank verdict
      *  is issued for it. */
     animated?: boolean;
@@ -773,6 +785,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // guessing when the fills are not a ramp.
             if (config.onColourSpreadCensus) {
                 try { config.onColourSpreadCensus(censusColourSpread(container, doc)); }
+                catch { /* a census must never break a render */ }
+            }
+            // AND IS EACH DOT AT ITS VALUE? Same contract again; it needs the rows, because the
+            // only way to know a dot's value is to read it back through data-row-idx.
+            if (config.onValuePlacementCensus) {
+                try { config.onValuePlacementCensus(censusValuePlacement(container, data)); }
                 catch { /* a census must never break a render */ }
             }
             // DOES IT FIT, AND IF NOT CAN THE READER GET AT THE REST (2026-09-03)? Runs

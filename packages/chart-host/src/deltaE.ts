@@ -148,6 +148,29 @@ export function deltaE2000(c1: Lab, c2: Lab): number {
     return Math.sqrt(tL * tL + tC * tC + tH * tH + RT * tC * tH);
 }
 
+/**
+ * CIE L*a*b* (D65) back to `#rrggbb`: the exact inverse of `rgbToLab`, with each channel clipped
+ * into the sRGB gamut. A Lab point outside the gamut comes back as the nearest channel-clipped
+ * colour, which is what a browser would paint anyway.
+ */
+export function labToHex(lab: Lab): string {
+    const finv = (t: number) => { const t3 = t * t * t; return t3 > EPS ? t3 : (116 * t - 16) / KAPPA; };
+    const fy = (lab.L + 16) / 116, fx = fy + lab.a / 500, fz = fy - lab.b / 200;
+    const X = Xn * finv(fx);
+    const Y = Yn * (lab.L > KAPPA * EPS ? fy * fy * fy : lab.L / KAPPA);
+    const Z = Zn * finv(fz);
+    const lin = [
+        3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z,
+        -0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z,
+        0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z,
+    ];
+    return "#" + lin.map(v => {
+        const c = Math.max(0, Math.min(1, v));
+        const g = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+        return Math.round(g * 255).toString(16).padStart(2, "0");
+    }).join("");
+}
+
 /** CIEDE2000 between two `#rrggbb` colours. NaN when either cannot be parsed. */
 export function deltaEHex(a: string, b: string): number {
     const la = hexToLab(a), lb = hexToLab(b);

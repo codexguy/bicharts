@@ -22,6 +22,7 @@ import {
     SEASONAL_MARKERS_DEFAULT,
     MAX_MAP_POINTS_DEFAULT,
 } from "./contract";
+import { resolveAutoColorScale } from "./autoRamp";
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
 export type ResolveOptionsInput = { [K in keyof RenderOptions]?: any };
@@ -85,6 +86,10 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // ---- live-restyle knobs: `raw || undefined` / `.toString() || undefined` ----
         colorScaleLow: p.colorScaleLow || undefined,
         colorScaleHigh: p.colorScaleHigh || undefined,
+        // DERIVED, never passed: the automatic ends a blank picker stands for, resolved from the
+        // same palette and canvas the chart is handed on this render (autoRamp.ts).
+        colorScaleAutoLow: resolveAutoColorScale(p).low,
+        colorScaleAutoHigh: resolveAutoColorScale(p).high,
         // "" (global, the default), "frame", or "self"; anything else fails open to global.
         colorScaleScope: (p.colorScaleScope === "frame" || p.colorScaleScope === "self" ? p.colorScaleScope : "") as RenderOptions["colorScaleScope"],
         // Math.max(50, Math.min(100, Number(raw) || 95)) — only meaningful under "self".

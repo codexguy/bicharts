@@ -21,7 +21,13 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.7.0";
+export const HOST_CONTRACT_VERSION = "1.8.0";
+// 1.8.0 (2026-09-13): AUTOMATIC COLOUR SCALE + VALUE PLACEMENT. RenderOptions gains
+// colorScaleAutoLow / colorScaleAutoHigh, which resolveOptions always fills (resolveAutoColorScale),
+// so a chart reads `options.colorScaleLow || options.colorScaleAutoLow` and every host draws the
+// same automatic ramp. Additive: a host assembling options WITHOUT resolveOptions must add the two
+// fields for new charts to use them, and old charts never read them. createChartHost also gains
+// onValuePlacementCensus, the audit of whether single-row dots sit at their values.
 // 1.7.0 (2026-09-02): LIFT_SELECTED_CLASS. A chart whose marks REST below full opacity by design
 // (a parallel-coordinates plot drawing every line at 0.38 so overplotting reads) may stamp
 // `d3-lift-selected` on the group holding those marks; the shared stylesheet then paints a
@@ -368,6 +374,13 @@ export interface RenderOptions {
     // Live-restyle knobs (changing any of these = re-render, never a regeneration).
     colorScaleLow?: string;
     colorScaleHigh?: string;
+    // WHAT A BLANK colorScaleLow / colorScaleHigh MEANS, as two colours (see autoRamp.ts).
+    // resolveOptions ALWAYS fills both from the palette and the canvas, so a chart reads
+    // `options.colorScaleLow || options.colorScaleAutoLow` and every host draws the same automatic
+    // ramp - whose neighbouring classes stay apart as painted - instead of each generation
+    // inventing one. A host never sets these; the pickers SHOW them while their own value is blank.
+    colorScaleAutoLow?: string;
+    colorScaleAutoHigh?: string;
     colorScaleScope?: ColorScaleScope;
     // Outlier clamp (percentile, 50-100) for colorScaleScope="self" only; ignored by
     // the other two scopes. Default 95 — see COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT.
