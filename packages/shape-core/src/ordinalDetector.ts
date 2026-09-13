@@ -523,6 +523,89 @@ export function safeDistinctValuesToShip(rawDistinct: string[]): string[] | null
     return out.length > 0 ? out : null;
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Leading rank codes ("S1 - Critical", "P0: Urgent", "1. Low")
+// ──────────────────────────────────────────────────────────────────────────
+// A RANK CODE IN FRONT OF A LABEL HID THE LABEL FROM THE CATALOGUE, and the order went with it.
+//
+// A bug-tracker severity column held "S1 - Critical", "S2 - Major", "S3 - Minor", "S4 - Trivial".
+// Every one of those words is a catalogue rung - the same column written "Critical / Major / Minor /
+// Trivial" resolves on the Trivial..Blocker scale - but the code glued to the front made each value a
+// string the catalogue had never seen. Nothing matched, no order shipped, and the column reached the
+// server as an unordered category, so an ordered encoding was refused for it. The column that states
+// its order TWICE, once in a number and once in a severity word, was the one treated as having none.
+//
+// SO THE CODE IS PEELED OFF AND THE LABEL IS MATCHED EXACTLY AS BEFORE - under rules strict enough
+// that peeling can never invent an order the data does not already carry:
+//   - EVERY distinct value carries a code, and every code has the SAME letter prefix (S, P, Sev, L,
+//     or none at all; case aside). One uncoded value, or S1 beside P2, means the codes are not one
+//     scheme, and the column is judged as it always was.
+//   - The code numbers are DISTINCT. Two values sharing a rank say nothing about which comes first.
+//   - A LABEL REMAINS after the code. A bare "S1" / "P2" has no rung to check its number against, so
+//     it is left to the matching that already exists.
+//   - The codes AGREE with the catalogue order of the labels they sit on: rising all the way along the
+//     scale, or falling all the way - either direction, never a mix. S1=Critical..S4=Trivial falls as
+//     severity rises and 1. Low..3. High rises with it; both say the same thing. A column whose numbers
+//     and words DISAGREE is reported as no ordinal at all. Two order signals that contradict each other
+//     are not evidence of order, and pinning either one draws an axis the data's own author would call
+//     wrong. The same holds when two coded values land on ONE rung ("S1 - High", "S2 - high"): a rung
+//     with two ranks is a contradiction, not a scale.
+//
+// THE ORDERED DOMAIN SHIPS THE CODED STRINGS, never the peeled labels. The server and the rendered chart
+// match orderedDomain against the values in the data, and the data says "S1 - Critical", not "Critical".
+// A domain of bare labels would match nothing and filter the chart to empty.
+//
+// The code form: up to three letters, an optional space, an integer, then a separator ("-", ":", ".",
+// ")", or an en / em dash, optionally spaced) and the label. Separators are read from the ORIGINAL
+// string, because normalize() turns "-" into a space and would erase the very mark being looked for.
+const RANK_CODE = /^(\p{L}{0,3}) ?([0-9]+)\s*[-–—:.)]\s*(.+)$/u;
+
+type RankCodedValue = { code: number; original: string; label: string };
+
+// Every distinct value split into its code and label, or null when the column is not ONE coded scheme
+// (a value without a code, a different letter prefix, a repeated number, or nothing left after the code).
+function splitRankCodes(normIndex: Map<string, string>): RankCodedValue[] | null {
+    let prefix: string | null = null;
+    const numbers = new Set<number>();
+    const out: RankCodedValue[] = [];
+    for (const original of normIndex.values()) {
+        const m = RANK_CODE.exec(original.trim());
+        if (!m) return null;
+        const letters = m[1].toLowerCase();
+        if (prefix === null) prefix = letters;
+        else if (letters !== prefix) return null;
+        const code = Number(m[2]);
+        if (numbers.has(code)) return null;
+        if (normalize(m[3]) === "") return null;
+        numbers.add(code);
+        out.push({ code, original, label: m[3] });
+    }
+    return out;
+}
+
+// The labels' catalogue order checked against their codes. `undefined` when the labels match nothing
+// (the column falls through to today's matching); null when they match but the codes contradict the
+// order; otherwise the detection re-expressed in the CODED strings.
+function detectRankCodedOrdinal(coded: RankCodedValue[], locale?: string): OrdinalDetectionResult | null | undefined {
+    const labels = detectScaleOrCalendar(buildNormalizedIndex(coded.map(c => c.label)), locale);
+    if (labels === null) return undefined;
+    // A domain SHORTER than the coded set means two coded values collapsed onto one rung (same label,
+    // a case variant, a synonym, two spellings of one month). Once that is ruled out, every label is a
+    // distinct string and maps back to exactly one coded value.
+    if (labels.orderedDomain.length !== coded.length) return null;
+    const byLabel = new Map<string, RankCodedValue>();
+    for (const c of coded) byLabel.set(c.label, c);
+    const inOrder = labels.orderedDomain.map(l => byLabel.get(l));
+    if (inOrder.some(c => c === undefined)) return null;
+    let rising = true, falling = true;
+    for (let i = 1; i < inOrder.length; ++i) {
+        if (inOrder[i]!.code <= inOrder[i - 1]!.code) rising = false;
+        if (inOrder[i]!.code >= inOrder[i - 1]!.code) falling = false;
+    }
+    if (!rising && !falling) return null;
+    return { pattern: labels.pattern, orderedDomain: inOrder.map(c => c!.original) };
+}
+
 // Run all patterns against the user's distinct values; return the
 // highest-scoring match, or null if none qualify.
 export function detectOrdinalDomain(rawValues: string[], locale?: string): OrdinalDetectionResult | null {
@@ -530,6 +613,18 @@ export function detectOrdinalDomain(rawValues: string[], locale?: string): Ordin
     const normIndex = buildNormalizedIndex(rawValues);
     if (normIndex.size < 2) return null;
 
+    // A column that is one coded scheme ("S1 - Critical" ...) is judged on its labels first; see the
+    // rank-code block above. Labels that match nothing fall through to the column as written.
+    const coded = splitRankCodes(normIndex);
+    if (coded !== null) {
+        const verdict = detectRankCodedOrdinal(coded, locale);
+        if (verdict !== undefined) return verdict;
+    }
+    return detectScaleOrCalendar(normIndex, locale);
+}
+
+// The catalogue + calendar matching over an already-built normalized index.
+function detectScaleOrCalendar(normIndex: Map<string, string>, locale?: string): OrdinalDetectionResult | null {
     // Resolve each user value to its canonical term (synonym-aware). canonIndex
     // maps canonical → the user's ORIGINAL string, so orderedDomain preserves the
     // user's own spelling while matching tolerates synonyms.
