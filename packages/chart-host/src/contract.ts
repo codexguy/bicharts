@@ -194,6 +194,15 @@ export const ANIM_LOOP_DELAY_MIN = 0;
 export const ANIM_MAX_IDEAL_FRAMES_DEFAULT = 60;
 export const ANIM_MAX_IDEAL_FRAMES_MIN = 3;
 export const ANIM_MAX_IDEAL_FRAMES_MAX = 500;
+// The animation options by NAME, as one list, in the order a settings surface shows them. A host
+// that exposes or documents these knobs iterates this instead of typing its own copy: a hand-kept
+// list of seven names is exactly how an integration guide came to describe six of them, and how a
+// host can add a knob to its pane and forget to clear it when the reader puts it back to default.
+// `satisfies` keeps every entry a real RenderOptions field, so a rename breaks the build here.
+export const ANIMATION_OPTION_KEYS = [
+    "animAutoPlay", "animPlaySpeedMs", "animLoopDelaySec", "animStopAtEnd",
+    "animMaxIdealFrames", "animTimelineStyle", "filtersDuringPlay",
+] as const satisfies readonly (keyof RenderOptions)[];
 // Outlier clamp for colorScaleScope="self": the diverging domain's half-width is the
 // Nth percentile of |relative change| across all region-frame pairs (not the raw max),
 // so one runaway region can't flatten everyone else's contrast to nothing. Deliberately a

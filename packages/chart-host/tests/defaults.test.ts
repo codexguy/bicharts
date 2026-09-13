@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { resolveOptions } from "../src/defaults";
-import { RenderOptions, MAX_MAP_POINTS_DEFAULT } from "../src/contract";
+import { RenderOptions, MAX_MAP_POINTS_DEFAULT, ANIMATION_OPTION_KEYS } from "../src/contract";
 
 // BYTE-COMPARE lock: resolveOptions must reproduce EXACTLY the normalization that was
 // inline in the visual's option assembly, so routing the visual through it is
@@ -354,5 +354,45 @@ describe("maxMapPoints: one default for every host", () => {
         expect(resolveOptions({ maxMapPoints: 1000 }).maxMapPoints).toBe(1000);
         expect(resolveOptions({ maxMapPoints: "5000" }).maxMapPoints).toBe(5000);
         expect(resolveOptions({ maxMapPoints: 1500.4 }).maxMapPoints).toBe(1500);
+    });
+});
+
+describe("ANIMATION_OPTION_KEYS: the one list of animation knobs", () => {
+    // Hosts iterate this to build a settings surface, to clear a knob the reader reset, and to
+    // document the options - so it must name every animation field and nothing that is not one.
+    it("names the seven animation fields, once each", () => {
+        expect([...ANIMATION_OPTION_KEYS]).toEqual([
+            "animAutoPlay", "animPlaySpeedMs", "animLoopDelaySec", "animStopAtEnd",
+            "animMaxIdealFrames", "animTimelineStyle", "filtersDuringPlay",
+        ]);
+        expect(new Set(ANIMATION_OPTION_KEYS).size).toBe(ANIMATION_OPTION_KEYS.length);
+    });
+
+    it("every entry resolves to its default when a host sends nothing", () => {
+        // The contract a host relies on when it clears a knob by sending undefined: the resolved
+        // value is the shared default, never undefined and never the previous value.
+        const out = resolveOptions({}) as Record<string, unknown>;
+        for (const k of ANIMATION_OPTION_KEYS) {
+            expect(k in out, `${k} is a key of resolveOptions({})`).toBe(true);
+            expect(out[k], `${k} resolves to a value`).not.toBeUndefined();
+        }
+        const cleared = resolveOptions(Object.fromEntries(ANIMATION_OPTION_KEYS.map(k => [k, undefined])));
+        expect(cleared.animPlaySpeedMs).toBe(1000);
+        expect(cleared.animLoopDelaySec).toBe(3);
+        expect(cleared.animMaxIdealFrames).toBe(60);
+        expect(cleared.animTimelineStyle).toBe("");
+        expect(cleared.animAutoPlay).toBe(false);
+        expect(cleared.animStopAtEnd).toBe(false);
+        expect(cleared.filtersDuringPlay).toBe(false);
+    });
+
+    it("covers every animation field RenderOptions declares", () => {
+        // The other direction: a NEW anim* field on the contract must join the list, or a host
+        // building its pane from the list silently lacks the knob.
+        const s = fs.readFileSync(new URL("../src/contract.ts", import.meta.url), "utf8");
+        const body = s.slice(s.indexOf("export interface RenderOptions {")).split(/\n\}/)[0];
+        const animFields = [...body.matchAll(/^ {4}((?:anim[A-Z][A-Za-z0-9]*)|filtersDuringPlay)\??\s*:/gm)].map(m => m[1]);
+        expect(animFields.length).toBeGreaterThanOrEqual(7);
+        expect([...animFields].sort()).toEqual([...ANIMATION_OPTION_KEYS].sort());
     });
 });
