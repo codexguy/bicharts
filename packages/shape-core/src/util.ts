@@ -173,6 +173,79 @@ export function wholeDayIso(date: any): string | null {
     return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 }
 
+/**
+ * The UTC midnight of the calendar day a LOCAL-midnight Date names. `new Date(2026, 6, 13)` in a
+ * UTC+05:30 browser is 2026-07-12T18:30Z; this returns 2026-07-13T00:00Z. Only meaningful for a Date
+ * `wholeDayFrame` calls "local"; see `localMidnightDateColumns` for when to use it.
+ */
+export function localMidnightToUtcDay(d: Date): Date {
+    const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const y = d.getFullYear();
+    if (y >= 0 && y < 100) utc.setUTCFullYear(y);
+    return utc;
+}
+
+/**
+ * WHICH DATE COLUMNS ARRIVED AT THE READER'S LOCAL MIDNIGHT.
+ *
+ * The render contract is that a date with no time of day is the UTC midnight of its day, so a chart
+ * reads it with UTC accessors. Most sources honour that: an Excel serial, an ISO text date and a
+ * re-assembled date hierarchy are all built at UTC midnight. A Power BI plain date field is not - it
+ * reaches the visual as a JS Date at the reader's LOCAL midnight, and serialising that gives a
+ * non-midnight instant. WEST of Greenwich it is later on the same UTC day, which is why the defect
+ * hid; EAST of Greenwich it is on the PREVIOUS UTC day, so every UTC read prints the day before the
+ * cell (and the month before, on the 1st).
+ *
+ * A column qualifies when it is typed as a date or time, every non-empty value is a Date that is
+ * whole-day (`wholeDayFrame` is "utc" or "local"), and at least one value is local-midnight-not-UTC.
+ * Any time of day, any non-Date value, or only UTC-midnight values leaves the column out. In a UTC+0
+ * browser the two frames coincide and nothing qualifies, which is correct: nothing is wrong there.
+ */
+export function localMidnightDateColumns(
+    columns: ReadonlyArray<{ name: string; dataType?: string | null }>,
+    rows: ReadonlyArray<Record<string, any> | null | undefined>,
+): string[] {
+    const out: string[] = [];
+    for (const c of columns) {
+        if (!c || !/date|time/i.test(String(c.dataType ?? ""))) continue;
+        let local = 0;
+        let ok = true;
+        for (const r of rows) {
+            const v = r ? r[c.name] : undefined;
+            if (v === null || v === undefined || v === "") continue;
+            if (!(v instanceof Date)) { ok = false; break; }
+            const frame = wholeDayFrame(v);
+            if (frame === null) { ok = false; break; }
+            if (frame === "local") local++;
+        }
+        if (ok && local > 0) out.push(c.name);
+    }
+    return out;
+}
+
+/**
+ * The rows with every local-midnight date in `localMidnightDateColumns` replaced by the UTC midnight
+ * of its day. Row objects are shallow-copied only when a column changes; the input is never mutated,
+ * and when nothing qualifies the SAME array comes back, so a caller can tell cheaply.
+ */
+export function normalizeLocalMidnightDates<T extends Record<string, any>>(
+    columns: ReadonlyArray<{ name: string; dataType?: string | null }>,
+    rows: T[],
+): { rows: T[]; columns: string[] } {
+    const names = localMidnightDateColumns(columns, rows);
+    if (names.length === 0) return { rows, columns: names };
+    const fixed = rows.map(r => {
+        if (!r) return r;
+        const copy: Record<string, any> = { ...r };
+        for (const n of names) {
+            const v = copy[n];
+            if (v instanceof Date && wholeDayFrame(v) === "local") copy[n] = localMidnightToUtcDay(v);
+        }
+        return copy as T;
+    });
+    return { rows: fixed, columns: names };
+}
+
 /** ISO calendar dates, which Date.parse already reads as UTC: YYYY, YYYY-MM, YYYY-MM-DD. */
 const ISO_DATE_ONLY_RE = /^\s*\d{4}(-\d{2}(-\d{2})?)?\s*$/;
 /** A trailing `Z` or `+HH:MM` / `-HHMM` - an offset the author actually stated. */

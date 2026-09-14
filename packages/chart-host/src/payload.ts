@@ -15,6 +15,7 @@
 // through `paths`, so `tsc -b` failed where the bundler succeeded.
 import {
     buildGeoIsoColumn, isJoinGeoKind, buildGeoPointColumns, resolvePointRoles, type GeoKind,
+    normalizeLocalMidnightDates,
 } from "@bicharts/shape-core";
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
@@ -112,6 +113,16 @@ export interface RenderPayload {
      * facts, and a single blended count would hide which end of the route is the coarse one.
      */
     geoPointDest?: GeoPointReport;
+    /**
+     * The host re-anchored date cells to the UTC midnight of their day (opts.utcDays). Promoted into
+     * options.dateCellsAreUtcDays, which tells a chart - and the server-shipped date shim inside it -
+     * that no cell can still be sitting at the reader's local midnight. Present only when utcDays was
+     * requested, so every other payload is unchanged.
+     */
+    dateCellsAreUtcDays?: boolean;
+    /** Which columns the re-anchoring actually moved (diagnostics; empty when every date was already
+     *  UTC midnight). Present only alongside dateCellsAreUtcDays. */
+    utcDayColumns?: string[];
 }
 
 /** One resolved point channel — the coordinate arrays plus the metadata a chart annotates
@@ -235,8 +246,21 @@ export function buildRenderPayload(
     // which is every chart but one — the output is byte-identical to before, because the
     // new columns are appended last and nothing existing moves.
     destination?: GeoPointBinding | null,
+    // DATE CELLS AS THE DAY THEY NAME. `utcDays: true` re-anchors every date column that arrived at the
+    // reader's LOCAL midnight to the UTC midnight of its day before serialising (shape-core
+    // normalizeLocalMidnightDates), so a chart's UTC reads print the cell's day east of Greenwich too.
+    // A host passes it only for a chart that reads no date in local time (codeReadsDatesInLocalTime /
+    // vegaSpecReadsDatesInLocalTime): local-time code reads a local-midnight date correctly already.
+    // Absent, the payload is byte-identical to before.
+    opts?: { utcDays?: boolean } | null,
 ): RenderPayload {
     const colNames = cols.map(c => c.name);
+    let utcDayColumns: string[] | null = null;
+    if (opts?.utcDays) {
+        const norm = normalizeLocalMidnightDates(cols as any, rowObjs);
+        rowObjs = norm.rows;
+        utcDayColumns = norm.columns;
+    }
 
     const o = resolvePointChannel(cols, rowObjs, point);
     const d = resolvePointChannel(cols, rowObjs, destination);
@@ -318,6 +342,7 @@ export function buildRenderPayload(
         // Survives a refusal that placed nothing — see geoPointRefused. Omitted when empty so
         // the ordinary case adds no bytes.
         ...(rolesRefused.length ? { geoPointRefused: rolesRefused } : {}),
+        ...(utcDayColumns ? { dateCellsAreUtcDays: true, utcDayColumns } : {}),
     };
 }
 

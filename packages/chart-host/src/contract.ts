@@ -21,7 +21,12 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.8.0";
+export const HOST_CONTRACT_VERSION = "1.9.0";
+// 1.9.0 (2026-09-14): DATE CELLS AS THE DAY THEY NAME. RenderOptions gains dateCellsAreUtcDays: true when the
+// host has re-anchored every date column that arrived at the reader's LOCAL midnight to the UTC midnight of
+// its day (buildRenderPayload opts.utcDays), so a UTC read prints the cell's own day in every zone. A chart,
+// or a date shim shipped inside one, must not re-anchor again when it is set. Additive: a host that does not
+// set it leaves every chart exactly as it was, and a chart that never reads it is unaffected.
 // 1.8.0 (2026-09-13): AUTOMATIC COLOUR SCALE + VALUE PLACEMENT. RenderOptions gains
 // colorScaleAutoLow / colorScaleAutoHigh, which resolveOptions always fills (resolveAutoColorScale),
 // so a chart reads `options.colorScaleLow || options.colorScaleAutoLow` and every host draws the
@@ -337,6 +342,10 @@ export interface RenderOptions {
     // the two ends routinely resolve at different tiers — a table of city-to-country
     // shipments places every origin exactly and every destination on a country anchor. One
     // blended count would claim a precision neither end has and hide which half to fix.
+    // True when the host re-anchored local-midnight date cells to the UTC midnight of their day before
+    // serialising (contract 1.9.0). Absent means "not known": a chart or a date shim may still see a
+    // date at the reader's local midnight and should treat it as the day it names.
+    dateCellsAreUtcDays?: boolean;
     geoPointDest?: {
         precision: GeoPointPrecision | null;
         precisionCounts: Record<GeoPointPrecision, number>;

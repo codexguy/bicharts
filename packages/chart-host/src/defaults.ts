@@ -53,6 +53,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // tests/defaults.test.ts now compares the two lists, because four instances of one
         // omission is a missing check, not four mistakes.
         geoPointDest: p.geoPointDest,
+        // A host FACT about the data it serialised (contract 1.9.0), passed through untouched.
+        dateCellsAreUtcDays: p.dateCellsAreUtcDays,
         // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
         // undefined, and every map chart then fell back to whatever number its own code carried -
         // 1000 in every archetype written so far - while the offer gate used the server's. One

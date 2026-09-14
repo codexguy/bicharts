@@ -64,6 +64,8 @@ import { registerCityTable as _registerCityTable } from "@bicharts/shape-core";
  *  note above registerCityTable in shape-core's geoPoint.ts before using it. */
 export function registerCityTable(packed: string): void { _registerCityTable(packed); }
 export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./payload";
+// Which clock a chart reads its dates in - a host asks before passing buildRenderPayload opts.utcDays.
+export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./dateCells";
 // requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):
 // ask BEFORE rendering, explain AFTER a failure. Both belong on the public surface — a host
 // that can only do the second one has already drawn a blank chart.
