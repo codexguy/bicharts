@@ -148,6 +148,52 @@ describe("censusColourSpread", () => {
         expect(c.crowdShare).toBeGreaterThan(50);
     });
 
+    // A PLAIN OVERLAY IS NOT THE RAMP'S CROWD. A density contour drew 415 scatter dots in one near-black
+    // fill over 7 green contour bands; black sat on the line through the ramp, so the dots were read as
+    // 98% of a ramp and reported `crowd80`. 3 of 4 `crowd80` readings in a replay of the stored contour
+    // and crowd-flagged charts were that shape.
+    function tagged(tag: string, fill: string, i: number) {
+        const el = doc.createElementNS("http://www.w3.org/2000/svg", tag) as any;
+        el.setAttribute("fill", fill);
+        el.setAttribute("class", MARK_CLASS);
+        el.setAttribute(ROW_IDX_ATTR, String(i));
+        container.appendChild(el);
+        return el;
+    }
+    const greens = ["#d8e8cb", "#c7deb4", "#b6d49f", "#a4ca8a", "#93c075", "#81b660", "#70ad47"];
+
+    it("leaves a single-fill overlay of dots out - the contour chart's 415 dots are not its ramp", () => {
+        for (let i = 0; i < 415; i++) tagged("circle", "#1b1b1b", i);
+        greens.forEach((g, i) => tagged("path", g, 1000 + i));
+        const c = censusColourSpread(container, doc);
+        // The 7 bands alone are too few marks to have a share: the census declines, as it should.
+        expect(c).toEqual({ marks: 0, distinctFills: 0, crowdShare: 0, spanDeltaE: 0 });
+        expect(colourSpreadFlag(c)).toBe("");
+    });
+
+    it("measures the ramp under an overlay exactly as it measures the ramp alone", () => {
+        const vals = ordersPerRegion(300);
+        const max = Math.max(...vals);
+        vals.forEach((v, i) => mark(blues((v - 1) / (max - 1)), i));
+        const alone = censusColourSpread(container, doc);
+        for (let i = 0; i < 200; i++) tagged("circle", "#222222", 5000 + i);
+        expect(censusColourSpread(container, doc)).toEqual(alone);
+    });
+
+    it("keeps circles that ARE the colour encoding - a beeswarm coloured by value is counted", () => {
+        for (let i = 0; i < 240; i++) tagged("circle", blues((i % 6) / 5), i);
+        for (let i = 0; i < 30; i++) tagged("rect", "#eeeeee", 1000 + i);   // a uniform background strip of 30
+        const c = censusColourSpread(container, doc);
+        expect(c.marks).toBe(240);
+        expect(c.distinctFills).toBe(6);
+    });
+
+    it("does not drop a handful of uniform labels - three labels are not an overlay", () => {
+        for (let i = 0; i < 120; i++) tagged("circle", blues((i % 5) / 4), i);
+        for (let i = 0; i < 3; i++) tagged("text", "#1b1b1b", 900 + i);
+        expect(censusColourSpread(container, doc).marks).toBe(123);
+    });
+
     it("never throws, whatever it is handed", () => {
         expect(censusColourSpread(null as any)).toEqual({ marks: 0, distinctFills: 0, crowdShare: 0, spanDeltaE: 0 });
         expect(censusColourSpread({} as any)).toEqual({ marks: 0, distinctFills: 0, crowdShare: 0, spanDeltaE: 0 });

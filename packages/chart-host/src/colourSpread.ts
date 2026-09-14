@@ -184,13 +184,36 @@ export function censusColourSpread(container: any, doc?: any): ColourSpreadCensu
         if (els.length === 0 || els.length > ELEMENT_CAP) return EMPTY;
         const ownerDoc = doc ?? container.ownerDocument;
 
+        const painted: { rgb: [number, number, number]; tag: string }[] = [];
+        for (const el of els) {
+            const rgb = toRgb(fillOf(el, styleOf(el, ownerDoc)));
+            if (rgb) painted.push({ rgb, tag: String(el.tagName || "").toLowerCase() });
+        }
+
+        // A PLAIN OVERLAY CARRIES NO COLOUR ENCODING, so it is not the ramp's crowd. A density contour
+        // drew 415 scatter dots in one fill over 7 contour bands: the dots were 98% of the marks, the
+        // near-black fill sat on the line through the green ramp, and the census reported the dots as
+        // `crowd80`. In a replay of every stored contour and crowd-flagged chart, 3 of 4 `crowd80`
+        // readings were that. A group of marks of ONE element type, at least MIN_MARKS strong, that all
+        // share ONE fill leaves the census when the rest of the marks carry more than one fill; three
+        // labels are not an overlay (hence the floor), and a chart that is all one fill is left alone
+        // (it has fewer than MIN_RAMP_FILLS and declines anyway).
+        const byTag = new Map<string, { fills: Set<string>; n: number }>();
+        for (const p of painted) {
+            const g = byTag.get(p.tag) ?? { fills: new Set<string>(), n: 0 };
+            g.fills.add(p.rgb.join(","));
+            g.n++;
+            byTag.set(p.tag, g);
+        }
+        const overlays = new Set([...byTag].filter(([, g]) => g.fills.size === 1 && g.n >= MIN_MARKS).map(([t]) => t));
+        const restFills = new Set([...byTag].filter(([t]) => !overlays.has(t)).flatMap(([, g]) => [...g.fills]));
+        const counted = restFills.size > 1 ? painted.filter(p => !overlays.has(p.tag)) : painted;
+
         const distinct = new Set<string>();
         const cells = new Map<string, { rgb: [number, number, number]; n: number }>();
         let marks = 0;
 
-        for (const el of els) {
-            const rgb = toRgb(fillOf(el, styleOf(el, ownerDoc)));
-            if (!rgb) continue;
+        for (const { rgb } of counted) {
             marks++;
             distinct.add(rgb.join(","));
             const k = cellKey(rgb);
