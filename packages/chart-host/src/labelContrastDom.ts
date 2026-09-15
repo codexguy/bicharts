@@ -13,13 +13,13 @@
     before this module the Excel add-in and a React page shipped every one of those unreadable
     labels that the visual had already learned to fix.
 
-    THE SHAPE OF THE PASS. For every <text> in the container: find the filled shapes whose
-    geometry actually backs its glyph box (isPointInFill over a small sample grid - a bounding
-    box is exact for a rect and wrong for a ring, whose box contains its hole), pick the topmost
-    opaque one as the cell and any translucent shape drawn above it as a pill, composite the real
-    stack over the page background, and hand the result to decideLabelColor. Then apply what it
-    says. Every guard in here is an incident; the comments name them so a future edit knows what
-    it is about to reopen.
+    THE SHAPE OF THE PASS. For every <text> in the container: find the filled shapes drawn
+    BENEATH it whose geometry actually backs its glyph box (isPointInFill over a small sample
+    grid - a bounding box is exact for a rect and wrong for a ring, whose box contains its hole),
+    pick the topmost opaque one as the cell and any translucent shape drawn above it as a pill,
+    composite the real stack over the page background, and hand the result to decideLabelColor.
+    Then apply what it says. Every guard in here is an incident; the comments name them so a
+    future edit knows what it is about to reopen.
 
     NOTHING HERE THROWS. It runs after a render that already succeeded and must never be the
     reason a delivered chart fails. Where the engine cannot answer a geometry question (jsdom, a
@@ -63,13 +63,16 @@ export interface LabelContrastReport {
     offFill: number;
     /** Labels mostly over the page with one end clipping a mark - handed back to the chart. */
     pageMajority: number;
+    /** Labels with a painting shape over their box that was set aside because it is drawn ON TOP
+     *  of them - an occluder, never a background. See drawnBeneath. */
+    paintedOver: number;
     /** Why the pass did nothing, when it did nothing. */
     skipped?: "no-container" | "no-shapes" | "too-many-shapes" | "too-many-texts" | "error";
 }
 
-const EMPTY: LabelContrastReport = { rects: 0, scanned: 0, fixed: 0, pillsBoosted: 0, offFill: 0, pageMajority: 0 };
+const EMPTY: LabelContrastReport = { rects: 0, scanned: 0, fixed: 0, pillsBoosted: 0, offFill: 0, pageMajority: 0, paintedOver: 0 };
 
-type HostRect = { r: DOMRect; fill: string; op: number; area: number; el: Element; ord: number };
+type HostRect = { r: DOMRect; fill: string; op: number; area: number; el: Element; ord: number; root: Element | null };
 
 /*
     WHICH SAMPLE POINTS LAND INSIDE THE SHAPE'S FILL, not just how many. The count is all the
@@ -99,6 +102,51 @@ function backedSamples(el: Element, pts: { x: number; y: number }[]): boolean[] 
     } catch {
         return null; // no layout engine / cross-document node
     }
+}
+
+/*
+    A SHAPE PAINTED OVER A LABEL IS NOT THAT LABEL'S BACKGROUND (an incident: the ring value
+    labels of a rose chart, "$2,000,000" and "$3,000,000", repainted #ffffff on a WHITE page).
+
+    The chart drew its grid rings first - each ring's value on a page-coloured plate - and the
+    opaque wedges after them, so the longest wedges cover the first half of those two labels.
+    Nothing here asked which was drawn first, so the wedge under the covered half was taken for
+    the label's background and the whole label was recoloured to contrast with it: the half that
+    is actually visible, sitting on the plate and the canvas, vanished. Measured in real Chromium
+    on that generation's own code at its real size: rects 55, scanned 3, fixed 3 - the same
+    `fixed === scanned` tell this module already names.
+
+    Inside one <svg> the painter's model settles it: document order IS paint order (SVG has no
+    z-index any browser honours), so a shape that comes AFTER the text occludes it. Recolouring
+    cannot make a covered glyph readable, and a translucent occluder adopted as a "pill" gets
+    BOOSTED to 0.9 over the very text it was supposed to back. Such a shape is dropped from
+    candidacy; the label is judged against what is really beneath it, or left alone when nothing
+    is.
+
+    ACROSS two <svg> elements, order is CSS stacking (position, z-index), which document order
+    does NOT decide - an absolutely-positioned label layer can sit above a marks layer that
+    follows it. So the rule is scoped to one outermost <svg>, and a shape in another one keeps
+    the behaviour this pass has always had: it can only ever narrow a backing, never invent one.
+*/
+// Node.DOCUMENT_POSITION_FOLLOWING, spelled out: this module must not need a DOM global to load.
+const DOC_POSITION_FOLLOWING = 4;
+
+/** The outermost <svg> an element is drawn in, looking no further out than the container. */
+function paintRoot(el: Element, container: Element): Element | null {
+    let root: Element | null = null;
+    for (let n: Element | null = el.parentElement; n; n = n.parentElement) {
+        if (String(n.tagName || "").toLowerCase() === "svg") root = n;
+        if (n === container) break;
+    }
+    return root;
+}
+
+/** True unless the shape is drawn ON TOP of the text - later in document order in the same SVG.
+ *  Unknowable (another SVG, no compareDocumentPosition) keeps the answer the pass already had. */
+function drawnBeneath(shape: HostRect, text: Element, textRoot: Element | null): boolean {
+    if (!shape.root || shape.root !== textRoot) return true;
+    if (typeof shape.el.compareDocumentPosition !== "function") return true;
+    return (shape.el.compareDocumentPosition(text) & DOC_POSITION_FOLLOWING) !== 0;
 }
 
 /*
@@ -138,7 +186,8 @@ export function applyLabelContrast(
             if (!fill || fill === "none") return;
             const opAttr = el.getAttribute("fill-opacity");
             const op = opAttr === null ? 1 : parseFloat(opAttr);
-            rects.push({ r, fill, op: isFinite(op) ? op : 1, area: r.width * r.height, el, ord: ord++ });
+            rects.push({ r, fill, op: isFinite(op) ? op : 1, area: r.width * r.height, el, ord: ord++,
+                         root: paintRoot(el, container) });
         };
         const shapeEls = container.querySelectorAll<SVGGraphicsElement>("rect, path");
         if (shapeEls.length === 0) { report.skipped = "no-shapes"; return report; }
@@ -174,9 +223,20 @@ export function applyLabelContrast(
             // Bounding boxes first (cheap, and all 99% of shapes need), then refine each survivor
             // to the area it REALLY backs. The prefilter keeps the point tests bounded: they run
             // on the handful of shapes whose box overlaps this glyph, never on the whole harvest.
+            // A shape drawn OVER the label is dropped here - it is an occluder, not a backing -
+            // and counted once per label when it actually paints, so the rule is visible in the
+            // telemetry line rather than inferred from a fix that stopped happening.
+            const txRoot = paintRoot(tx, container);
+            let over = 0;
             const boxed = rects
                 .map(mk => ({ mk, ov: ovArea(mk.r) }))
-                .filter(x => x.ov > 0);
+                .filter(x => {
+                    if (!(x.ov > 0)) return false;
+                    if (drawnBeneath(x.mk, tx, txRoot)) return true;
+                    if (effAlpha(x.mk) >= PILL_MIN_ALPHA) over++;
+                    return false;
+                });
+            if (over > 0) report.paintedOver++;
             // One grid per glyph, shared by every candidate, so the hits can be UNIONED.
             // `painted` accumulates the points held by shapes that actually put colour down: a
             // fill:'transparent' cross-filter hit target passes isPointInFill over its whole disc
@@ -214,14 +274,16 @@ export function applyLabelContrast(
             report.scanned++;
 
             // The visible background = the OPAQUE shape backing the MOST of the glyph (tie ->
-            // topmost paint order). Opaque-first so a translucent pill is not mistaken for the
-            // tile; topmost tie-break so a treemap leaf wins over its parent.
+            // topmost paint order), among the shapes drawn BENEATH it. Opaque-first so a
+            // translucent pill is not mistaken for the tile; topmost tie-break so a treemap leaf
+            // wins over its parent.
             const opaqueUnder = under.filter(x => effAlpha(x.mk) >= PILL_OPAQUE_ALPHA);
             const cellEntry = (opaqueUnder.length ? opaqueUnder : under)
                 .reduce((a, b) => ((b.ov > a.ov) || (b.ov === a.ov && b.mk.ord > a.mk.ord)) ? b : a);
             const cell = cellEntry.mk;
             // A contrast PILL: a translucent label backdrop painted ABOVE the cell (higher paint
-            // order) and under the text - boosted below so it actually backs the glyph.
+            // order) and under the text - the second half now enforced by the candidate filter
+            // above rather than assumed - boosted below so it actually backs the glyph.
             //
             // ALPHA-0 IS NOT A PILL. A fully transparent shape is an invisible HIT TARGET, not a
             // backdrop: the legend rule emits a full-entry fill:'transparent' rect so the whole

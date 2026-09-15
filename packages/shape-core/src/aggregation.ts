@@ -99,6 +99,10 @@ export const INTENSIVE_WORD_TOKENS: readonly string[] = [
     "age", "bmi", "temperature", "density", "pressure", "humidity", "ph",
     "velocity", "speed", "elevation", "altitude",
     "latency", "throughput", "bandwidth", "iops",
+    // Defect / impurity RATES: parts per million, parts per billion, defects per million
+    // opportunities, basis points. Each is a ratio wearing a count's clothes, and a SUM of
+    // them is meaningless - pooling 111 parts' ppm into one "Other" bar is what named them.
+    "ppm", "ppb", "dpmo", "bps",
     // ── THE SAME QUANTITIES IN THE LANGUAGES A MODEL IS AUTHORED IN (2026-09-12).
     // Every token above is an English word, so a Dutch model's `Sum of Temperatuur` resolved
     // ADDITIVE and nothing warned that a temperature was being totalled — the same gap that was
@@ -159,6 +163,10 @@ export const INTENSIVE_SUFFIX_TOKENS: readonly string[] = [
     "gpa", "percentile", "quantile", "bmi", "density", "pressure", "humidity",
     "velocity", "efficiency", "occupancy",
     "latency", "throughput", "bandwidth", "iops",
+    // Defect / impurity RATES: parts per million, parts per billion, defects per million
+    // opportunities, basis points. Each is a ratio wearing a count's clothes, and a SUM of
+    // them is meaningless - pooling 111 parts' ppm into one "Other" bar is what named them.
+    "ppm", "ppb", "dpmo", "bps",
 ];
 /* parity:intensive-suffix:end */
 

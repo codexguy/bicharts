@@ -221,6 +221,101 @@ describe("applyLabelContrast - a ring's hole is canvas", () => {
 });
 
 /*
+    PAINT ORDER - a shape drawn ON TOP of a label is not what the label is read against.
+
+    The incident is a rose chart: grid rings first, each ring's value on a page-coloured plate,
+    then the opaque wedges - so the longest wedges cover the first half of "$2,000,000" and
+    "$3,000,000". The pass took the covering wedge for the labels' background and repainted both
+    #ffffff on a white page, which erased the half a reader can actually see. Inside one <svg>
+    document order IS paint order, so the shapes that follow a text are occluders and never
+    backings; across two <svg> elements it is CSS stacking, which document order does not decide,
+    and the pass keeps the answer it already had. Both halves are pinned below, with the controls
+    that must not move: a label drawn after its tile still flips, and a plate drawn after the
+    wedges is still the backdrop it was meant to be.
+*/
+describe("applyLabelContrast - a shape painted OVER a label is not its background", () => {
+    it("still recolours a label whose tile was drawn first, each in its own group", () => {
+        const marks = svg("g", { class: "marks" });
+        marks.appendChild(svg("rect", { fill: "#12239e" }, box(0, 0, 300, 200)));
+        const labels = svg("g", { class: "labels" });
+        const t = text("Qingdao", { fill: "#252423" }, box(120, 90, 60, 20));
+        labels.appendChild(t);
+        root().appendChild(marks); root().appendChild(labels);
+        const r = applyLabelContrast(container);
+        expect(r.fixed).toBe(1);
+        expect(t.getAttribute("fill")).toBe(LIGHT_TEXT);
+    });
+
+    it("leaves a label alone when an opaque wedge is drawn OVER it on a white canvas", () => {
+        const t = text("$2,000,000", { fill: "#252423" }, box(100, 90, 80, 14));
+        root().appendChild(t);
+        root().appendChild(svg("path", { class: "d3-mark", fill: "#12239e" }, box(60, 20, 90, 160)));
+        const r = applyLabelContrast(container);
+        expect(t.getAttribute("fill")).toBe("#252423");
+        expect(r.scanned).toBe(0);
+        expect(r.fixed).toBe(0);
+        expect(r.paintedOver).toBe(1);   // the occluder is counted, so the rule is visible in telemetry
+    });
+
+    it("keeps a rose chart's ring values on their plate when the wedges cover half of each", () => {
+        // The incident reduced: <g class=grid> holds each ring's plate and its value, and the
+        // wedges follow. The wedge box covers the left of both labels; what a reader sees is the
+        // right half, on the plate and the page, so the chart's own colour has to survive.
+        const grid = svg("g", { class: "grid" });
+        const plate = (y: number) => svg("rect", { fill: "#ffffff", "fill-opacity": "0.75" }, box(152, y, 70, 13));
+        const ringValue = (s: string, y: number) => text(s, { fill: "#333333" }, box(155, y + 1, 64, 11));
+        const t2 = ringValue("$2,000,000", 40);
+        const t3 = ringValue("$3,000,000", 70);
+        grid.appendChild(plate(40)); grid.appendChild(t2);
+        grid.appendChild(plate(70)); grid.appendChild(t3);
+        root().appendChild(grid);
+        root().appendChild(svg("path", { class: "d3-mark", fill: "#4e79a7" }, box(120, 20, 65, 140)));
+        const r = applyLabelContrast(container);
+        expect(t2.getAttribute("fill")).toBe("#333333");
+        expect(t3.getAttribute("fill")).toBe("#333333");
+        expect(r.fixed).toBe(0);
+        expect(r.paintedOver).toBe(2);
+    });
+
+    it("and when the same chart draws its rings AFTER the wedges, the plate is the backdrop it meant to be", () => {
+        root().appendChild(svg("path", { class: "d3-mark", fill: "#4e79a7" }, box(120, 20, 65, 140)));
+        const grid = svg("g", { class: "grid" });
+        const plate = svg("rect", { fill: "#ffffff", "fill-opacity": "0.75" }, box(152, 40, 70, 13));
+        const t = text("$2,000,000", { fill: "#333333" }, box(155, 41, 64, 11));
+        grid.appendChild(plate); grid.appendChild(t);
+        root().appendChild(grid);
+        const r = applyLabelContrast(container);
+        expect(r.pillsBoosted).toBe(1);
+        expect(plate.getAttribute("fill-opacity")).toBe("0.9");
+        expect(t.getAttribute("fill")).toBe(DARK_TEXT);
+    });
+
+    it("never boosts a translucent shape drawn OVER the text - the boost would paint on top of it", () => {
+        root().appendChild(svg("rect", { fill: "#e66c37" }, box(0, 0, 300, 200)));
+        const t = text("42.0", { fill: "#252423" }, box(130, 90, 40, 20));
+        root().appendChild(t);
+        const veil = svg("rect", { fill: "#ffffff", "fill-opacity": "0.18" }, box(100, 80, 100, 40));
+        root().appendChild(veil);
+        const r = applyLabelContrast(container);
+        expect(r.pillsBoosted).toBe(0);
+        expect(veil.getAttribute("fill-opacity")).toBe("0.18");
+        expect(t.getAttribute("fill")).toBe(LIGHT_TEXT); // judged against the tile it really sits on
+        expect(r.paintedOver).toBe(1);
+    });
+
+    it("keeps judging a label against a shape in ANOTHER svg - that order is CSS stacking", () => {
+        const t = text("Qingdao", { fill: "#252423" }, box(120, 90, 60, 20));
+        root().appendChild(t);
+        const second = svg("svg", {});
+        second.appendChild(svg("rect", { fill: "#12239e" }, box(0, 0, 300, 200)));
+        container.appendChild(second);
+        const r = applyLabelContrast(container);
+        expect(r.fixed).toBe(1);
+        expect(t.getAttribute("fill")).toBe(LIGHT_TEXT);
+    });
+});
+
+/*
     IT REACHES A HOST THROUGH createChartHost, with no option to remember. The failure mode being
     guarded is silent, so this asserts the DOM and the report, never the absence of a throw.
 */
