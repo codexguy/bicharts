@@ -123,6 +123,59 @@ describe("selection affordance", () => {
         expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(false);
     });
 
+    it("an empty click asks the CHART to clear when the chart owns the selection", () => {
+        // Found 2026-09-15. selection.clear() has always called the container's __llmXfClear slot first;
+        // the CLICK path never did, so it published an empty selection while the chart went on
+        // drawing the filter it had set. Measured through 0.5.101 in Chromium: zoomed on Sales, a
+        // real click on an empty corner fired onChange([], 'user') with the breadcrumb still
+        // reading All > Sales. The Power BI visual does not clear on an empty click and was never
+        // wrong; this is the Excel add-in and React/MCP path.
+        const h = host();
+        h.render();
+        click(marks()[0]);
+        expect(h.selection.current).toEqual([0]);
+
+        let slotCalls = 0;
+        (container as any).__llmXfClear = () => {
+            slotCalls++;
+            // A chart that owns its selection zooms out and publishes its own clear, which
+            // onXf turns into notify([]) — the same route a scrubber tick takes.
+            container.dispatchEvent(new dom.window.CustomEvent("llm-xfilter-refresh", {
+                bubbles: true, detail: { clear: true, source: "chart" },
+            }));
+        };
+        click(container);
+        expect(slotCalls).toBe(1);              // the chart was ASKED, not bypassed
+        expect(h.selection.current).toEqual([]);
+        expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(false);
+    });
+
+    it("an empty click still settles the host when the chart clears without dispatching", () => {
+        // The other branch, and the reason the notify is not simply deleted: a chart whose slot
+        // repaints but dispatches nothing would otherwise leave the host — and every subscriber —
+        // believing the old selection is live. Same contract as selection.clear().
+        const h = host();
+        h.render();
+        click(marks()[0]);
+        (container as any).__llmXfClear = () => { /* repaints, dispatches nothing */ };
+        click(container);
+        expect(h.selection.current).toEqual([]);
+        expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(false);
+    });
+
+    it("an empty click on a chart that owns NOTHING clears exactly as before", () => {
+        // The no-slot branch is the one every static chart takes, and it must be untouched:
+        // 505 adds a call, it does not change what an ordinary chart does.
+        const h = host();
+        h.render();
+        click(marks()[0]);
+        const seen: Array<[number[], string]> = [];
+        h.selection.onChange((rows, source) => seen.push([rows, source]));
+        click(container);
+        expect(seen).toEqual([[[], "user"]]);   // one notify, source 'user', not 'host'
+        expect(h.selection.current).toEqual([]);
+    });
+
     it("survives a repaint — a restyle must not silently drop the highlight", () => {
         const h = host();
         h.render();

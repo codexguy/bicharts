@@ -621,7 +621,27 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // Click on empty canvas CLEARS, the way every BI tool behaves. Without this
             // a selection is a one-way door: the React demo could filter to one city and
             // had no gesture to get back ("how can I go back to nothing selected?").
-            if (current && current.length) notify([], "user");
+            if (current && current.length) {
+                // THE CHART CLEARS ITSELF WHEN IT OWNS THE SELECTION (2026-09-15). `clear()`
+                // beside this handler has always called the container's __llmXfClear slot
+                // first; the CLICK path never did, so it published an empty selection while
+                // the chart went on drawing the filter it had set. Measured through 0.5.101
+                // in Chromium: zoomed on Sales, a real click on an empty corner fired
+                // selection.onChange([], 'user') with the breadcrumb still reading
+                // All > Sales. Every chart that owns its own selection drifts the same way -
+                // a zoomable Sunburst's focus, an animated chart's period on its scrubber.
+                //
+                // The slot zooms the chart back out and publishes its own clear through
+                // llm-xfilter-refresh, which onXf already turns into notify([]). So notify
+                // only when the chart did NOT settle it: a chart that clears without
+                // dispatching would otherwise leave the host believing the old selection is
+                // live - the same reason clear() settles unconditionally.
+                const slot = (container as any)[CONTAINER_SLOT_XF_CLEAR];
+                if (typeof slot === "function") {
+                    try { slot(); } catch { /* chart already clear */ }
+                }
+                if (current && current.length) notify([], "user");
+            }
             return;
         }
         const rows = parseRowIdxs(el.getAttribute(ROW_IDX_ATTR));

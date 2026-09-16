@@ -301,3 +301,19 @@ export { deltaEHex } from "./deltaE";
 // host's pickers show the same two values while the reader's own are blank.
 export { resolveAutoColorScale, autoRampMinStep, autoRampCanvas, AUTO_RAMP_CLASSES, AUTO_RAMP_DRAWN_OPACITY,
     AUTO_RAMP_MIN_STEP_DELTA_E, type AutoColorScale, type AutoColorScaleInput } from "./autoRamp";
+// THE PENDING-GENERATE MARKER AND ITS RECOVERY DECISIONS. A generate is a promise the
+// server keeps whether or not the client is still there to receive the answer, and every host that
+// can lose a transport mid-stream needs the same answers: is this marker still worth polling for,
+// does the served correlation prove the answer is ours, does a late pickup keep or clear it. Pure
+// and host-neutral - the persistence and the polling stay per host, the DECISIONS do not.
+export {
+    PENDING_RECOVERY_WINDOW_MS, PENDING_RECOVERY_POLL_MS, PENDING_RECOVERY_FIRST_POLL_MS,
+    PENDING_RECOVERY_FAST_PHASE_MS, PENDING_RECOVERY_MID_POLL_MS,
+    PENDING_RECOVERY_SLOW_PHASE_MS, PENDING_RECOVERY_SLOW_POLL_MS,
+    pendingRecoveryNextDelayMs, encodePendingGenerate, parsePendingGenerate,
+    markerArmedBlind, isBlindMarker, servedCorrelationProves, sameMarker,
+    decidePendingRecovery, recoveryPollRunning, recoveryOwnsTheSentence,
+    latePickupAction, latePickupKeepsMarker, pollGiveUpKeepsMarker,
+    pendingRecoveryRemainingMs, transportFailureShouldRecover,
+    type PendingGenerateMarker, type PendingRecoveryDecision, type LatePickupAction,
+} from "./pendingGenerate";
