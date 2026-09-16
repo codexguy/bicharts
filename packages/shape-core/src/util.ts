@@ -91,6 +91,22 @@ export function isDeterministicRefusal(r: { isRefusal?: boolean | null } | null 
 }
 
 /**
+ * The generation temperature a host sends when it has no setting of its own, on the wire's
+ * 1-100 scale (`LLMRequestCode.temp`).
+ *
+ * The server maps the value LINEARLY onto the selected model's own range - value / 100 times the
+ * model's maximum temperature - so 30 is 0.3 on a model whose ceiling is 1.0 and 0.6 on one whose
+ * ceiling is 2.0. A model that does not accept a temperature ignores it, and the server lowers it
+ * on each retry after a failed generation.
+ *
+ * One value in one place, because hosts that each chose their own sent the same kind of request
+ * at very different temperatures - one close to greedy, another at twice a third's - and nothing
+ * on the wire said which host had chosen what. A host with a user-facing temperature setting uses
+ * this as that setting's default.
+ */
+export const DEFAULT_TEMPERATURE = 30;
+
+/**
  * Parse a date STRING to a Date that means the same thing on every machine.
  *
  * `Date.parse` is not one rule, it is three, and only the first is portable:

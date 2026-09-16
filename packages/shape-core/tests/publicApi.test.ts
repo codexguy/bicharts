@@ -19,6 +19,7 @@ import {
     STR,
     SIMPLE_STRING_HASH,
     GET_RANDOM,
+    DEFAULT_TEMPERATURE,
 } from "../src/index";
 
 describe("@bicharts/shape-core public API", () => {
@@ -48,5 +49,14 @@ describe("@bicharts/shape-core public API", () => {
         expect(SIMPLE_STRING_HASH("Division")).toBe(SIMPLE_STRING_HASH("Division"));
         expect(normalizeMonthKey("Sept.")).toBe("sept");
         expect(monthLookupFor("en")["january"]).toBe(0);
+    });
+
+    it("the default temperature is one integer on the wire's 1-100 scale", () => {
+        // The server deserialises `temp` as an integer and divides by 100; a float fails to
+        // parse and a value outside 1-100 is clamped or ignored, so the shared default must be
+        // neither.
+        expect(Number.isInteger(DEFAULT_TEMPERATURE)).toBe(true);
+        expect(DEFAULT_TEMPERATURE).toBeGreaterThanOrEqual(1);
+        expect(DEFAULT_TEMPERATURE).toBeLessThanOrEqual(100);
     });
 });
