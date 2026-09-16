@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,16 @@ function marks() {
 function click(el: Element) {
     el.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 }
+// A selection the CHART publishes - a scrubber tick, a sunburst arc - rather than one the host reads off a
+// clicked mark. The host ignores clicks for a moment after a chart dispatch (its echo guard), so the clock
+// is stepped past that before the next gesture.
+function chartSelects(el: Element) {
+    container.dispatchEvent(new dom.window.CustomEvent("llm-xfilter-refresh", {
+        bubbles: true, detail: { mark: el, source: "user" },
+    }));
+    vi.setSystemTime(Date.now() + 1000);
+}
+afterEach(() => { vi.useRealTimers(); });
 
 beforeEach(() => {
     dom = new JSDOM("<!doctype html><html><body><div id='c'></div></body></html>");
@@ -130,9 +140,10 @@ describe("selection affordance", () => {
         // real click on an empty corner fired onChange([], 'user') with the breadcrumb still
         // reading All > Sales. The Power BI visual does not clear on an empty click and was never
         // wrong; this is the Excel add-in and React/MCP path.
+        vi.useFakeTimers({ toFake: ["Date"] });
         const h = host();
         h.render();
-        click(marks()[0]);
+        chartSelects(marks()[0]);               // the CHART published this selection
         expect(h.selection.current).toEqual([0]);
 
         let slotCalls = 0;
@@ -154,13 +165,50 @@ describe("selection affordance", () => {
         // The other branch, and the reason the notify is not simply deleted: a chart whose slot
         // repaints but dispatches nothing would otherwise leave the host — and every subscriber —
         // believing the old selection is live. Same contract as selection.clear().
+        vi.useFakeTimers({ toFake: ["Date"] });
         const h = host();
         h.render();
-        click(marks()[0]);
-        (container as any).__llmXfClear = () => { /* repaints, dispatches nothing */ };
+        chartSelects(marks()[0]);
+        let slotCalls = 0;
+        (container as any).__llmXfClear = () => { slotCalls++; /* repaints, dispatches nothing */ };
         click(container);
+        expect(slotCalls).toBe(1);
         expect(h.selection.current).toEqual([]);
         expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(false);
+    });
+
+    it("an empty click never asks the chart to clear a selection it did not publish", () => {
+        // The slot is more than a clear: an animated chart's returns its scrubber to "All periods".
+        // A reader paused on one period who clicks a BAR and then empty canvas is dropping the bar,
+        // not the period - the unconditional call jumped that chart to All (reproduced in Chromium).
+        const h = host();
+        h.render();
+        let slotCalls = 0;
+        (container as any).__llmXfClear = () => { slotCalls++; };
+        click(marks()[0]);                      // a selection read off a clicked mark
+        const seen: Array<[number[], string]> = [];
+        h.selection.onChange((rows, source) => seen.push([rows, source]));
+        click(container);
+        expect(slotCalls).toBe(0);
+        expect(seen).toEqual([[[], "user"]]);   // cleared exactly as a chart with no slot clears
+        // ...and a selection the HOST handed in is not the chart's either.
+        h.selection.highlight([1]);
+        click(container);
+        expect(slotCalls).toBe(0);
+        expect(h.selection.current).toEqual([]);
+    });
+
+    it("a chart-published selection replaced by a mark click is no longer the chart's to clear", () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        const h = host();
+        h.render();
+        chartSelects(marks()[0]);
+        let slotCalls = 0;
+        (container as any).__llmXfClear = () => { slotCalls++; };
+        click(marks()[2]);                      // the reader moved on to a plain mark
+        click(container);
+        expect(slotCalls).toBe(0);
+        expect(h.selection.current).toEqual([]);
     });
 
     it("an empty click on a chart that owns NOTHING clears exactly as before", () => {

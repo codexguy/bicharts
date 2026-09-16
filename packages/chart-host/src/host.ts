@@ -458,6 +458,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // isConnected-guarded so a re-render that replaces the node silently drops it.
     let activeTickEl: any = null;
     let selectionIsPeriod = false;
+    // Whether the CURRENT selection was published by the chart itself (llm-xfilter-refresh with a
+    // mark) rather than read off a clicked mark or handed in by the host. Only a selection the
+    // chart owns is the chart's to undo - see the empty-click branch in onClick.
+    let selectionFromChart = false;
     const subs = new Set<(rowIdxs: number[], source: string) => void>();
 
     // ---- Selection affordance ------------------------------------------------
@@ -561,8 +565,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // `tick` is the axis/group element that drove this selection, or null for a data-mark
     // click / a clear. It decides BOTH the affordance anchor and, with the container's own
     // timeline slots, whether the marks dim at all.
-    const notify = (rowIdxs: number[], source: string, tick?: any) => {
+    const notify = (rowIdxs: number[], source: string, tick?: any, fromChart = false) => {
         current = rowIdxs;
+        selectionFromChart = rowIdxs.length > 0 && fromChart;
         activeTickEl = rowIdxs.length ? (tick ?? null) : null;
         selectionIsPeriod = rowIdxs.length > 0
             && periodTickSuppressesFeedback(!!tick, chartOwnsTimeline(container));
@@ -584,7 +589,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // the selection as a PERIOD. `source` cannot be used for this: the scrubber reports
         // an honest 'user' when the reader clicked it.
         if (d.clear) notify([], d.source || "chart");
-        else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark);
+        else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark, true);
     };
     // Plain mark clicks (static charts + choropleth regions): the chart does NOT
     // dispatch the event for these — the host reads data-row-idx itself.
@@ -636,8 +641,15 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 // only when the chart did NOT settle it: a chart that clears without
                 // dispatching would otherwise leave the host believing the old selection is
                 // live - the same reason clear() settles unconditionally.
+                //
+                // ONLY WHEN THE CHART PUBLISHED THIS SELECTION. The slot does more than clear:
+                // an animated chart's returns the scrubber to "All periods". A reader paused on
+                // one period who clicked a BAR and then empty canvas asked to drop the bar, not
+                // the period they were reading - measured in Chromium, the unconditional call
+                // jumped that chart to All. A selection read off a clicked mark, or handed in by
+                // the host, is not the chart's to undo; it clears exactly as it did before.
                 const slot = (container as any)[CONTAINER_SLOT_XF_CLEAR];
-                if (typeof slot === "function") {
+                if (selectionFromChart && typeof slot === "function") {
                     try { slot(); } catch { /* chart already clear */ }
                 }
                 if (current && current.length) notify([], "user");
