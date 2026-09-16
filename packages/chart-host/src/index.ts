@@ -170,8 +170,11 @@ export {
 // `SourceFormats` shape because the host is the only thing that KNOWS the format: Excel reads
 // `range.numberFormat`, the visual reads the model's format string, and a CSV has none, which is
 // why the locale fallback is a first-class answer rather than an error path.
+// `isExcelDateFormat` is the other half of the same reading: whether a cell holding 46082 is a date
+// at all. One parser answers both questions, so a host cannot type a column as a date by a looser
+// reading of its format than the one the card then renders it with.
 export {
-    formatSourceDate, formatSourceDateFor,
+    formatSourceDate, formatSourceDateFor, isExcelDateFormat,
     type SourceFormats, type SourceFormatDialect, type SourceDateOptions,
 } from "./sourceDateFormat";
 

@@ -185,6 +185,33 @@ function cleanFormat(raw: string | null | undefined, dialect: SourceFormatDialec
     return hasDateToken(s, dialect) ? s : null;
 }
 
+/**
+ * Does an EXCEL number format make the cell a date? The question a host asks before it turns a
+ * serial number into a Date (2026-09-16).
+ *
+ * Excel stores 2026-03-01 as 46082 and only the format says which one it is, so reading a format
+ * wrongly in EITHER direction corrupts a column without an error anywhere. A bare letter test over
+ * the raw string gets it wrong in the direction that hurts: `0.00;[Red]0.00` - Excel's own built-in
+ * "Number, red negatives" - has a `d` in its colour, `[$USD] #,##0.00` an `s` in its currency tag,
+ * and a revenue of 1,234.50 read through either became a date in May 1903.
+ *
+ * So the format is reduced the way `cleanFormat` reduces it before rendering: the FIRST section (the
+ * one a positive serial takes), literals removed, bracket decorations removed. Only then does a
+ * remaining `y m d h s` make it a date.
+ *
+ * ELAPSED TIME IS A DURATION, NOT A DATE. `[h]:mm:ss` counts hours past 24: its value is a length of
+ * time, and turning it into an instant in January 1900 is the same trap as `0.00" days"`. A section
+ * carrying an elapsed bracket answers false, and the column stays a number.
+ */
+export function isExcelDateFormat(raw: string | null | undefined): boolean {
+    if (!raw) return false;
+    const bare = stripLiterals(firstSection(String(raw), "excel"), "excel");
+    if (/\[(h+|m+|s+)\]/i.test(bare)) return false;
+    const tokens = bare.replace(/\[[^\]]*\]/g, "").trim();
+    if (!tokens || /^general$/i.test(tokens)) return false;
+    return /[ymdhs]/i.test(tokens);
+}
+
 /** Split on the first `;` that is not inside a quoted literal. */
 function firstSection(s: string, dialect: SourceFormatDialect): string {
     let out = "";
@@ -216,6 +243,9 @@ function stripLiterals(s: string, dialect: SourceFormatDialect): string {
     for (let i = 0; i < s.length; i++) {
         const ch = s[i];
         if (ch === "\\" || (dialect === "dotnet" && ch === "%")) { i++; continue; }
+        // Excel's padding `_x` and fill `*x` each carry one following character that is spacing,
+        // never a token: `$#,##0.00_)` pads by the width of a `)`.
+        if (dialect === "excel" && (ch === "_" || ch === "*")) { i++; continue; }
         if (ch === '"' || (dialect === "dotnet" && ch === "'")) {
             const end = s.indexOf(ch, i + 1);
             i = end < 0 ? s.length : end;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSourceDate, formatSourceDateFor } from "../src/sourceDateFormat";
+import { formatSourceDate, formatSourceDateFor, isExcelDateFormat } from "../src/sourceDateFormat";
 
 // THE BUG THIS FILE EXISTS FOR: a click on a weekly point in the Excel add-in answered with the
 // header `2025-08-31T00:00:00.000Z`. That is the WIRE form - correct on the wire, and the reason
@@ -165,5 +165,69 @@ describe("formatSourceDateFor - the map lookup a host actually calls", () => {
         expect(formatSourceDateFor(AUG31, "Week", formats, "en-US")).toBe("31-Aug-25");
         expect(formatSourceDateFor(AUG31, "Created", formats, "en-US")).toBe("Aug 31, 2025");
         expect(formatSourceDateFor(AUG31, "Week", null, "en-US")).toBe("Aug 31, 2025");
+    });
+});
+
+describe("isExcelDateFormat - whether a cell holding a serial is a date at all", () => {
+    // THE BUG: the Excel add-in called a format a date when any of y m d h s appeared outside
+    // quotes, and never removed bracket sections. Excel's own built-in red-negative formats have a
+    // `d` in [Red], a currency tag an `s` in its ISO code, and a revenue column read through either
+    // was turned into 1900-era dates with no error anywhere.
+
+    it("does NOT read a colour name as a date", () => {
+        for (const f of [
+            "0.00;[Red]0.00",                 // built-in "Number, red negatives"
+            "$#,##0.00_);[Red]($#,##0.00)",   // built-in "Currency, red negatives"
+            "0.00;[Magenta]-0.00",
+            "0;[Yellow]-0",
+            "[Cyan]0",
+            "#,##0;[White]-#,##0",
+            "[Blue]0.0",
+        ]) expect(isExcelDateFormat(f), f).toBe(false);
+    });
+
+    it("does NOT read a currency or locale tag on a number as a date", () => {
+        for (const f of [
+            "[$USD] #,##0.00", "[$HKD] #,##0.00", "[$SEK] #,##0.00", "[$JPY] #,##0",
+            "#,##0.00 [$CHF]", "[$GBP] #,##0", "[$$-409]#,##0.00", "#,##0.00 [$\u20ac-407]",
+        ]) expect(isExcelDateFormat(f), f).toBe(false);
+    });
+
+    it("does NOT read accounting padding, fill or a condition as a date", () => {
+        for (const f of [
+            '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)',
+            "[>=1000000]0.0,,\"M\";0",
+            "#,##0_s",
+            "0*d",
+        ]) expect(isExcelDateFormat(f), f).toBe(false);
+    });
+
+    it("reads ELAPSED time as a duration, not a date", () => {
+        // Same rule as `0.00" days"`: a length of time is a number, and an instant in January
+        // 1900 is not what anyone formatted.
+        for (const f of ["[h]:mm:ss", "[mm]:ss", "[s]", "[hh]:mm"]) {
+            expect(isExcelDateFormat(f), f).toBe(false);
+        }
+    });
+
+    it("still reads a real date or time format as a date - the control", () => {
+        for (const f of [
+            "yyyy-mm-dd", "m/d/yyyy", "d-mmm-yy", "h:mm AM/PM", "mm:ss", "yyyy-mm-dd hh:mm:ss",
+            "[$-409]m/d/yyyy", "[$-F800]dddd, mmmm dd, yyyy", "[$-en-US]m/d/yyyy;@", "[Red]yyyy-mm-dd",
+        ]) expect(isExcelDateFormat(f), f).toBe(true);
+    });
+
+    it("ignores letters inside literals, and General in any decoration", () => {
+        expect(isExcelDateFormat('0.00" days"')).toBe(false);
+        expect(isExcelDateFormat('#,##0" hrs"')).toBe(false);
+        expect(isExcelDateFormat("#,##0\\h")).toBe(false);
+        expect(isExcelDateFormat('0"[h]"')).toBe(false);
+        expect(isExcelDateFormat("General")).toBe(false);
+        expect(isExcelDateFormat("[Red]General")).toBe(false);
+        expect(isExcelDateFormat("General;[Red]-General")).toBe(false);
+        expect(isExcelDateFormat("@")).toBe(false);
+        expect(isExcelDateFormat(";;;")).toBe(false);
+        expect(isExcelDateFormat(null)).toBe(false);
+        expect(isExcelDateFormat("")).toBe(false);
     });
 });
