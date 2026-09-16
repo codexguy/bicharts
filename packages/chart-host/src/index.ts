@@ -99,6 +99,15 @@ export { shouldReview, buildReviewWire, bareBase64, actionFor, type ReviewGate, 
 // "every ambiguous answer is No" is how two hosts come to charge differently for the same
 // click. Hosts localize strings and skin the chrome; the resolution rule is not an option.
 export { askApplyImprovements, type ReviewDialogOptions, type ReviewDialogText } from "./reviewDialog";
+// A reader's suggestion box on a host's landing page (2026-09-16). Every host shows the same states - Send disabled
+// until there is a message, disabled while sending, cleared on success, and the typed words KEPT on failure - and sends
+// one payload shape; the host owns placement, words and its signed transport.
+export {
+    mountProductFeedbackBox, normaliseProductFeedbackText, productFeedbackSendable, buildProductFeedbackPayload,
+    PRODUCT_FEEDBACK_MAX_CHARS, PRODUCT_FEEDBACK_MIN_CHARS,
+    type ProductFeedbackBox, type ProductFeedbackBoxOptions, type ProductFeedbackText, type ProductFeedbackSendResult,
+    type ProductFeedbackPayload, type ProductFeedbackIdentity, type ProductFeedbackHost,
+} from "./productFeedback";
 
 // Where the "what fits?" list breaks into groups. The server decides the ORDER; hosts have to
 // notice the boundaries and label them identically, or a preview block floated to the top reads
