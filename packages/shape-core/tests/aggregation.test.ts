@@ -199,6 +199,21 @@ describe("the lists themselves", () => {
     });
 });
 
+// BRITISH SPELLING (2026-09-17). The list carried `utilization` and not `utilisation`, so a clinic
+// table's `Slot Utilisation %` (0.53 to 1.05, formatted as a percentage) read as a summable amount
+// while its sibling `Utilisation Target %` read as a rate - and the target was then taken as the
+// value to draw against a 100% scale. The spelling is the only difference between the two words.
+describe("a British spelling of a rate word is the same rate", () => {
+    it("reads utilisation as a word and as a camelCase suffix", () => {
+        expect(nameLooksIntensiveRate("Slot Utilisation %")).toBe(true);
+        expect(nameLooksIntensiveRate("CapacityUtilisation")).toBe(true);
+        expect(nameLooksIntensiveRate("Sum of Bed Utilisation")).toBe(true);
+        expect(classifyForAggregation({ name: "Slot Utilisation %", isMeasure: true })).toEqual(
+            classifyForAggregation({ name: "Slot Utilization %", isMeasure: true }));
+        expect(defaultAggregation({ name: "Slot Utilisation %", isMeasure: true })).not.toBe("sum");
+    });
+});
+
 // SEPARATOR-GLUED TOKENS (2026-09-04). The camel split covers case and digit transitions and
 // nothing else, so a token joined by an UNDERSCORE stayed invisible to `\bword\b` - an
 // underscore is itself a word character. Such a name resolved only when the token landed LAST,

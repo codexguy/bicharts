@@ -92,7 +92,7 @@ export interface AggregationColumn {
  *  from the server list. */
 export const INTENSIVE_WORD_TOKENS: readonly string[] = [
     "rate", "ratio", "pct", "percent", "percentage", "rating", "share", "score",
-    "index", "nps", "csat", "margin", "yield", "coverage", "utilization", "z[_-]?score",
+    "index", "nps", "csat", "margin", "yield", "coverage", "utilization", "utilisation", "z[_-]?score",
     "average", "avg", "mean", "median", "stddev", "variance",
     "gpa", "percentile", "quantile", "efficiency", "accuracy", "probability",
     "multiplier", "coefficient", "correlation", "occupancy",
@@ -159,7 +159,7 @@ export const INTENSIVE_WORD_TOKENS: readonly string[] = [
  *  stack, so both arrays stay to names that are non-additive in nearly every business context. */
 export const INTENSIVE_SUFFIX_TOKENS: readonly string[] = [
     "pct", "percent", "percentage", "rate", "ratio", "rating", "share", "score",
-    "index", "nps", "csat", "margin", "yield", "coverage", "utilization",
+    "index", "nps", "csat", "margin", "yield", "coverage", "utilization", "utilisation",
     "gpa", "percentile", "quantile", "bmi", "density", "pressure", "humidity",
     "velocity", "efficiency", "occupancy",
     "latency", "throughput", "bandwidth", "iops",
