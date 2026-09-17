@@ -20,6 +20,9 @@
 //    `df.iloc[:, 1]`, `for c in df.columns`) can depend on a column without ever naming it. No name
 //    test can see that use, so for such code every column counts as read and the warning keeps
 //    every name - exactly what a host said before this check existed.
+//  - Code that names NONE of the columns it was written for reads them some way a name test cannot
+//    see - a pattern match on the name, a walk over every column, a stub - so every column counts
+//    as read there too.
 //  - Empty code reads nothing: there is no chart on screen to be wrong about. A host with a
 //    generation in flight decides when the code arrives.
 //
@@ -69,12 +72,16 @@ export function codeReadsColumnsByRoleOrPosition(code: string | null | undefined
 }
 
 /**
- * The subset of `names` (in their original order) that `code` may depend on - the columns a drift
- * warning can truthfully say will draw blank. Empty code gives none; code that reads columns by
- * role or position gives all of them; otherwise only the names the code reads by name.
+ * The subset of `goneNames` (in their original order) that `code` may depend on - the columns a
+ * drift warning can truthfully say will draw blank. `writtenFor` is every column the code was
+ * written against; the gone ones may be included or not.
+ *
+ * Empty code gives none. Code that reads columns by role or position, or that names none of the
+ * columns it was written for, gives all of them. Otherwise only the names the code reads by name.
  */
-export function columnsTheCodeReads(code: string | null | undefined, names: readonly string[]): string[] {
+export function columnsTheCodeReads(code: string | null | undefined, goneNames: readonly string[], writtenFor: readonly string[]): string[] {
     if (!code) return [];
-    if (codeReadsColumnsByRoleOrPosition(code)) return [...names];
-    return names.filter(n => codeReadsColumn(code, n));
+    if (codeReadsColumnsByRoleOrPosition(code)) return [...goneNames];
+    if (![...writtenFor, ...goneNames].some(n => codeReadsColumn(code, n))) return [...goneNames];
+    return goneNames.filter(n => codeReadsColumn(code, n));
 }

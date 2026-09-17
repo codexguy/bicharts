@@ -84,18 +84,32 @@ describe("codeReadsColumnsByRoleOrPosition", () => {
 
 describe("columnsTheCodeReads", () => {
     it("keeps only the names a by-name chart reads, in their original order", () => {
-        expect(columnsTheCodeReads(BOX_PLOT_BY_NAME, ["Budget_YTD"])).toEqual([]);
-        expect(columnsTheCodeReads(BOX_PLOT_BY_NAME, ["Amount"])).toEqual(["Amount"]);
-        expect(columnsTheCodeReads(BOX_PLOT_BY_NAME, ["Amount", "Budget_YTD", "segment@code"])).toEqual(["Amount", "segment@code"]);
+        const writtenFor = ["segment@code", "Amount", "Budget_YTD"];
+        expect(columnsTheCodeReads(BOX_PLOT_BY_NAME, ["Budget_YTD"], writtenFor)).toEqual([]);
+        expect(columnsTheCodeReads(BOX_PLOT_BY_NAME, ["Amount"], writtenFor)).toEqual(["Amount"]);
+        expect(columnsTheCodeReads(BOX_PLOT_BY_NAME, ["Amount", "Budget_YTD", "segment@code"], writtenFor)).toEqual(["Amount", "segment@code"]);
     });
 
     it("keeps every name when the code picks columns by role, because no name test can see that use", () => {
         const byRole = "const mIdx = columns.findIndex(c => c.isMeasure);\nconst v = rows.map(r => r[mIdx]);";
-        expect(columnsTheCodeReads(byRole, ["Sum of Sales", "Region"])).toEqual(["Sum of Sales", "Region"]);
+        expect(columnsTheCodeReads(byRole, ["Sum of Sales", "Region"], ["Sum of Sales", "Region"])).toEqual(["Sum of Sales", "Region"]);
+    });
+
+    it("keeps every name when the code names NONE of the columns it was written for", () => {
+        // A name matched by pattern, a walk over every column, or a stub: the use is invisible.
+        const byPattern = "const lat = columns.find(c => /lat/i.test(c.name));";
+        expect(columnsTheCodeReads(byPattern, ["Latitude"], ["City", "Latitude", "Longitude"])).toEqual(["Latitude"]);
+        expect(columnsTheCodeReads("function render(){}", ["Revenue"], ["Region", "Revenue"])).toEqual(["Revenue"]);
+    });
+
+    it("still withholds an unread name when the code names a column it was written for", () => {
+        expect(columnsTheCodeReads("px.bar(df, x='Region')", ["Revenue"], ["Region", "Revenue"])).toEqual([]);
+        // ...even when the gone list is not part of writtenFor.
+        expect(columnsTheCodeReads("px.bar(df, x='Region')", ["Revenue"], ["Region"])).toEqual([]);
     });
 
     it("gives none for empty code - nothing is on screen to be wrong", () => {
-        expect(columnsTheCodeReads(null, ["Region"])).toEqual([]);
-        expect(columnsTheCodeReads("", ["Region"])).toEqual([]);
+        expect(columnsTheCodeReads(null, ["Region"], ["Region"])).toEqual([]);
+        expect(columnsTheCodeReads("", ["Region"], ["Region"])).toEqual([]);
     });
 });
