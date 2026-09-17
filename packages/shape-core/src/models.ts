@@ -976,6 +976,23 @@ export type GetLicenseStatusResult =
         freemiumWarnAtPercent?: number,
         freemiumExhausted?: boolean,
         freemiumStatusMessage?: string,
+        // FREEMIUM COLUMN CAP, so a host can ANTICIPATE it (item 634, 2026-09-17).
+        //
+        // The cap is ENFORCED only on the server and always will be. These let a host that already
+        // knows its bound column count refuse in 0 ms in the SERVER'S OWN WORDS rather than pay a
+        // round trip to be told. Prod 2958: the server answered a 20-field binding in 31 ms naming
+        // exactly how many fields to drop, the response was lost through the reader's corporate
+        // proxy, and what they read was "We couldn't reach the charting service".
+        //
+        // The templates carry `{n}` and `{fields}` unfilled — the server does not know the reader's
+        // count at status time — and the server is their only author, so an operator override
+        // travels with them. Use `freemiumColumnCapRefusal()`; never re-author the sentence in a
+        // host. All four are absent from an older server, which reads correctly as "this server
+        // cannot be anticipated" and leaves the host's behaviour exactly as it is today.
+        freemiumMaxShapeColumns?: number,
+        freemiumColumnCapMessageFew?: string,
+        freemiumColumnCapMessageMany?: string,
+        freemiumColumnCapPivot?: number,
         // Per-model cost multipliers keyed by ModelCode (e.g. "AZDS4PRO" → 1.0,
         // "AZGPT5MINI" → 0.25). Baseline = 1.0; the client shows this next to
         // the selected model in the freemium picker (× 0.25 / × 3 / etc.).

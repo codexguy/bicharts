@@ -152,3 +152,10 @@ export type { PayloadPreviewOptions } from "./payloadPreview";
 // the reader removed. Both hosts share the one rule so they agree on what counts as a use. See
 // codeColumnReads.ts for why code that picks columns by role or position keeps every name.
 export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads } from "./codeColumnReads";
+
+// FREEMIUM ENTITLEMENT WALLS A HOST CAN ANTICIPATE (item 634). The column cap is ENFORCED only on
+// the server; these let a host refuse in 0 ms in the SERVER'S OWN WORDS rather than pay a round
+// trip that prod 2958 proved can be lost in transport and read as "the service is down". The
+// sentence is never authored in a host - see freemiumCaps.ts for the two rules that keeps.
+export { freemiumColumnsOverCap, freemiumColumnCapRefusal } from "./freemiumCaps";
+export type { FreemiumColumnCapStatus } from "./freemiumCaps";
