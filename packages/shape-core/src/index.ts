@@ -144,3 +144,8 @@ export type {
 // rather than re-listing the fields it believes are sent.
 export { payloadPreview, PREVIEW_OMITTED_FIELDS } from "./payloadPreview";
 export type { PayloadPreviewOptions } from "./payloadPreview";
+
+// WHICH COLUMNS A CHART'S CODE READS - asked by a host before its drift warning names a column
+// the reader removed. Both hosts share the one rule so they agree on what counts as a use. See
+// codeColumnReads.ts for why code that picks columns by role or position keeps every name.
+export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads } from "./codeColumnReads";
