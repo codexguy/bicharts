@@ -293,8 +293,11 @@ export type LLMColumnWithValue =
         // that at least three columns contributed to.
         constantSumGroup?: { columns: string[], total: number, matchedPct: number }
         // GROUP-DISCRIMINATION statistics (2026-06-19), measure columns only.
-        // relativeDispersion = (p90-p10)/|median| over raw rows — near 0 ⇒ the
-        // measure is effectively constant. groupDiscrimination[dim].eta2 =
+        // relativeDispersion = (p90-p10)/|median| over the non-blank values, linearly
+        // interpolated quantiles; exactly 0 when every value is identical; ABSENT below
+        // four values (no 10th/90th percentile exists). Near 0 ⇒ nine in ten values sit
+        // together - whether that makes a measure "constant" is the server's policy.
+        // groupDiscrimination[dim].eta2 =
         // SS_between/SS_total (0..1) — the fraction of this measure's variance
         // explained by each low-cardinality categorical; near 0 ⇒ that dimension
         // does NOT differentiate the measure (no chartable signal when grouping/

@@ -40,6 +40,16 @@ export function STR(v: any): string {
     return "";
 }
 
+/** Linear-interpolated quantile over an ascending-sorted array (NaN for an empty one). One definition for
+ *  every statistic that needs a percentile, so two of them cannot disagree about where p10 sits. */
+export function quantileSorted(sorted: number[], q: number): number {
+    if (!sorted.length) return NaN;
+    if (sorted.length === 1) return sorted[0];
+    const pos = (sorted.length - 1) * q;
+    const lo = Math.floor(pos), hi = Math.ceil(pos);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
 /** FNV-1a string hash masked to a JS-safe 53-bit integer. Mirrors
  *  Shared.SIMPLE_STRING_HASH. Deterministic — safe for stable keys. */
 export function SIMPLE_STRING_HASH(str: string): number {

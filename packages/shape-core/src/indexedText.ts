@@ -18,7 +18,7 @@ import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } fr
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
-import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso } from "./util";
+import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
 import { collapseRepeatedAggPrefix, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { measureCadence } from "./cadence";
 
@@ -821,8 +821,9 @@ export class IndexedText implements IValueCollection {
         // GROUP-DISCRIMINATION pass (2026-06-19). For each MEASURE, ship two pure
         // statistics so the server KNOWS — not guesses — whether a measure carries
         // chartable signal across the available dimensions:
-        //   • relativeDispersion = (p90-p10)/|median| over the raw rows. Near 0 ⇒
-        //     the measure is effectively CONSTANT (a literal flat column).
+        //   • relativeDispersion = (p90-p10)/|median| over the non-blank values, with
+        //     linearly interpolated quantiles; exactly 0 for a run of identical values;
+        //     absent below four values. Near 0 ⇒ nine in ten values sit together.
         //   • groupDiscrimination[dim].eta2 = SS_between / SS_total (0..1) — the
         //     fraction of the measure's variance EXPLAINED by each low-cardinality
         //     categorical. Near 0 ⇒ that dimension does NOT differentiate the
@@ -834,6 +835,7 @@ export class IndexedText implements IValueCollection {
         //     has, never raw values. Bounded: O(measures × dims × rows), low-card
         //     dims only.
         const DISCRIM_DIM_CAP = 50;   // only dims a viewer could read as groups
+        const RELATIVE_DISPERSION_MIN_VALUES = 4;   // the same floor iqrOf uses below
         const discrimDims = dimCols.filter(d => d.distinct >= 2 && d.distinct <= DISCRIM_DIM_CAP);
         this._cols.forEach((c, mi) => {
             if (!c.isMeasure) return;
@@ -846,11 +848,22 @@ export class IndexedText implements IValueCollection {
             }
             if (xs.length === 0) return;
             const sorted = [...xs].sort((a, b) => a - b);
-            const q = (p: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))))];
-            const median = q(0.5), p10 = q(0.10), p90 = q(0.90);
-            const denom = Math.abs(median) > 1e-9 ? Math.abs(median)
-                : (Math.abs(sorted[sorted.length - 1]) > 1e-9 ? Math.abs(sorted[sorted.length - 1]) : 1);
-            c.relativeDispersion = Math.round(((p90 - p10) / denom) * 1000) / 1000;
+            // RELATIVE DISPERSION: INTERPOLATED, AND ONLY WHERE A 10th AND 90th PERCENTILE EXIST. Taken by floor
+            // index, p10 over ten or fewer values is always the minimum and p90 is never the maximum, so ANY two
+            // values read a spread of 0 and a consumer reports a measure that plainly moves as constant. Linear
+            // interpolation keeps every value in play. Below four values there is no percentile to speak of, so the
+            // statistic is withheld, as iqrOf withholds an IQR below. A run of identical values is exact at any size
+            // and still reports 0.
+            if (sorted[0] === sorted[sorted.length - 1]) {
+                c.relativeDispersion = 0;
+            } else if (sorted.length >= RELATIVE_DISPERSION_MIN_VALUES) {
+                const median = quantileSorted(sorted, 0.5), p10 = quantileSorted(sorted, 0.10), p90 = quantileSorted(sorted, 0.90);
+                const denom = Math.abs(median) > 1e-9 ? Math.abs(median)
+                    : (Math.abs(sorted[sorted.length - 1]) > 1e-9 ? Math.abs(sorted[sorted.length - 1]) : 1);
+                c.relativeDispersion = Math.round(((p90 - p10) / denom) * 1000) / 1000;
+            } else {
+                c.relativeDispersion = undefined;   // explicit: omitted from the wire, never a stale value
+            }
 
             // NON-BLANK GROUP COUNT (2026-09-08). How many groups of each low-cardinality
             // dimension hold at least one non-blank value of this measure — i.e. how many marks a

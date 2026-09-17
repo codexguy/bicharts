@@ -18,6 +18,7 @@
 // question a frame choice actually turns on.
 
 import { ISO2_TO_ISO3, countryIso3 } from "./geoCountryNames";
+import { quantileSorted as quantile } from "./util";
 
 /** Coarse world regions, chosen for FRAME selection rather than geographic doctrine. */
 export type GeoRegion =
@@ -78,15 +79,6 @@ const NA_BOX: Box = [7.0, 72.0, -172.0, -52.0];
 
 function inBox(lat: number, lon: number, b: Box): boolean {
     return lat >= b[0] && lat <= b[1] && lon >= b[2] && lon <= b[3];
-}
-
-/** Linear-interpolated quantile over a sorted array. */
-function quantile(sorted: number[], q: number): number {
-    if (!sorted.length) return NaN;
-    if (sorted.length === 1) return sorted[0];
-    const pos = (sorted.length - 1) * q;
-    const lo = Math.floor(pos), hi = Math.ceil(pos);
-    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
