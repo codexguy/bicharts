@@ -388,6 +388,74 @@ export function codeNeedsLegacyAggNames(
     return false;
 }
 
+// ── An automatic aggregation named in the viewer's language ──────────────────────────────────
+//
+// Power BI names an AUTOMATIC aggregation when the report opens, in the viewer's UI language:
+// `Sum(Leads.Volume)` reaches a visual as `Sum of Volume` in an English session and as
+// `Suma de Volume` or `Somme de Volume` elsewhere. Nothing between the host and the visual
+// translates it back, so chart code generated in one language and saved in a report looks up a
+// name the next viewer's data does not carry - and a report authored in one language and opened
+// in another is ordinary for a shared or distributed report.
+//
+// The column's QUERY NAME is the language-invariant half. It spells the function, so the English
+// name can be recomposed from it - and because it spells the function, `Sum of Volume` can only
+// ever be recomposed from `Sum(T.Volume)`, never from `Avg(T.Volume)`.
+//
+// Function spellings are the ones Power BI writes into a query name (`Sum`, `Avg`, `Count`,
+// `CountNonNull`, `Min`, `Max`, `Median`, `StandardDeviation`, `Variance`); the English labels are
+// the ones Desktop composes from them. `Average` is accepted beside `Avg` so a host that spells the
+// function out is read the same way.
+const IMPLICIT_AGG_ENGLISH_LABELS: Readonly<Record<string, readonly string[]>> = {
+    Sum: ["Sum of "],
+    Avg: ["Average of "],
+    Average: ["Average of "],
+    // Count (Distinct) is labelled "Count of" too - the dropdown says Distinct, the name does not.
+    Count: ["Count of "],
+    CountNonNull: ["Count of "],
+    // Min and Max are labelled by the column's TYPE: a number reads "Min of", a text column
+    // "First", a date "Earliest". Which type a label was composed under is not recoverable from
+    // the query name, so every form is a candidate and the code decides which one it reads.
+    Min: ["Min of ", "First ", "Earliest "],
+    Max: ["Max of ", "Last ", "Latest "],
+    Median: ["Median of "],
+    StandardDeviation: ["Standard deviation of "],
+    Variance: ["Variance of "],
+};
+
+const IMPLICIT_AGG_QUERY_NAME = new RegExp(
+    "^(" + Object.keys(IMPLICIT_AGG_ENGLISH_LABELS).join("|") + ")\\((.+)\\)$");
+
+/**
+ * The English name(s) Power BI composes for an automatic aggregation, recomposed from the column's
+ * query name: `Sum(Leads.Volume)` -> `["Sum of Volume"]`. Empty for anything that is not an
+ * aggregation of a table column - a plain column (`Leads.Volume`), a model measure, an unknown
+ * function.
+ *
+ * `Table.Column` is split at a dot, and either half may itself contain one (a table from a dotted
+ * source, a column expanded from a record), so EVERY split is a candidate, the longer column name
+ * first. Candidates are only ever names; whether a column answers to one is decided by the code
+ * that reads it (IndexedText.aliasesForCode), which is what keeps a wrong split harmless.
+ */
+export function englishImplicitAggNames(queryName: string | null | undefined): string[] {
+    if (!queryName) return [];
+    const m = IMPLICIT_AGG_QUERY_NAME.exec(String(queryName).trim());
+    if (!m) return [];
+    const labels = IMPLICIT_AGG_ENGLISH_LABELS[m[1]];
+    const inner = m[2];
+    const out: string[] = [];
+    for (let dot = inner.indexOf("."); dot >= 0; dot = inner.indexOf(".", dot + 1)) {
+        // A dot with no table name before it is not a table/column split.
+        if (dot === 0) continue;
+        const column = inner.slice(dot + 1);
+        if (column.trim() === "") continue;
+        for (const label of labels) {
+            const name = label + column;
+            if (!out.includes(name)) out.push(name);
+        }
+    }
+    return out;
+}
+
 function normalizeForNameTest(name: string | null | undefined): string {
     const base = stripHostAggPrefix(name);
     return base.length === 0 ? "" : base.replace(CAMEL_BOUNDARY, " ");

@@ -12,7 +12,7 @@
 
 // The engine + its row-ingest interface.
 export { IndexedText } from "./indexedText";
-export type { IValueCollection } from "./indexedText";
+export type { IValueCollection, ColumnNameAlias } from "./indexedText";
 
 // Pure classifiers (usable standalone, e.g. by an adapter that wants to tag
 // columns before ingest).
@@ -54,6 +54,9 @@ export {
     // CACHED code must ask the second question too - see IndexedText.emitLegacyAggAliases.
     collapseRepeatedAggPrefix,
     codeNeedsLegacyAggNames,
+    // An automatic aggregation's English name, recomposed from its language-invariant query name,
+    // for cached code generated in another UI language - see IndexedText.aliasesForCode.
+    englishImplicitAggNames,
     INTENSIVE_WORD_TOKENS,
     INTENSIVE_SUFFIX_TOKENS,
     POSITIONAL_WORD_TOKENS,

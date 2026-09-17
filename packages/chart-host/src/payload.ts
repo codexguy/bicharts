@@ -252,7 +252,14 @@ export function buildRenderPayload(
     // A host passes it only for a chart that reads no date in local time (codeReadsDatesInLocalTime /
     // vegaSpecReadsDatesInLocalTime): local-time code reads a local-midnight date correctly already.
     // Absent, the payload is byte-identical to before.
-    opts?: { utcDays?: boolean } | null,
+    //
+    // A COLUMN'S SECOND NAME. `aliases` are the compatibility names a host armed for cached code
+    // (shape-core IndexedText.getArmedAliases): the host's pre-collapse `Sum of Sum of Revenue`, or
+    // the English name of an aggregation the host composed in another language. Generated code
+    // resolves `columns.findIndex(c => c.name === ...)`, so an alias that only reached the row
+    // objects left that code at -1. Each one is appended as a copy of its column AFTER every other
+    // column, so nothing already in the payload moves. Absent or empty, nothing changes.
+    opts?: { utcDays?: boolean; aliases?: ReadonlyArray<{ name: string; alias: string }> | null } | null,
 ): RenderPayload {
     const colNames = cols.map(c => c.name);
     let utcDayColumns: string[] | null = null;
@@ -295,7 +302,23 @@ export function buildRenderPayload(
     // shape predictable for the LLM. DateTime cells come straight off the index;
     // coerce to ISO so the contract in PromptPreable holds. Trailing columns:
     // __rowIdx__ [+ __geoIso__].
-    const extra = 1 + (geoIso ? 1 : 0) + (pLat ? 3 : 0) + (dLat ? 3 : 0);
+    const hostNames: string[] = ["__rowIdx__"];
+    if (geoIso) hostNames.push("__geoIso__");
+    if (pLat) hostNames.push("__geoLat__", "__geoLon__", "__geoPrecision__");
+    if (dLat) hostNames.push("__geoLatD__", "__geoLonD__", "__geoPrecisionD__");
+    // Resolved against every name the payload already carries, so an alias can never shadow a
+    // bound column or a host column, and two aliases can never claim one name.
+    const aliasCols: { from: number; name: string }[] = [];
+    if (opts?.aliases && opts.aliases.length > 0) {
+        const claimed = new Set<string>([...colNames, ...hostNames]);
+        for (const a of opts.aliases) {
+            const from = a ? colNames.indexOf(a.name) : -1;
+            if (from < 0 || !a.alias || claimed.has(a.alias)) continue;
+            claimed.add(a.alias);
+            aliasCols.push({ from, name: a.alias });
+        }
+    }
+    const extra = hostNames.length + aliasCols.length;
     const out: any[][] = new Array(rowObjs.length);
     for (let r = 0; r < rowObjs.length; r++) {
         const row = rowObjs[r];
@@ -316,6 +339,7 @@ export function buildRenderPayload(
         if (geoIso) a[k++] = geoIso[r];
         if (pLat && pLon) { a[k++] = pLat[r]; a[k++] = pLon[r]; a[k++] = pPrec ? pPrec[r] : null; }
         if (dLat && dLon) { a[k++] = dLat[r]; a[k++] = dLon[r]; a[k++] = dPrec ? dPrec[r] : null; }
+        for (const ac of aliasCols) a[k++] = a[ac.from];
         out[r] = a;
     }
     const colsOut = [...cols, { name: "__rowIdx__", dataType: "Integer", isMeasure: false, modelDesc: "" }];
@@ -334,6 +358,9 @@ export function buildRenderPayload(
         { name: "__geoLatD__", dataType: "Double", isMeasure: false, modelDesc: "" },
         { name: "__geoLonD__", dataType: "Double", isMeasure: false, modelDesc: "" },
         { name: "__geoPrecisionD__", dataType: "String", isMeasure: false, modelDesc: "" });
+    // LAST, after the host's own columns - see opts.aliases. `aliasOf` names the live column so a
+    // host reading the payload can tell the copy from the original.
+    for (const ac of aliasCols) colsOut.push({ ...cols[ac.from], name: ac.name, aliasOf: cols[ac.from].name });
     return {
         columns: colsOut as any[], rows: out, geoUnmatched, geoUnmatchedDistinct, geoPoint,
         // Omitted when there is no second endpoint, so every existing chart's options object
