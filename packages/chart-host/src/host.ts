@@ -36,6 +36,7 @@ import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
 import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
+import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -212,6 +213,19 @@ export interface ChartHostConfig {
     labelContrast?: boolean | LabelContrastOptions;
     /** What the label-contrast pass did after each render - counts, so a host can log them. */
     onLabelContrast?: (report: LabelContrastReport) => void;
+    /**
+     * THE CHART SAID THE DATA LACKS SOMETHING IT IS BUILT ON. Generated code has one sanctioned
+     * hard stop at runtime: a column the chart needs is gone from `data.columns`, and it throws
+     * `new Error('INVALID:column "<name>" not found')`. That is a DATA STATE, not a broken chart -
+     * the same code draws again once the column is back - so a host should say what is missing,
+     * keep the code, and re-render on the next data change rather than report a crash.
+     *
+     * Supplied: render() clears the container, calls this with the chart's reason (the text after
+     * `INVALID:` on that line) and the full message, and returns normally - nothing was drawn, so
+     * no post-render pass (label contrast, hit-target heal, census, fit) runs. Absent: render()
+     * throws exactly as it always has, so an existing host is untouched.
+     */
+    onInvalidSentinel?: (info: { reason: string; message: string }) => void;
 }
 
 export interface ChartHost {
@@ -446,7 +460,20 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             } catch { /* a chart must never fail to repaint because a save failed */ }
         };
     }
-    let resolved = resolveOptions(raw);
+    // NO HOST TOOLTIP HERE, SO AN UNSENT FLAG MEANS THE CHART OWNS HOVER. Generated code draws
+    // its own tooltip only when `options.allowTooltips` is truthy, because a host that shows its
+    // own (the Power BI visual) sends false to stop two tooltips fighting. This runtime draws
+    // none, so a host that never mentions the flag - the usual case outside Power BI - left
+    // every chart with no hover detail at all. Only an explicit false switches it off.
+    //
+    // Applied HERE rather than in resolveOptions on purpose: resolveOptions is also the visual's
+    // option assembly, where the flag is always a computed boolean and the premise above is not
+    // true, and it is locked to pass host fields through untouched.
+    const resolveForHost = (input: ResolveOptionsInput): RenderOptions => {
+        const out = resolveOptions(input);
+        return out.allowTooltips == null ? { ...out, allowTooltips: true } : out;
+    };
+    let resolved = resolveForHost(raw);
     let renderFn: RenderFn | null = config.renderFn ?? null;
     let destroyed = false;
     let warnedGeo = false;
@@ -748,6 +775,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             try {
                 renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
             } catch (err) {
+                const message = String((err as any)?.message ?? err ?? "");
+                if (config.onInvalidSentinel && isInvalidSentinelError(message)) {
+                    // A DATA STATE, NOT A CRASH: the code ran and said the data in front of it
+                    // lacks something it is built on. Stop anything the chart started, drop the
+                    // half-built frame (it is not a chart), and let the host say what is missing.
+                    // Nothing was drawn, so there is nothing to heal, count or fit.
+                    stopAnim();
+                    container.innerHTML = "";
+                    config.onInvalidSentinel({ reason: invalidSentinelReason(message), message });
+                    return;
+                }
                 throw explainRenderFailure(err, d3);
             }
             // CAN THE LABELS ON THE MARKS BE READ? First of the post-render passes, and BEFORE
@@ -844,7 +882,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         },
         setOptions(partial) {
             raw = { ...raw, ...partial };
-            resolved = resolveOptions(raw);
+            resolved = resolveForHost(raw);
             host.render();
         },
         setData(next) {

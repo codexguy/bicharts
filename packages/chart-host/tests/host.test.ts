@@ -180,4 +180,106 @@ describe("createChartHost runtime", () => {
         click(container);                                            // no listeners left
         expect(got.length).toBe(0);
     });
+
+    it("an unsent allowTooltips reaches the chart as true; an explicit false stays false", () => {
+        // This runtime draws no host tooltip, so a host that never mentions the flag must leave
+        // hover to the chart. Only an explicit false (a host with its own tooltip) turns it off.
+        const TIPS = `function render(container, data, options) {
+          container.setAttribute("data-tips", String(options.allowTooltips));
+        }`;
+        const unsent = createChartHost(container, { data: DATA, code: TIPS });
+        unsent.render();
+        expect(container.getAttribute("data-tips")).toBe("true");
+        expect(unsent.options.allowTooltips).toBe(true);
+        unsent.destroy();
+
+        const off = createChartHost(container, { data: DATA, code: TIPS, options: { allowTooltips: false } });
+        off.render();
+        expect(container.getAttribute("data-tips")).toBe("false");
+        // A restyle that CLEARS the key falls back to the default, and one that sends false
+        // switches it off again - the default is applied on every resolve, not only at creation.
+        off.setOptions({ allowTooltips: undefined });
+        expect(container.getAttribute("data-tips")).toBe("true");
+        off.setOptions({ allowTooltips: false });
+        expect(container.getAttribute("data-tips")).toBe("false");
+        off.destroy();
+    });
+});
+
+// A chart that throws the INVALID sentinel has stopped on purpose: a column it is built on is
+// gone. With onInvalidSentinel a host hears the reason instead of a crash; without it nothing
+// about render() changes, so an existing host keeps exactly the behaviour it had.
+describe("createChartHost onInvalidSentinel", () => {
+    const THROWS_SENTINEL = `function render(container, data, options) {
+      const m = container.ownerDocument.createElement("div");
+      m.className = "d3-mark"; m.setAttribute("data-row-idx", "0");
+      container.appendChild(m);   // a half-built frame, as a real chart leaves one
+      throw new Error('INVALID:column "X" not found');
+    }`;
+
+    it("supplied: called once with the reason, render() returns normally, the container is empty", () => {
+        const calls: Array<{ reason: string; message: string }> = [];
+        const blank = vi.fn();
+        const fit = vi.fn();
+        const host = createChartHost(container, {
+            data: DATA, code: THROWS_SENTINEL,
+            onInvalidSentinel: info => calls.push(info),
+            onBlankRender: blank, onFit: fit,
+        });
+        let threw: unknown = null;
+        try { host.render(); } catch (e) { threw = e; }
+        expect(threw).toBeNull();
+        expect(calls.length).toBe(1);
+        expect(calls[0].reason).toBe('column "X" not found');
+        expect(calls[0].message).toContain('INVALID:column "X" not found');
+        expect(container.innerHTML).toBe("");
+        // Nothing was drawn, so no post-render pass speaks about it.
+        expect(blank).not.toHaveBeenCalled();
+        expect(fit).not.toHaveBeenCalled();
+        host.destroy();
+    });
+
+    it("absent: render() throws, and the message still carries the sentinel", () => {
+        const host = createChartHost(container, { data: DATA, code: THROWS_SENTINEL });
+        let threw: any = null;
+        try { host.render(); } catch (e) { threw = e; }
+        expect(threw).toBeInstanceOf(Error);
+        expect(String(threw.message)).toContain("INVALID:");
+        host.destroy();
+    });
+
+    it("supplied: an ordinary throw is NOT a sentinel and still rethrows", () => {
+        const calls: unknown[] = [];
+        const host = createChartHost(container, {
+            data: DATA, d3: {},
+            code: `function render(container, data, options) { throw new TypeError("Cannot read properties of undefined (reading 'x')"); }`,
+            onInvalidSentinel: info => calls.push(info),
+        });
+        let threw: any = null;
+        try { host.render(); } catch (e) { threw = e; }
+        expect(threw).toBeInstanceOf(TypeError);
+        expect(calls.length).toBe(0);
+        host.destroy();
+    });
+
+    it("the chart draws again on the next data change once the column is back", () => {
+        const calls: unknown[] = [];
+        const NEEDS_X = `function render(container, data, options) {
+          if (data.columns.findIndex(c => c.name === "X") === -1) throw new Error('INVALID:column "X" not found');
+          const m = container.ownerDocument.createElement("div");
+          m.className = "d3-mark"; m.setAttribute("data-row-idx", "0");
+          container.appendChild(m);
+        }`;
+        const host = createChartHost(container, {
+            data: { columns: [{ name: "Y" }], rows: [[1]] }, code: NEEDS_X,
+            onInvalidSentinel: info => calls.push(info),
+        });
+        host.render();
+        expect(calls.length).toBe(1);
+        expect(container.querySelectorAll(".d3-mark").length).toBe(0);
+        host.setData({ columns: [{ name: "X" }], rows: [[1]] });
+        expect(calls.length).toBe(1);
+        expect(container.querySelectorAll(".d3-mark").length).toBe(1);
+        host.destroy();
+    });
 });

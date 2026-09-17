@@ -229,6 +229,13 @@ export {
 // disagree about what blank means.
 export { censusMarks, isBlankRender, blankRenderFlag, type MarkCensus, type BlankVerdictInput } from "./blankRender";
 
+// A chart that STOPPED ON PURPOSE. Generated code throws the INVALID sentinel when a column it is
+// built on is gone from the data - a data state, not a crash, and every host has to tell the two
+// apart by the same rule or one host says "did not run" where another says what is missing.
+// createChartHost routes the throw to `onInvalidSentinel`; these are for a host that runs
+// render() itself or reads the message out of a log.
+export { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
+
 // A mark drawn as a thin open stroke can only be clicked if you aim perfectly (2026-09-03). The
 // sibling question to ensureCrossfilterHitTargets, one step further out: that pass heals marks
 // that cannot be clicked AT ALL, this one MEASURES marks whose hit target is a hairline. It only

@@ -55,6 +55,13 @@ export interface BicChartProps {
     labelContrast?: ChartHostConfig["labelContrast"];
     /** What the label-contrast pass did after each render - counts, for a page that logs. */
     onLabelContrast?: ChartHostConfig["onLabelContrast"];
+    /**
+     * THE CHART STOPPED BECAUSE THE DATA LACKS A COLUMN IT IS BUILT ON. Supplied: the chart's
+     * container is left empty and this is called with the chart's reason, instead of the throw
+     * reaching React - so a page can say what is missing where the chart would be. Absent: the
+     * throw propagates as before. See createChartHost's `onInvalidSentinel`.
+     */
+    onInvalidSentinel?: ChartHostConfig["onInvalidSentinel"];
     /** Identity within a <BicChartGroup> — the key other charts filter by. */
     id?: string;
     /** Take this group member's selection as a filter on THIS chart's rows. */
@@ -159,7 +166,7 @@ function payloadFor(g: GroupCtx, sourceIdxs: number[] | null) {
 
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
-            id, filteredBy, respondsWith, onSelect, className, style } = props;
+            onInvalidSentinel, id, filteredBy, respondsWith, onSelect, className, style } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -191,6 +198,8 @@ export function BicChart(props: BicChartProps) {
     onSelectRef.current = onSelect;
     const onLabelContrastRef = useRef(onLabelContrast);
     onLabelContrastRef.current = onLabelContrast;
+    const onInvalidSentinelRef = useRef(onInvalidSentinel);
+    onInvalidSentinelRef.current = onInvalidSentinel;
 
     // GEOMETRY — core render() is synchronous by contract, so the host can only attach what
     // is already cached; a cold cache used to mean a bubble map that painted its marks over
@@ -218,7 +227,17 @@ export function BicChart(props: BicChartProps) {
         if (!el || (!code && !renderFn) || !data) return;
         const host = createChartHost(el, { code, renderFn, data, options, d3, geoKind, viewState,
                                            labelContrast,
-                                           onLabelContrast: r => onLabelContrastRef.current?.(r) });
+                                           onLabelContrast: r => onLabelContrastRef.current?.(r),
+                                           // A GETTER, not a wrapper: the host decides whether to
+                                           // swallow the sentinel throw by whether this is SET, so
+                                           // an always-present wrapper would hide the throw from a
+                                           // page that never asked. Read at throw time, so the
+                                           // newest prop wins without a rebuild.
+                                           get onInvalidSentinel() {
+                                               return onInvalidSentinelRef.current
+                                                   ? (info: { reason: string; message: string }) => onInvalidSentinelRef.current?.(info)
+                                                   : undefined;
+                                           } });
         hostRef.current = host;
         const off = host.selection.onChange((payloadIdxs, source) => {
             // "host" = a programmatic clear WE issued (below) to drop a stale highlight.
