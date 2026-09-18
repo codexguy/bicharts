@@ -470,12 +470,11 @@ export interface RenderOptions {
      * the scrubber when they follow. ADVISORY TELEMETRY: the host logs it, and nothing about the
      * chart depends on a host supplying it.
      *
-     * ITEM 639. Until now no host could tell a control that fired from a control that does
-     * nothing. The Power BI visual left an INDIRECT trace, because working a control persists
-     * view-state and that write is logged; the Excel add-in's write is silent, so a reader
-     * reporting "the buttons do nothing" left no record anywhere. Establishing that a control had
-     * in fact fired meant pulling the generated source out of the database and reading it — which
-     * is exactly what item 638 had to do.
+     * Until now no host could tell a control that fired from a control that does nothing. One
+     * host left an INDIRECT trace, because working a control persists view-state and that write
+     * is logged there; another host's write was silent, so a reader reporting "the buttons do
+     * nothing" left no record anywhere. Establishing that a control had in fact fired meant
+     * pulling the generated source out of storage and reading it by hand.
      *
      * CLICKS ONLY, and there is deliberately no `phase`. A control also settles on a value at
      * first paint, on every resize and on every re-render; reporting those would bury the
@@ -488,7 +487,7 @@ export interface RenderOptions {
     onControlChange?: (e: ChartControlChange) => void;
 }
 
-/** One reader gesture on a chart's own control (item 639). */
+/** One reader gesture on a chart's own control. */
 export interface ChartControlChange {
     /** The helper family that owns the control — "segmented" today. */
     control: string;
