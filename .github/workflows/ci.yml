@@ -152,5 +152,24 @@ jobs:
       # imported one lands around 805 KB and still fails this. What would actually buy the
       # headroom back is making shape-core's reference data lazy - worth ~500 KB, tracked as
       # its own item, and far more than the 26 KB that shaving colorsea would return.
+      #
+      # 2026-09-17, item 637: RAISED 600 -> 700, AND THE CEILING IS NO LONGER THE ONLY CHECK.
+      # It went red again at 0.5.103 and stayed red for ELEVEN consecutive runs through 0.5.113,
+      # every one of them published anyway, because Release and CI are separate workflows on the
+      # same push and the publishing one never consulted the other. Measured before the number
+      # moved, in the order this note demands: NO map geometry in the closure - the three
+      # geometry chunks sit outside it behind loadGeo() - and what crossed 600 was 0.5.103 adding
+      # pendingGenerate.ts (305 lines) to a closure already within a few KB of the line. Ordinary
+      # growth, twice now, which is why a third raise on its own would buy only another few weeks.
+      #
+      # So two things changed beside the number. checkEagerSize.mjs now asserts the real
+      # invariant BY MODULE, read from esbuild's own `// src/...` chunk comments, which no amount
+      # of gazetteer growth can hide and which has a positive control in the suite. And
+      # tests/eagerLoadBudget.test.ts runs the whole check inside `npm test` - which Release
+      # already runs before it publishes. THAT is what makes this gate load-bearing: a step in
+      # THIS workflow can only ever report, because nothing gates publishing on CI's result.
+      #
+      # The ceiling is passed explicitly rather than left to the script's default because this
+      # measures the INSTALLED package, which is ~16 KB lighter than the repo build.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 600
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 700
