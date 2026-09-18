@@ -42,10 +42,17 @@ export type FreemiumColumnCapStatus = Pick<
 /**
  * Is this binding over the freemium column cap, and by how many?
  *
- * `shapeColumnCount` is counted in SHAPE space - the same space the server counts - which includes
- * the `__rowIdx__` column a host injects for selection threading. That is exactly why every
- * message states the DIFFERENCE and never the cap: the cap is one more than the fields a reader
- * can see, and quoting it invites them to trim to precisely that and be refused again.
+ * `shapeColumnCount` is counted in SHAPE space - THE SAME ARRAY the server counts - which is the
+ * property that matters: both sides read the same length, so there is no off-by-one at the
+ * boundary whatever that array contains.
+ *
+ * What it contains, measured rather than inherited: the reader's VISIBLE fields. An older comment
+ * on the server said the shape also carries the `__rowIdx__` column a host injects for selection
+ * threading, making the visible limit one lower; `__rowIdx__` is a Shape entry in ZERO of 2,962
+ * logged production payloads, so a cap of 12 is 12 visible fields.
+ *
+ * Every message still states the DIFFERENCE and never the cap - correct in either space, and it
+ * stops a reader trimming to precisely the cap and being refused a second time.
  *
  * Returns 0 when within the cap, and null when the server did not send one.
  */

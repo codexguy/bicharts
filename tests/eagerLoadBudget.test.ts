@@ -26,15 +26,11 @@ const entry = resolve(root, "packages/chart-host/dist/index.mjs");
 const geoEntry = resolve(root, "packages/chart-host/dist/geo-world.mjs");
 
 describe("eager load budget", () => {
-    it("IS THE GATE: chart-host's eager closure passes checkEagerSize", () => {
-        // `npm test` can legitimately run before a build in a bare checkout. Saying so is better
-        // than a green that proved nothing — a skip here is visible, and CI and Release both build
-        // first so neither can take this branch.
-        if (!existsSync(entry)) {
-            console.warn("no chart-host build — run `npm run build` first; this gate cannot judge an absent bundle");
-            return;
-        }
-
+    // SKIPPED, NOT PASSED, when there is no build. The suite can legitimately run before a build
+    // in a bare checkout, and an early `return` there would report GREEN for a gate that judged
+    // nothing — which is the precise failure this whole item is about, so it would be a poor place
+    // to repeat it. CI and Release both build first, so neither can take this branch.
+    it.skipIf(!existsSync(entry))("IS THE GATE: chart-host's eager closure passes checkEagerSize", () => {
         let out = "";
         let failed = false;
         try {
@@ -50,7 +46,7 @@ describe("eager load budget", () => {
         expect(out).toContain("eager-load budget");
     });
 
-    it("POSITIVE CONTROL: the geometry check actually fires, and names the module", () => {
+    it.skipIf(!existsSync(geoEntry))("POSITIVE CONTROL: the geometry check actually fires, and names the module", () => {
         // A guard nobody has watched fire is a hypothesis. `dist/geo-world.mjs` is a real entry
         // whose closure legitimately IS the world geometry, so running the check against it
         // exercises the exact branch that must catch a regression on the main entry — without
@@ -60,8 +56,6 @@ describe("eager load budget", () => {
         // FILENAME, and esbuild emits geometry into content-hashed chunks (chunk-ABGDJ3NJ.mjs)
         // carrying no stem at all — so it matched nothing and passed 223 KB of world geometry.
         // The check now reads esbuild's own `// src/geoWorld110m.generated.ts` module comment.
-        if (!existsSync(geoEntry)) return;
-
         let failed = false;
         let out = "";
         try {
@@ -80,7 +74,7 @@ describe("eager load budget", () => {
         expect(out, "the failure must name WHICH module, or it sends someone hunting").toContain("geoWorld110m");
     });
 
-    it("the ceiling still leaves room for the smallest map asset to trip it", () => {
+    it.skipIf(!existsSync(entry))("the ceiling still leaves room for the smallest map asset to trip it", () => {
         // The budget means something only while (closure + smallest geometry asset) is ABOVE it.
         // At ~625 KB of closure and a 223 KB smallest asset that is ~848 KB against a 700 KB
         // ceiling. If a future raise ever puts the ceiling above that sum, the byte check stops
@@ -92,7 +86,6 @@ describe("eager load budget", () => {
         expect(m, "could not read the default ceiling out of checkEagerSize.mjs").toBeTruthy();
         const limitKB = Number(m![1]);
 
-        if (!existsSync(entry)) return;
         const out = execFileSync("node", ["scripts/checkEagerSize.mjs", entry], { cwd: root, encoding: "utf8" });
         const t = out.match(/(\d+) KB\s+TOTAL/);
         expect(t, `could not read the closure total from:\n${out}`).toBeTruthy();
