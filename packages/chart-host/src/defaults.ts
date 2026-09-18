@@ -84,6 +84,9 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         allowTooltips: p.allowTooltips,
         noDataText: p.noDataText,
         onSelect: p.onSelect,
+        // Item 639. Passed straight through like onSelect: the host owns what a gesture MEANS,
+        // and a host that supplies nothing leaves every control behaving exactly as before.
+        onControlChange: p.onControlChange,
 
         // ---- live-restyle knobs: `raw || undefined` / `.toString() || undefined` ----
         colorScaleLow: p.colorScaleLow || undefined,

@@ -21,7 +21,13 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.9.0";
+export const HOST_CONTRACT_VERSION = "1.10.0";
+// 1.10.0 (2026-09-17): CONTROL GESTURES ARE REPORTABLE. RenderOptions gains onControlChange, which a
+// chart's own controls call when a READER works them (the segmented row today), so a host can log the
+// gesture instead of inferring it from the view-state write that follows. Item 639: the visual logged
+// that write and the add-in did not, so "the buttons do nothing" left no record in one host and an
+// indirect one in the other. Additive and optional in both directions — a host that ignores it is
+// unchanged, and a control whose host supplies nothing behaves exactly as before.
 // 1.9.0 (2026-09-14): DATE CELLS AS THE DAY THEY NAME. RenderOptions gains dateCellsAreUtcDays: true when the
 // host has re-anchored every date column that arrived at the reader's LOCAL midnight to the UTC midnight of
 // its day (buildRenderPayload opts.utcDays), so a UTC read prints the cell's own day in every zone. A chart,
@@ -459,4 +465,35 @@ export interface RenderOptions {
     // Optional selection callback some non-animated charts invoke (the DOM event +
     // data-row-idx bridge is the primary mechanism; see the interaction grammar).
     onSelect?: (rowIdxs: number[]) => void;
+    /**
+     * A reader WORKED one of the chart's own controls — the segmented row today, the slider and
+     * the scrubber when they follow. ADVISORY TELEMETRY: the host logs it, and nothing about the
+     * chart depends on a host supplying it.
+     *
+     * ITEM 639. Until now no host could tell a control that fired from a control that does
+     * nothing. The Power BI visual left an INDIRECT trace, because working a control persists
+     * view-state and that write is logged; the Excel add-in's write is silent, so a reader
+     * reporting "the buttons do nothing" left no record anywhere. Establishing that a control had
+     * in fact fired meant pulling the generated source out of the database and reading it — which
+     * is exactly what item 638 had to do.
+     *
+     * CLICKS ONLY, and there is deliberately no `phase`. A control also settles on a value at
+     * first paint, on every resize and on every re-render; reporting those would bury the
+     * gestures under repaints, and the restored value is already in the persisted view-state, so
+     * nothing is lost by leaving it out. This field reports what a PERSON did.
+     *
+     * NEVER FATAL. It is called from inside a click handler, so a host that throws here must not
+     * take the reader's gesture with it: the helper swallows anything this raises.
+     */
+    onControlChange?: (e: ChartControlChange) => void;
+}
+
+/** One reader gesture on a chart's own control (item 639). */
+export interface ChartControlChange {
+    /** The helper family that owns the control — "segmented" today. */
+    control: string;
+    /** The control's name inside the chart: "sort", "form", "measure". */
+    key: string;
+    /** The value the reader chose. */
+    value: string;
 }

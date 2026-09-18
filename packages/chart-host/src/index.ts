@@ -38,7 +38,7 @@ export {
     MAX_MAP_POINTS_DEFAULT,
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode,
     type ApproximatePositions, type ValueAxisBaseline, type SeasonalMarkers,
-    type ColorScaleScope, type RenderOptions, type ViewStateProvider,
+    type ColorScaleScope, type RenderOptions, type ViewStateProvider, type ChartControlChange,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // GEOMETRY IS NOT RE-EXPORTED HERE ON PURPOSE. "./geo" statically imports ~1.3 MB of
