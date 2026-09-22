@@ -299,6 +299,18 @@ const D3_PLUGIN_PACKAGES: Record<string, string> = {
     // Attached onto d3 like the rest, but reached as d3.mermaid.render(...) — a NAMESPACE
     // OBJECT with methods, not a function on d3. The scan below accounts for that shape.
     mermaid: "mermaid",
+    // AND THE NAME A REAL CHART ACTUALLY WRITES. This one is not a member of the mermaid
+    // package at all: it is a helper the SERVER prepends into the generated code, and the
+    // helper is what reaches for the library. So a genuine diagram chart contains
+    // `d3.llmMermaid(` and never once writes `d3.mermaid` — measured on the first real
+    // generation of that type, for which this scan returned an EMPTY list. It drew, because
+    // the host it ran in happened to carry the library; a host relying on this answer to
+    // decide what to install would have been told nothing and failed several frames deep.
+    //
+    // Mapping the helper is right rather than a hack, because this map answers "what must a
+    // host INSTALL for this code to run" and not "which package exports this symbol". For
+    // code that calls the helper, the answer is the library the helper reaches for.
+    llmMermaid: "mermaid",
 };
 
 // FAIL FAST, not fail deep (GAP-6, 2026-07-31). explainRenderFailure below turns a plugin

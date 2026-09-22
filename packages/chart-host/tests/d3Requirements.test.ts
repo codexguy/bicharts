@@ -124,6 +124,29 @@ describe("requiredD3Plugins — a plugin reached through a member", () => {
         expect(requiredD3Plugins("d3.mermaid.initialize({ startOnLoad: false });")).toEqual(["mermaid"]);
     });
 
+    it("names mermaid from the HELPER a real chart actually calls", () => {
+        // The shape that made this necessary: the server prepends a helper into the generated
+        // code and the HELPER is what reaches for the library, so a genuine diagram chart says
+        // d3.llmMermaid(...) and never once writes d3.mermaid. Knowing only the library name,
+        // this scan answered "nothing to install" for exactly the charts that need it most.
+        expect(requiredD3Plugins("return d3.llmMermaid(frame, dsl, { options: options });"))
+            .toEqual(["mermaid"]);
+        expect(requiredD3Plugins("function render(c,d,o){ return d3.llmMermaid(f, t, {}); }"))
+            .toEqual(["mermaid"]);
+    });
+
+    it("reports mermaid ONCE when a chart names both the helper and the library", () => {
+        expect(requiredD3Plugins("d3.llmMermaid(f, t, {}); d3.mermaid.parse(t);")).toEqual(["mermaid"]);
+    });
+
+    it("does not name it for the OTHER server-shipped helpers", () => {
+        // llmMermaid is mapped because the helper it names reaches a library the host must
+        // install. Every other d3.llm* helper is self-contained, and mapping one of those would
+        // send a host to npm for a chart that needs nothing.
+        expect(requiredD3Plugins("d3.llmTooltip(container); d3.llmFitLabel(t, 100, {});")).toEqual([]);
+        expect(requiredD3Plugins("d3.llmSlider(svg, {}); d3.llmScrubber(svg, {});")).toEqual([]);
+    });
+
     it("still reports nothing for a bare property READ — the dot has to lead somewhere", () => {
         // The pre-existing contract (a read is not a use) has to survive the widening: the name
         // here ends at a semicolon, which is neither a dot nor a parenthesis.
