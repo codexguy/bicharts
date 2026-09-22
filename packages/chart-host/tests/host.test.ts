@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createChartHost } from "../src/host";
 import { loadGeo } from "../src/geoLazy";
+import { MARK_SELECTED_CLASS } from "../src/contract";
 
 // The createChartHost runtime vs a SYNTHETIC contract-conformant archetype. The real
 // shipping archetypes are locked to the same grammar by the server-side conformance gate
@@ -281,5 +282,159 @@ describe("createChartHost onInvalidSentinel", () => {
         expect(calls.length).toBe(1);
         expect(container.querySelectorAll(".d3-mark").length).toBe(1);
         host.destroy();
+    });
+});
+
+// A GENERATED CHART MAY DRAW ASYNCHRONOUSLY. A drawing library with no synchronous API leaves
+// the chart's own render() returning a PROMISE, and every post-render pass — label contrast,
+// hit-target heal, census, fit — measures the frame BEFORE the chart unless it waits for that
+// promise. render() itself still returns void, so no existing call site changes; `host.rendered`
+// is how a caller waits for the same moment the passes wait for.
+describe("createChartHost — a render() that returns a promise", () => {
+    const drawMarks = (c: HTMLElement, n: number) => {
+        const d = c.ownerDocument;
+        for (let r = 0; r < n; r++) {
+            const m = d.createElement("div");
+            m.className = "d3-mark";
+            m.setAttribute("data-row-idx", String(r));
+            c.appendChild(m);
+        }
+    };
+
+    it("waits: the post-render passes run only once the promise settles, then `rendered` resolves", async () => {
+        let letItDraw: () => void = () => {};
+        const gate = new Promise<void>(r => { letItDraw = r; });
+        const host = createChartHost(container, {
+            data: DATA,
+            renderFn: c => gate.then(() => drawMarks(c, DATA.rows.length)),
+        });
+        // A selection from elsewhere. Repainting it onto the marks the chart just built is one
+        // of the passes, so it doubles as proof they ran against the DOM the chart drew rather
+        // than against the empty container that was there when render() returned.
+        host.selection.highlight([1]);
+        host.render();
+        expect(container.querySelectorAll(".d3-mark").length).toBe(0);      // nothing drawn yet
+        letItDraw();
+        await host.rendered;
+        expect(container.querySelectorAll(".d3-mark").length).toBe(DATA.rows.length);
+        expect(container.querySelector('.d3-mark[data-row-idx="1"]')!.classList
+            .contains(MARK_SELECTED_CLASS)).toBe(true);
+        host.destroy();
+    });
+
+    it("a REJECTED promise rejects `rendered`, carrying the error explainRenderFailure produced", async () => {
+        const host = createChartHost(container, {
+            data: DATA, d3: {},                       // a d3 with no sankey attached
+            renderFn: () => Promise.reject(new TypeError("d3.sankey is not a function")),
+        });
+        expect(() => host.render()).not.toThrow();    // the failure is async; render() cannot throw it
+        await expect(host.rendered).rejects.toThrow(/d3-sankey/);
+        host.destroy();
+    });
+
+    it("a SYNCHRONOUS chart is untouched: the passes ran before render() returned, and `rendered` is already resolved", async () => {
+        const blank = vi.fn();
+        const host = createChartHost(container, {
+            data: DATA, onBlankRender: blank,
+            renderFn: c => { drawMarks(c, DATA.rows.length); },              // returns undefined
+        });
+        host.selection.highlight([2]);
+        host.render();
+        // No await anywhere: everything the async lane has to wait for has already happened.
+        expect(container.querySelectorAll(".d3-mark").length).toBe(DATA.rows.length);
+        expect(container.querySelector('.d3-mark[data-row-idx="2"]')!.classList
+            .contains(MARK_SELECTED_CLASS)).toBe(true);
+        expect(blank).not.toHaveBeenCalled();
+        // ALREADY resolved, not merely quick — a microtask beats a zero-delay macrotask every time.
+        const first = await Promise.race([
+            host.rendered.then(() => "resolved"),
+            new Promise(r => setTimeout(() => r("pending"), 0)),
+        ]);
+        expect(first).toBe("resolved");
+        host.destroy();
+    });
+
+    it("the LATER render wins: a superseded async render never runs its post-render passes", async () => {
+        let letFirstFinish: () => void = () => {};
+        const gate = new Promise<void>(r => { letFirstFinish = r; });
+        const blank = vi.fn();
+        let call = 0;
+        const host = createChartHost(container, {
+            data: DATA, onBlankRender: blank,
+            renderFn: c => {
+                if (++call === 1) return gate;                  // the slow one: draws nothing, ever
+                drawMarks(c, DATA.rows.length);                 // the one that supersedes it
+            },
+        });
+        host.render();                                          // in flight
+        host.setOptions({ aggregation: "average" });            // arrives mid-draw and wins
+        expect(container.querySelectorAll(".d3-mark").length).toBe(DATA.rows.length);
+        const afterSecond = host.rendered;
+        letFirstFinish();
+        await gate;                                             // the stale continuation has now run
+        await afterSecond;
+        // The stale render painted no marks against six rows; had its census run, it would have
+        // said so — and its fit/contrast passes would have measured the winner's DOM.
+        expect(blank).not.toHaveBeenCalled();
+        expect(container.querySelectorAll(".d3-mark").length).toBe(DATA.rows.length);
+        host.destroy();
+    });
+
+    it("an async rejection carrying the INVALID sentinel still reaches onInvalidSentinel", async () => {
+        const calls: Array<{ reason: string; message: string }> = [];
+        const host = createChartHost(container, {
+            data: DATA,
+            renderFn: c => {
+                drawMarks(c, 1);                                // a half-built frame, as a real chart leaves one
+                return Promise.reject(new Error('INVALID:column "X" not found'));
+            },
+            onInvalidSentinel: info => calls.push(info),
+        });
+        host.render();
+        await host.rendered;                                    // a data state is not a render FAILURE
+        expect(calls.length).toBe(1);
+        expect(calls[0].reason).toBe('column "X" not found');
+        expect(container.innerHTML).toBe("");
+        host.destroy();
+    });
+
+    it("without a sentinel handler an async sentinel rejects, exactly as the synchronous one throws", async () => {
+        const host = createChartHost(container, {
+            data: DATA, d3: {},
+            renderFn: () => Promise.reject(new Error('INVALID:column "X" not found')),
+        });
+        host.render();
+        await expect(host.rendered).rejects.toThrow(/INVALID:/);
+        host.destroy();
+    });
+
+    it("a SYNCHRONOUS sentinel still reaches onInvalidSentinel, and `rendered` resolves", async () => {
+        const calls: Array<{ reason: string; message: string }> = [];
+        const host = createChartHost(container, {
+            data: DATA,
+            renderFn: () => { throw new Error('INVALID:column "X" not found'); },
+            onInvalidSentinel: info => calls.push(info),
+        });
+        expect(() => host.render()).not.toThrow();
+        expect(calls.length).toBe(1);
+        await expect(host.rendered).resolves.toBeUndefined();
+        host.destroy();
+    });
+
+    it("gives up on a promise that never settles rather than waiting forever", async () => {
+        vi.useFakeTimers();
+        try {
+            const host = createChartHost(container, {
+                data: DATA,
+                renderFn: () => new Promise<void>(() => { /* settles never */ }),
+            });
+            host.render();
+            const rendered = host.rendered;
+            await vi.advanceTimersByTimeAsync(15000);
+            await expect(rendered).rejects.toThrow(/did not finish drawing/);
+            host.destroy();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

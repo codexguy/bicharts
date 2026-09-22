@@ -108,6 +108,76 @@ describe("requiredD3Plugins — what this chart needs, before running it", () =>
     });
 });
 
+// A PLUGIN REACHED THROUGH A MEMBER, NOT A CALL. Mermaid attaches onto d3 like every other
+// plugin, but it is a NAMESPACE object: the chart says d3.mermaid.render(id, text), so the
+// plugin name is followed by a DOT and a parenthesis-only scan found nothing to install. The
+// host then learned what the chart needed only from the crash — the exact blind spot
+// requiredD3Plugins exists to close.
+describe("requiredD3Plugins — a plugin reached through a member", () => {
+    it("names mermaid from d3.mermaid.render(...)", () => {
+        expect(requiredD3Plugins("async function render(c,d,o){ const s = await d3.mermaid.render('id', txt); }"))
+            .toEqual(["mermaid"]);
+    });
+
+    it("names it however the call is spaced, and from any member of it", () => {
+        expect(requiredD3Plugins("d3 . mermaid . render(id, txt)")).toEqual(["mermaid"]);
+        expect(requiredD3Plugins("d3.mermaid.initialize({ startOnLoad: false });")).toEqual(["mermaid"]);
+    });
+
+    it("still reports nothing for a bare property READ — the dot has to lead somewhere", () => {
+        // The pre-existing contract (a read is not a use) has to survive the widening: the name
+        // here ends at a semicolon, which is neither a dot nor a parenthesis.
+        expect(requiredD3Plugins("const m = d3.mermaid;")).toEqual([]);
+        expect(requiredD3Plugins("mysankey(); const f = d3.sankey;")).toEqual([]);
+    });
+
+    it("leaves every PRE-EXISTING answer exactly where it was", () => {
+        // A scan that learned about dots must not have changed a single old verdict.
+        expect(requiredD3Plugins("d3.sankey().nodeWidth(15)")).toEqual(["d3-sankey"]);
+        expect(requiredD3Plugins("d3.sankeyLinkHorizontal(); d3.sankeyJustify(); d3.sankeyCenter(); d3.sankeyLeft(); d3.sankeyRight();"))
+            .toEqual(["d3-sankey"]);
+        expect(requiredD3Plugins("d3.hexbin().radius(8)")).toEqual(["d3-hexbin"]);
+        expect(requiredD3Plugins("d3.voronoiTreemap(); d3.voronoiMap(); d3.weightedVoronoi();"))
+            .toEqual(["d3-voronoi-map", "d3-voronoi-treemap", "d3-weighted-voronoi"]);
+        // Core d3 chained through a member is the case a widened scan could have broken.
+        expect(requiredD3Plugins("d3.scaleLinear.name; d3.select(el).append('svg'); d3.max(v); d3.timeFormat('%Y')('x');"))
+            .toEqual([]);
+    });
+});
+
+describe("explainRenderFailure — a missing Mermaid says so", () => {
+    it("names the library, says this host did not load it, and shows how to attach it", () => {
+        for (const raw of [
+            "d3.mermaid.render is not a function",
+            "Cannot read properties of undefined (reading 'render') — d3.mermaid is undefined",
+            "mermaid is not defined",
+        ]) {
+            const msg = String((explainRenderFailure(new TypeError(raw), {}) as Error).message);
+            expect(msg).toContain("[@bicharts/chart-host]");
+            expect(msg).toContain("Mermaid");
+            expect(msg).toContain("d3.mermaid.render");
+            expect(msg).toContain("npm install mermaid");
+            expect(msg).toContain("Object.assign(d3, { mermaid })");
+            expect(msg).toContain("SAME d3");        // attaching to a different d3 is the trap
+            expect(msg).toContain(raw);              // the original is never thrown away
+            // A namespace library has a DEFAULT export; the generic plugin advice would send a
+            // host to `import { mermaid } from "mermaid"`, which does not exist.
+            expect(msg).not.toContain("import { mermaid }");
+        }
+    });
+
+    it("steps aside once a real mermaid IS attached", () => {
+        // The chart names mermaid while failing for its own reason; that is not a missing library.
+        const orig = new TypeError("mermaid diagram text was empty");
+        expect(explainRenderFailure(orig, { mermaid: { render: () => {} } })).toBe(orig);
+    });
+
+    it("still blames the MISSING d3 before it blames Mermaid", () => {
+        const e = explainRenderFailure(new TypeError("d3.mermaid.render is not a function"), undefined);
+        expect(String((e as Error).message)).toContain("no d3 was provided");
+    });
+});
+
 describe("d3 failure messages, continued", () => {
     let container: HTMLElement;
     beforeEach(() => {

@@ -230,6 +230,20 @@ export interface ChartHostConfig {
 
 export interface ChartHost {
     render(): void;
+    /**
+     * THE LAST RENDER, SETTLED. render() stays synchronous — it returns nothing, exactly as it
+     * always has — but a generated chart whose drawing library has no synchronous API returns a
+     * PROMISE from its own render(), and every post-render pass (label contrast, hit-target
+     * heal, census, fit) has to wait for that before it measures anything. This is how a caller
+     * waits for the same moment: it resolves once those passes have run, and rejects with the
+     * error render() would have thrown had the chart drawn synchronously.
+     *
+     * On a synchronous chart it is an ALREADY-RESOLVED promise, so awaiting it is free and
+     * correct for both kinds and a host needs no test for which it has. Replaced on every
+     * render(), so read it after the render() whose finish you mean; when renders overlap, the
+     * LAST one wins and the superseded one settles without touching the chart.
+     */
+    readonly rendered: Promise<void>;
     /** Merge raw option changes and re-render — the live-restyle path (colour scale,
      *  aggregation, animMaxIdealFrames, timeline style…). Never a regeneration. */
     setOptions(partial: ResolveOptionsInput): void;
@@ -282,6 +296,9 @@ const D3_PLUGIN_PACKAGES: Record<string, string> = {
     hexbin: "d3-hexbin",
     voronoiTreemap: "d3-voronoi-treemap", voronoiMap: "d3-voronoi-map",
     weightedVoronoi: "d3-weighted-voronoi",
+    // Attached onto d3 like the rest, but reached as d3.mermaid.render(...) — a NAMESPACE
+    // OBJECT with methods, not a function on d3. The scan below accounts for that shape.
+    mermaid: "mermaid",
 };
 
 // FAIL FAST, not fail deep (GAP-6, 2026-07-31). explainRenderFailure below turns a plugin
@@ -291,13 +308,19 @@ const D3_PLUGIN_PACKAGES: Record<string, string> = {
 // which CDN bundles to load; this is that sniff, exported, so an SDK/MCP host stops being the
 // only consumer flying blind.
 //
-// Deliberately a STATIC SCAN of `d3.<name>(` rather than a trial render: synchronous, side
-// effect free, and safe on untrusted generated code — which executing is not. Over-reporting
-// is the safe direction: naming a plugin the chart turns out not to reach costs a needless
-// install, while missing one costs a blank chart failing several frames deep.
+// Deliberately a STATIC SCAN of `d3.<name>(` / `d3.<name>.` rather than a trial render:
+// synchronous, side effect free, and safe on untrusted generated code — which executing is
+// not. Over-reporting is the safe direction: naming a plugin the chart turns out not to reach
+// costs a needless install, while missing one costs a blank chart failing several frames deep.
 export function requiredD3Plugins(code: string): string[] {
     const out = new Set<string>();
-    for (const m of String(code || "").matchAll(/\bd3\s*\.\s*(\w+)\s*\(/g)) {
+    // A DOT ends the plugin name as legitimately as a parenthesis does. Not every plugin is a
+    // FUNCTION on d3: one that attaches a namespace object is only ever reached through a
+    // member of it, so `d3.mermaid.render(...)` puts no `(` after the plugin name at all and a
+    // parenthesis-only scan saw nothing to install. Accepting a dot cannot over-match
+    // dangerously — the map lookup on the next line gates every hit, so a core member access
+    // like `d3.scaleLinear.domain` is read and discarded like any other unmapped name.
+    for (const m of String(code || "").matchAll(/\bd3\s*\.\s*(\w+)\s*[.(]/g)) {
         const pkg = D3_PLUGIN_PACKAGES[m[1]];
         if (pkg) out.add(pkg);
     }
@@ -311,6 +334,21 @@ export function explainRenderFailure(err: unknown, d3: any): unknown {
             "[@bicharts/chart-host] no d3 was provided, so the generated chart could not run. " +
             "Pass it explicitly — createChartHost(el, { d3 }) / <BicChart d3={d3} /> — or set " +
             "window.d3. The chart needs D3 v7 (npm install d3@7). Original error: " + msg);
+    }
+    // MERMAID FIRST, because it fails in a shape the generic plugin branch below misreads.
+    // It is reached as d3.mermaid.render(...), so a missing one surfaces as a property read on
+    // `undefined` or as a non-function `render` — and the generic branch would then tell a host
+    // to `import { mermaid } from "mermaid"`, which is not how a default-exporting diagram
+    // library attaches. Gated on the d3 actually in hand, so a chart that names mermaid while
+    // failing for some other reason keeps its own error.
+    if (typeof d3?.mermaid?.render !== "function" && /\bmermaid\b/i.test(msg)) {
+        return new Error(
+            "[@bicharts/chart-host] this chart draws its diagram with Mermaid, which it reaches " +
+            "as d3.mermaid.render(...), and the d3 you passed has no mermaid on it — this host " +
+            "did not load the library. A host supplies it exactly the way the other plugins are " +
+            "supplied: attach it onto the SAME d3 instance you hand to createChartHost —  " +
+            "npm install mermaid  then  import mermaid from 'mermaid'; " +
+            "Object.assign(d3, { mermaid });  Original error: " + msg);
     }
     const m = /d3\.(\w+) is not a function|(\w+) is not a function/.exec(msg);
     const name = m?.[1] ?? m?.[2] ?? "";
@@ -400,6 +438,17 @@ export function compileRenderFn(code: string, win: any, doc: any, d3: any): Rend
     return fn as RenderFn;
 }
 
+// HOW LONG A CHART MAY TAKE TO FINISH DRAWING before the host stops waiting. Only the async
+// lane can reach it: a synchronous chart either returns or throws, and neither hangs. Generous
+// on purpose — a diagram library parsing its own source, a layout that iterates, a first paint
+// on a cold worker are all slow and all legitimate — but bounded, because an unbounded await is
+// a chart that never says anything at all: no marks, no error, no census, forever. A host that
+// gives up is at least a host that can tell the reader something.
+const ASYNC_RENDER_TIMEOUT_MS = 15000;
+
+const isThenable = (v: unknown): v is PromiseLike<unknown> =>
+    !!v && (typeof v === "object" || typeof v === "function") && typeof (v as any).then === "function";
+
 export function createChartHost(container: HTMLElement, config: ChartHostConfig): ChartHost {
     const doc: any = container.ownerDocument;
     const win: any = doc?.defaultView ?? (globalThis as any);
@@ -478,6 +527,23 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let destroyed = false;
     let warnedGeo = false;
     let warnedBlank = false;   // once per host: a repainting chart must not spam the console
+    // WHICH RENDER IS THE CURRENT ONE. A synchronous chart cannot overlap with itself, but an
+    // async one can: setOptions/setData during a slow draw starts a second render while the
+    // first is still in flight, and without a way to tell them apart the FIRST one's post-render
+    // passes would land on the SECOND one's DOM and the older draw would win by finishing last.
+    // Every render takes a ticket; a continuation that no longer holds the current one stops.
+    let renderSeq = 0;
+    // What `host.rendered` hands out — replaced by every render, so a caller always awaits the
+    // latest draw rather than a stale one.
+    let renderedPromise: Promise<void> = Promise.resolve();
+    const settle = (p: Promise<void>): void => {
+        renderedPromise = p;
+        // A rejection nobody awaited must not become an unhandled-rejection crash in the host
+        // page: on the synchronous lane render() has ALREADY thrown the same error at the
+        // caller, and a host that ignores `rendered` is making a legitimate choice. Attaching
+        // this marks the promise handled without consuming it — an await still rejects.
+        p.catch(() => { /* the caller's await is the real channel */ });
+    };
     let current: number[] | null = null;
     // The axis tick / group header that created the CURRENT selection, and whether that
     // tick is a PERIOD (see periodTickSuppressesFeedback in contract.ts). Held as the
@@ -732,9 +798,131 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
 
     const stopAnim = () => { const s = (container as any)[CONTAINER_SLOT_ANIM_STOP]; if (typeof s === "function") { try { s(); } catch { /* chart timer already dead */ } } };
 
+    // EVERYTHING THAT HAPPENS AFTER THE CHART HAS DRAWN, in one place and with exactly one
+    // definition. A chart that draws asynchronously must receive the IDENTICAL treatment a
+    // synchronous one gets, and the only way to guarantee that as passes are added is for both
+    // lanes to call the same function rather than each keep a copy that drifts.
+    const runPostRenderPasses = () => {
+        // CAN THE LABELS ON THE MARKS BE READ? First of the post-render passes, and BEFORE
+        // the hit-target heal on purpose: that heal injects fill:'transparent' rects over
+        // tagged groups, and although this pass treats alpha-0 as "not a backdrop", the
+        // order keeps the two from ever having to know about each other. The page
+        // background comes from the resolved options - the same value the chart itself
+        // was handed - unless the host names one; a themed canvas is not white, and every
+        // readability answer is measured against it. Never throws; reported, never fatal.
+        if (labelContrastOpts !== false) {
+            try {
+                const lc = labelContrastOpts === true ? {} : { ...labelContrastOpts };
+                if (!lc.pageBg) {
+                    const bg = (resolved as any).backgroundColor ?? (resolved as any).themeBg;
+                    if (typeof bg === "string" && bg) lc.pageBg = bg;
+                }
+                const r = applyLabelContrast(container, lc);
+                config.onLabelContrast?.(r);
+            } catch { /* a contrast pass must never break a render that already succeeded */ }
+        }
+        // A DECLARED mark that cannot receive a click is not a mark. Heal the two
+        // habits that leave one unhittable (an inert <g> whose painted children are
+        // pointer-events:none, and a painted element that is itself pointer-events:
+        // none) before anything tries to click it. Purely additive and idempotent —
+        // it only ever makes clickable something the chart already tagged. It matters
+        // most for the FURNITURE: a legend swatch or an axis / group header is exactly
+        // what a chart tends to draw as inert text, and exactly what a reader tries.
+        ensureCrossfilterHitTargets(container, doc);
+        // The chart just rebuilt its DOM, so the selection classes are gone. Repaint
+        // them or a cross-filtered chart loses its own highlight on every restyle.
+        paintSelection();
+        // DID IT ACTUALLY DRAW? A render that returns without throwing is
+        // not the same as a render that painted something, and the difference is invisible
+        // from out here — generated code guards its own column lookups and bails to a
+        // "no data" div, which reaches this line as a complete success. Runs LAST, after
+        // hit-target healing, so a mark that only became countable there still counts.
+        // Never throws: a diagnostic must not be why a delivered render fails.
+        try {
+            const census = censusMarks(container);
+            if (isBlankRender({
+                markCount: census.markCount,
+                rows: data.rows ? data.rows.length : 0,
+                animated: config.animated,
+                contractUntagged: config.contractUntagged,
+            })) {
+                if (!warnedBlank) {
+                    warnedBlank = true;
+                    try {
+                        (win?.console ?? console)?.warn(
+                            `[@bicharts/chart-host] this chart rendered without error but painted no data ` +
+                            `marks, against ${data.rows.length} row(s) — so the container is empty. The usual ` +
+                            `cause is that the generated code binds a column BY NAME that is no longer in ` +
+                            `the data, sending it down its own "no data" branch. Check that the columns in ` +
+                            `your table still match the ones the chart was generated for.`);
+                    } catch { /* advisory only */ }
+                }
+                config.onBlankRender?.({ census, rows: data.rows ? data.rows.length : 0 });
+            }
+        } catch { /* a census must never break a render */ }
+        // CAN THE MARKS BE HIT? Counted separately from whether they exist, because a thin
+        // open stroke is present, correct, tagged, and still unclickable unless you aim at
+        // the hairline. Reported, never repaired: widening a hit band has a real failure
+        // mode of its own, so the measurement lands first and alone. After hit-target
+        // healing, for the same reason the blank census is — a mark that only became
+        // countable there should be measured as it will actually behave.
+        if (config.onHitBandCensus) {
+            try { config.onHitBandCensus(censusHitBands(container, doc)); }
+            catch { /* a census must never break a render */ }
+        }
+        // AND HOW MUCH OF IT IS ONE SHADE? Same position and the same contract as the hit
+        // band above: after every heal, counts only, and it says nothing at all rather than
+        // guessing when the fills are not a ramp.
+        if (config.onColourSpreadCensus) {
+            try { config.onColourSpreadCensus(censusColourSpread(container, doc)); }
+            catch { /* a census must never break a render */ }
+        }
+        // AND IS EACH DOT AT ITS VALUE? Same contract again; it needs the rows, because the
+        // only way to know a dot's value is to read it back through data-row-idx.
+        if (config.onValuePlacementCensus) {
+            try { config.onValuePlacementCensus(censusValuePlacement(container, data)); }
+            catch { /* a census must never break a render */ }
+        }
+        // DOES IT FIT, AND IF NOT CAN THE READER GET AT THE REST (2026-09-03)? Runs
+        // LAST, after every heal and census, because it measures what is finally on screen.
+        // The <svg> clips at its own viewport, so a chart drawing past its declared height
+        // loses those rows outright while the container reports that everything fits - the
+        // frame is grown to the ink FIRST, and only then does a scrollbar mean anything.
+        if (fitOpts !== false) {
+            try {
+                const r = fitRenderedChart(container, fitOpts === true ? {} : fitOpts);
+                config.onFit?.(r);
+            } catch { /* a fit pass must never break a render that already succeeded */ }
+        }
+    };
+
+    // ONE FAILURE BODY for both lanes, for the same reason the passes above are one function:
+    // a chart that fails by REJECTING and one that fails by THROWING said the same thing, and
+    // two copies of this decision would eventually disagree about which is a crash.
+    //
+    // Returns the error to raise, or null when the failure was an INVALID sentinel the host
+    // asked to handle — a DATA STATE, not a crash: the code ran and said the data in front of
+    // it lacks something it is built on. Then stop anything the chart started, drop the
+    // half-built frame (it is not a chart), and let the host say what is missing. Nothing was
+    // drawn, so there is nothing to heal, count or fit.
+    const renderFailure = (err: unknown): unknown => {
+        const message = String((err as any)?.message ?? err ?? "");
+        if (config.onInvalidSentinel && isInvalidSentinelError(message)) {
+            stopAnim();
+            container.innerHTML = "";
+            config.onInvalidSentinel({ reason: invalidSentinelReason(message), message });
+            return null;
+        }
+        return explainRenderFailure(err, d3);
+    };
+
     const host: ChartHost = {
         render() {
             if (destroyed) return;
+            // THIS RENDER'S TICKET. Taken before anything is torn down, so a continuation from
+            // an earlier async render can see that it has been superseded the moment this line
+            // runs — which is also the moment the old chart's DOM stops existing.
+            const seq = ++renderSeq;
             stopAnim();                          // contract: stop the old timer before repaint
             container.innerHTML = "";            // the host owns clearing between renders
             if (!renderFn) {
@@ -772,113 +960,65 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // A fact about the cells themselves: without it a date shim inside the chart re-examines rows the
             // host already re-anchored. Harmless (it would find nothing to move), but the declaration is the contract.
             if (resolved.dateCellsAreUtcDays === undefined && data.dateCellsAreUtcDays) resolved = { ...resolved, dateCellsAreUtcDays: true };
+            // THE RENDER ITSELF, AND WHAT IT HANDED BACK. A generated chart whose drawing
+            // library has no synchronous API — one that must parse, lay out or fetch before it
+            // can paint — returns a PROMISE, and anything measured before that settles is not
+            // measuring this chart. RenderFn is declared `=> void`, which in TypeScript permits
+            // a function returning anything, so the value is read back as unknown.
+            let outcome: unknown;
             try {
-                renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
+                outcome = renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
             } catch (err) {
-                const message = String((err as any)?.message ?? err ?? "");
-                if (config.onInvalidSentinel && isInvalidSentinelError(message)) {
-                    // A DATA STATE, NOT A CRASH: the code ran and said the data in front of it
-                    // lacks something it is built on. Stop anything the chart started, drop the
-                    // half-built frame (it is not a chart), and let the host say what is missing.
-                    // Nothing was drawn, so there is nothing to heal, count or fit.
-                    stopAnim();
-                    container.innerHTML = "";
-                    config.onInvalidSentinel({ reason: invalidSentinelReason(message), message });
-                    return;
-                }
-                throw explainRenderFailure(err, d3);
+                const fatal = renderFailure(err);
+                if (fatal) { settle(Promise.reject(fatal)); throw fatal; }
+                // An INVALID sentinel the host asked to handle: render() returns normally,
+                // exactly as it always has, and `rendered` resolves — nothing FAILED, there was
+                // simply nothing to draw.
+                settle(Promise.resolve());
+                return;
             }
-            // CAN THE LABELS ON THE MARKS BE READ? First of the post-render passes, and BEFORE
-            // the hit-target heal on purpose: that heal injects fill:'transparent' rects over
-            // tagged groups, and although this pass treats alpha-0 as "not a backdrop", the
-            // order keeps the two from ever having to know about each other. The page
-            // background comes from the resolved options - the same value the chart itself
-            // was handed - unless the host names one; a themed canvas is not white, and every
-            // readability answer is measured against it. Never throws; reported, never fatal.
-            if (labelContrastOpts !== false) {
-                try {
-                    const lc = labelContrastOpts === true ? {} : { ...labelContrastOpts };
-                    if (!lc.pageBg) {
-                        const bg = (resolved as any).backgroundColor ?? (resolved as any).themeBg;
-                        if (typeof bg === "string" && bg) lc.pageBg = bg;
-                    }
-                    const r = applyLabelContrast(container, lc);
-                    config.onLabelContrast?.(r);
-                } catch { /* a contrast pass must never break a render that already succeeded */ }
+            if (!isThenable(outcome)) {
+                // THE SYNCHRONOUS LANE, UNCHANGED — and it stays unchanged deliberately, because
+                // every chart type shipped so far comes through here. The passes run inline,
+                // before render() returns, and `rendered` is an already-resolved promise so a
+                // caller that awaits it unconditionally pays nothing and waits for nothing.
+                runPostRenderPasses();
+                settle(Promise.resolve());
+                return;
             }
-            // A DECLARED mark that cannot receive a click is not a mark. Heal the two
-            // habits that leave one unhittable (an inert <g> whose painted children are
-            // pointer-events:none, and a painted element that is itself pointer-events:
-            // none) before anything tries to click it. Purely additive and idempotent —
-            // it only ever makes clickable something the chart already tagged. It matters
-            // most for the FURNITURE: a legend swatch or an axis / group header is exactly
-            // what a chart tends to draw as inert text, and exactly what a reader tries.
-            ensureCrossfilterHitTargets(container, doc);
-            // The chart just rebuilt its DOM, so the selection classes are gone. Repaint
-            // them or a cross-filtered chart loses its own highlight on every restyle.
-            paintSelection();
-            // DID IT ACTUALLY DRAW? A render that returns without throwing is
-            // not the same as a render that painted something, and the difference is invisible
-            // from out here — generated code guards its own column lookups and bails to a
-            // "no data" div, which reaches this line as a complete success. Runs LAST, after
-            // hit-target healing, so a mark that only became countable there still counts.
-            // Never throws: a diagnostic must not be why a delivered render fails.
-            try {
-                const census = censusMarks(container);
-                if (isBlankRender({
-                    markCount: census.markCount,
-                    rows: data.rows ? data.rows.length : 0,
-                    animated: config.animated,
-                    contractUntagged: config.contractUntagged,
-                })) {
-                    if (!warnedBlank) {
-                        warnedBlank = true;
-                        try {
-                            (win?.console ?? console)?.warn(
-                                `[@bicharts/chart-host] this chart rendered without error but painted no data ` +
-                                `marks, against ${data.rows.length} row(s) — so the container is empty. The usual ` +
-                                `cause is that the generated code binds a column BY NAME that is no longer in ` +
-                                `the data, sending it down its own "no data" branch. Check that the columns in ` +
-                                `your table still match the ones the chart was generated for.`);
-                        } catch { /* advisory only */ }
-                    }
-                    config.onBlankRender?.({ census, rows: data.rows ? data.rows.length : 0 });
-                }
-            } catch { /* a census must never break a render */ }
-            // CAN THE MARKS BE HIT? Counted separately from whether they exist, because a thin
-            // open stroke is present, correct, tagged, and still unclickable unless you aim at
-            // the hairline. Reported, never repaired: widening a hit band has a real failure
-            // mode of its own, so the measurement lands first and alone. After hit-target
-            // healing, for the same reason the blank census is — a mark that only became
-            // countable there should be measured as it will actually behave.
-            if (config.onHitBandCensus) {
-                try { config.onHitBandCensus(censusHitBands(container, doc)); }
-                catch { /* a census must never break a render */ }
-            }
-            // AND HOW MUCH OF IT IS ONE SHADE? Same position and the same contract as the hit
-            // band above: after every heal, counts only, and it says nothing at all rather than
-            // guessing when the fills are not a ramp.
-            if (config.onColourSpreadCensus) {
-                try { config.onColourSpreadCensus(censusColourSpread(container, doc)); }
-                catch { /* a census must never break a render */ }
-            }
-            // AND IS EACH DOT AT ITS VALUE? Same contract again; it needs the rows, because the
-            // only way to know a dot's value is to read it back through data-row-idx.
-            if (config.onValuePlacementCensus) {
-                try { config.onValuePlacementCensus(censusValuePlacement(container, data)); }
-                catch { /* a census must never break a render */ }
-            }
-            // DOES IT FIT, AND IF NOT CAN THE READER GET AT THE REST (2026-09-03)? Runs
-            // LAST, after every heal and census, because it measures what is finally on screen.
-            // The <svg> clips at its own viewport, so a chart drawing past its declared height
-            // loses those rows outright while the container reports that everything fits - the
-            // frame is grown to the ink FIRST, and only then does a scrollbar mean anything.
-            if (fitOpts !== false) {
-                try {
-                    const r = fitRenderedChart(container, fitOpts === true ? {} : fitOpts);
-                    config.onFit?.(r);
-                } catch { /* a fit pass must never break a render that already succeeded */ }
-            }
+            // THE ASYNCHRONOUS LANE. Routed back through the SAME two functions the synchronous
+            // lane uses, and BOUNDED, because a promise that never settles is a chart that never
+            // says anything at all — no marks, no error, no census — and a host that gives up is
+            // at least a host that can tell its reader something.
+            settle(new Promise<void>((resolve, reject) => {
+                const timer: any = setTimeout(() => {
+                    reject(new Error(
+                        "[@bicharts/chart-host] the chart did not finish drawing within " +
+                        `${Math.round(ASYNC_RENDER_TIMEOUT_MS / 1000)}s, so the host stopped waiting ` +
+                        "for it. Nothing past that point ran: no label-contrast pass, no hit-target " +
+                        "heal, no census, no fit. A render() that returns a promise has to settle it."));
+                }, ASYNC_RENDER_TIMEOUT_MS);
+                const done = (fn: () => void) => { clearTimeout(timer); fn(); };
+                Promise.resolve(outcome).then(
+                    () => done(() => {
+                        // SUPERSEDED, SO STOP. A later render has already cleared this chart's DOM
+                        // and is drawing its own; running these passes now would measure and mutate
+                        // the NEW chart against the OLD one's data and options, and the older draw
+                        // would win by finishing last. Resolve quietly — this promise is no longer
+                        // the one `host.rendered` hands out, so nobody is waiting on it.
+                        if (destroyed || seq !== renderSeq) { resolve(); return; }
+                        runPostRenderPasses();
+                        resolve();
+                    }),
+                    err => done(() => {
+                        // The same rule on the failure side, for a sharper reason: a superseded
+                        // render must not clear the container or announce a missing column to a
+                        // host that has already moved on to the chart now on screen.
+                        if (destroyed || seq !== renderSeq) { resolve(); return; }
+                        const fatal = renderFailure(err);
+                        if (fatal) reject(fatal); else resolve();
+                    }));
+            }));
         },
         setOptions(partial) {
             raw = { ...raw, ...partial };
@@ -890,6 +1030,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             host.render();
         },
         get options() { return resolved; },
+        // A GETTER, not a captured value: `rendered` names the LATEST render, so a host that
+        // read it once would otherwise hold the promise of a draw long since replaced.
+        get rendered() { return renderedPromise; },
         selection: {
             onChange(cb) { subs.add(cb); return () => subs.delete(cb); },
             clear() {

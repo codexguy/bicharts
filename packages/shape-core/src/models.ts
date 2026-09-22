@@ -459,6 +459,20 @@ export type LLMClientHints =
          * anything but.
          */
         supportsDatasetGlobal?: boolean,
+        /**
+         * Does this host put the Mermaid diagram library on the `d3` object before a chart runs?
+         *
+         * Some chart types generate code that calls a library the server cannot ship inside the
+         * code itself. The type declares what it needs and the host declares what it has, which
+         * is a capability question and never a version one: the hosts number themselves on
+         * unrelated schemes, so no threshold separates "has the library" from "does not".
+         *
+         * Declare it from whether the loader actually EXISTS in this build, never as a constant
+         * set beside one. Absent or false means the type is not offered and an explicit pick is
+         * not honoured - the safe answer, and automatically the answer for every build made
+         * before the loader shipped.
+         */
+        supportsMermaid?: boolean,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
