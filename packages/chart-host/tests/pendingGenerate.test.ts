@@ -400,3 +400,28 @@ describe("the one-shot late pickup - EXPIRED is about the window, not the chart"
         expect(pollGiveUpKeepsMarker("window-closed", { v: 1, t: T0, c: "", p: "" })).toBe(false);
     });
 });
+
+// A CANCELLED GENERATION IS A TERMINAL ANSWER. The server cancels a generate whose connection dropped,
+// charges nothing, and answers the recovery fetch with isGenerationCancelled beside isVersionNotFound.
+describe("a cancelled generation ends the recovery", () => {
+    it("reads the flag, and only the flag", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryAnswerIsCancelled({ isGenerationCancelled: true })).toBe(true);
+        expect(m.recoveryAnswerIsCancelled({ isGenerationCancelled: false })).toBe(false);
+        expect(m.recoveryAnswerIsCancelled({})).toBe(false);
+        expect(m.recoveryAnswerIsCancelled(null)).toBe(false);
+    });
+
+    it("prefers the server's own sentence and falls back to the same words", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.generationCancelledMessage("Server says so.")).toBe("Server says so.");
+        expect(m.generationCancelledMessage("  ")).toBe(m.GENERATION_CANCELLED_MESSAGE);
+        expect(m.GENERATION_CANCELLED_MESSAGE).toBe("The connection dropped before the chart finished - nothing was charged. Generate again.");
+    });
+
+    it("the transport-loss sentence promises nothing", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.TRANSPORT_LOST_CHECKING_MESSAGE).not.toMatch(/still being built|will show it|when it lands/i);
+        expect(m.TRANSPORT_LOST_CHECKING_MESSAGE.split(/[.!?](\s|$)/).filter(s => s && s.trim()).length).toBeLessThanOrEqual(2);
+    });
+});

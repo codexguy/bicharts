@@ -46,9 +46,30 @@ describe("relativeDispersion", () => {
         expect(rd(Array.from({ length: 101 }, (_, i) => i))).toBe(1.6);
     });
 
-    it("counts a lone value that moves", () => {
-        // nine zeros and one 10: p90 interpolates to 1, median 0 -> denominator falls back to |max| = 10
-        expect(rd([0, 0, 0, 0, 0, 0, 0, 0, 0, 10])).toBe(0.1);
+    it("never reports a lone value that moves as flat", () => {
+        // nine zeros and one 10: the median is 0, so there is no denominator for a RELATIVE spread. The old
+        // fallback divided by |max| and reported 0.1 - "nearly flat" - for a measure that moves. It is now
+        // withheld: absent is "not measured", and no consumer may read it as flat.
+        expect(rd([0, 0, 0, 0, 0, 0, 0, 0, 0, 10])).toBeUndefined();
+    });
+
+    it("withholds the statistic for a zero-inflated measure with a long tail", () => {
+        // A stock measure: zero on most rows, a spread of real quantities on the rest. Median 0.
+        // The max fallback read this as ~0 - "effectively constant" - which it plainly is not.
+        const values = [
+            ...Array.from({ length: 84 }, () => 0),
+            12, 40, 75, 120, 300, 640, 1200, 2500, 4800, 7200, 9000, 12000, 15500, 21000, 30000, 48000,
+        ];
+        expect(rd(values)).toBeUndefined();
+    });
+
+    it("still reports an exact 0 for an all-zero run", () => {
+        expect(rd(Array.from({ length: 30 }, () => 0))).toBe(0);
+    });
+
+    it("is unchanged where the median is not zero", () => {
+        // median 0.5 of a mostly-zero-and-one column: the ratio still stands
+        expect(rd([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])).toBe(2);
     });
 
     it("does not count blanks as values", () => {

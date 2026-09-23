@@ -24,6 +24,7 @@ import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_F
     chartOwnsTimeline, periodTickSuppressesFeedback,
     HOST_CONTRACT_VERSION, type ViewStateProvider } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
+import { stripJsComments } from "./codeComments";
 // Deliberately NOT "./geo": that module statically imports ~1.3 MB of generated geometry,
 // which every consumer then paid for even to draw a bar chart (GAP-11). geoLazy holds the
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
@@ -332,7 +333,12 @@ export function requiredD3Plugins(code: string): string[] {
     // parenthesis-only scan saw nothing to install. Accepting a dot cannot over-match
     // dangerously — the map lookup on the next line gates every hit, so a core member access
     // like `d3.scaleLinear.domain` is read and discarded like any other unmapped name.
-    for (const m of String(code || "").matchAll(/\bd3\s*\.\s*(\w+)\s*[.(]/g)) {
+    //
+    // COMMENTS ARE NOT CALLS. A chart's prose - and the prose of every helper prepended to it - names
+    // things it does not do, and a `d3.sankey(...)` in a comment is a sentence, not a requirement. The scan
+    // reads the code with its comments removed (stripJsComments keeps strings, template literals and regex
+    // literals intact, so nothing real is lost).
+    for (const m of stripJsComments(String(code || "")).matchAll(/\bd3\s*\.\s*(\w+)\s*[.(]/g)) {
         const pkg = D3_PLUGIN_PACKAGES[m[1]];
         if (pkg) out.add(pkg);
     }

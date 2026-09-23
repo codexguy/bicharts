@@ -888,13 +888,21 @@ export class IndexedText implements IValueCollection {
             // interpolation keeps every value in play. Below four values there is no percentile to speak of, so the
             // statistic is withheld, as iqrOf withholds an IQR below. A run of identical values is exact at any size
             // and still reports 0.
+            //
+            // A ZERO MEDIAN HAS NO RELATIVE SPREAD, SO NONE IS REPORTED (2026-09-23). The ratio is taken against
+            // the median, and a measure that is 0 on most rows - stock on hand, returns, defects - has a median of
+            // 0. This used to fall back to dividing by the MAXIMUM, which on a zero-inflated column reads ~0: a
+            // stock measure with hundreds of distinct values, up to tens of thousands, went out as "relative spread 0%" and was
+            // described downstream as effectively constant. There is no honest denominator here, so the statistic
+            // is withheld, exactly as it is below four values - absent means "not measured", never "flat". A run
+            // of identical zeros is still an exact 0 by the branch above.
             if (sorted[0] === sorted[sorted.length - 1]) {
                 c.relativeDispersion = 0;
             } else if (sorted.length >= RELATIVE_DISPERSION_MIN_VALUES) {
                 const median = quantileSorted(sorted, 0.5), p10 = quantileSorted(sorted, 0.10), p90 = quantileSorted(sorted, 0.90);
-                const denom = Math.abs(median) > 1e-9 ? Math.abs(median)
-                    : (Math.abs(sorted[sorted.length - 1]) > 1e-9 ? Math.abs(sorted[sorted.length - 1]) : 1);
-                c.relativeDispersion = Math.round(((p90 - p10) / denom) * 1000) / 1000;
+                c.relativeDispersion = Math.abs(median) > 1e-9
+                    ? Math.round(((p90 - p10) / Math.abs(median)) * 1000) / 1000
+                    : undefined;
             } else {
                 c.relativeDispersion = undefined;   // explicit: omitted from the wire, never a stale value
             }

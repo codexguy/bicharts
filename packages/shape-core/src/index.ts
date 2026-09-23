@@ -157,5 +157,5 @@ export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads 
 // the server; these let a host refuse in 0 ms in the SERVER'S OWN WORDS rather than pay a round
 // trip that prod 2958 proved can be lost in transport and read as "the service is down". The
 // sentence is never authored in a host - see freemiumCaps.ts for the two rules that keeps.
-export { freemiumColumnsOverCap, freemiumColumnCapRefusal } from "./freemiumCaps";
-export type { FreemiumColumnCapStatus } from "./freemiumCaps";
+export { freemiumColumnsOverCap, freemiumColumnCapRefusal, freemiumDateHierarchyClauses } from "./freemiumCaps";
+export type { FreemiumColumnCapStatus, FreemiumDateGroupColumn } from "./freemiumCaps";

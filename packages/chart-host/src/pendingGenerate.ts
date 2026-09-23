@@ -303,3 +303,40 @@ export function pendingRecoveryRemainingMs(m: PendingGenerateMarker, nowMs: numb
 export function transportFailureShouldRecover(headersReceived: boolean, genNew: boolean): boolean {
     return headersReceived && genNew;
 }
+
+/**
+ * WHAT A HOST SAYS THE MOMENT A GENERATE'S CONNECTION DROPS - before it knows anything else.
+ *
+ * It used to promise the chart ("it is still being built on the server ... will show it when it lands").
+ * That was never something the host had observed: the server takes a dropped connection as a cancel at its
+ * next safe boundary, charges nothing and hands the slot back, so the chart the reader was promised was
+ * frequently never going to arrive - and a poll then waited out its whole window for it. The honest sentence
+ * is the one that names only what is known: the connection dropped, and the host is checking.
+ */
+export const TRANSPORT_LOST_CHECKING_MESSAGE =
+    "The connection dropped while your chart was being generated - checking whether it finished on the server...";
+
+/**
+ * The words for a recovery answer that says the generation was cancelled, when the server sent none of its
+ * own. The server's errorMessage is preferred - it is the one author of the sentence - and this is the same
+ * sentence, for a server that set the flag and left the message blank.
+ */
+export const GENERATION_CANCELLED_MESSAGE =
+    "The connection dropped before the chart finished - nothing was charged. Generate again.";
+
+/**
+ * Is this recovery answer the server saying the generation was CANCELLED - so nothing will ever be ready?
+ *
+ * A terminal answer, not a "not yet": the poll stops, the reader is told, and Generate is theirs again. A
+ * server that predates the field sends only isVersionNotFound for the same row, which keeps a host polling
+ * until its window closes - the old behaviour, no worse. The field's presence is the capability.
+ */
+export function recoveryAnswerIsCancelled(r: { isGenerationCancelled?: boolean | null } | null | undefined): boolean {
+    return !!r && r.isGenerationCancelled === true;
+}
+
+/** The banner for a cancelled generation: the server's own sentence when it sent one, else the same words. */
+export function generationCancelledMessage(serverMessage: string | null | undefined): string {
+    const s = String(serverMessage ?? "").trim();
+    return s !== "" ? s : GENERATION_CANCELLED_MESSAGE;
+}

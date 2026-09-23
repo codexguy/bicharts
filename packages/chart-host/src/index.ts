@@ -334,5 +334,13 @@ export {
     decidePendingRecovery, recoveryPollRunning, recoveryOwnsTheSentence,
     latePickupAction, latePickupKeepsMarker, pollGiveUpKeepsMarker,
     pendingRecoveryRemainingMs, transportFailureShouldRecover,
+    TRANSPORT_LOST_CHECKING_MESSAGE, GENERATION_CANCELLED_MESSAGE,
+    recoveryAnswerIsCancelled, generationCancelledMessage,
     type PendingGenerateMarker, type PendingRecoveryDecision, type LatePickupAction,
 } from "./pendingGenerate";
+// Comment-blind code reading: a host deciding what a chart needs from its source must not count a word
+// that only appears in a comment (requiredD3Plugins reads through it).
+export { stripJsComments } from "./codeComments";
+// A standing chart-type pick checked against a fresh qualify list - the one place a pick may be dropped
+// for the reader, and always with a sentence saying so.
+export { reconcileChartPick, type ChartPickReconciliation } from "./chartPick";

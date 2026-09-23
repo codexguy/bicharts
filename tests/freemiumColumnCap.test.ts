@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { freemiumColumnsOverCap, freemiumColumnCapRefusal } from "../packages/shape-core/src/freemiumCaps";
+import { freemiumColumnsOverCap, freemiumColumnCapRefusal, freemiumDateHierarchyClauses } from "../packages/shape-core/src/freemiumCaps";
 
 // ITEM 634 — a host anticipating the freemium column cap in the server's own words.
 //
@@ -81,5 +81,67 @@ describe("freemiumColumnCapRefusal", () => {
         const noPivot = { ...server, freemiumColumnCapPivot: undefined };
         expect(freemiumColumnCapRefusal(16, noPivot)).toContain("Remove 4 fields and generate again");
         expect(freemiumColumnCapRefusal(17, noPivot)).toContain("A license lifts the limit");
+    });
+});
+
+// A DATE HIERARCHY COUNTS AS SEVERAL FIELDS, AND THE REFUSAL NAMES IT.
+//
+// A reader bound six fields - two of them date HIERARCHIES - and was told to remove two. The host keeps a
+// reassembled hierarchy's four levels and adds the date it rebuilt from them, so each hierarchy is five
+// entries in the shape the cap counts. The count stands; the sentence now says which fields cost what and
+// the one move that frees the slots without losing a field. The clause below is pinned verbatim on the
+// server as well - one literal, two authors, so it is checked on both sides.
+const hierarchy = (gid: string, dateName: string, sourceField?: string) => [
+    { name: "Year", isDatePart: true, dateGroupId: gid },
+    { name: "Quarter", isDatePart: true, dateGroupId: gid },
+    { name: "Month", isDatePart: true, dateGroupId: gid },
+    { name: "Day", isDatePart: true, dateGroupId: gid },
+    { name: dateName, isReassembledDate: true, dateGroupId: gid, ...(sourceField ? { sourceField } : {}) },
+];
+const twoHierarchies = [
+    { name: "Region" }, { name: "Product" },
+    ...hierarchy("dg0", "Date", "Order date"),
+    ...hierarchy("dg1", "Date 2", "Ship date"),
+    { name: "Units" }, { name: "Revenue" },
+];
+
+describe("freemiumColumnCapRefusal - date hierarchies", () => {
+    it("appends one clause per date group, naming its source field and its real cost", () => {
+        expect(twoHierarchies.length).toBe(14);
+        expect(freemiumColumnCapRefusal(14, server, twoHierarchies)).toBe(
+            "This visual has 2 more data fields than the free tier allows. Remove 2 fields and generate again, or get a license to lift the limit."
+            + " 'Order date' is a date hierarchy and counts as 5 fields - bind the date itself instead of its hierarchy."
+            + " 'Ship date' is a date hierarchy and counts as 5 fields - bind the date itself instead of its hierarchy."
+        );
+    });
+
+    it("falls back to the reassembled column's own name when the host sent no source field", () => {
+        expect(freemiumDateHierarchyClauses(hierarchy("dg0", "Date"))).toEqual([
+            "'Date' is a date hierarchy and counts as 5 fields - bind the date itself instead of its hierarchy.",
+        ]);
+    });
+
+    it("counts the levels the group actually kept, plus the date", () => {
+        const threeLevels = hierarchy("dg0", "Date", "Order date").filter(c => c.name !== "Quarter");
+        expect(freemiumDateHierarchyClauses(threeLevels)).toEqual([
+            "'Order date' is a date hierarchy and counts as 4 fields - bind the date itself instead of its hierarchy.",
+        ]);
+    });
+
+    it("adds nothing when the shape has no date group, and nothing within the cap", () => {
+        const flat = Array.from({ length: 14 }, (_, i) => ({ name: "F" + i }));
+        expect(freemiumColumnCapRefusal(14, server, flat)).toBe(freemiumColumnCapRefusal(14, server));
+        expect(freemiumColumnCapRefusal(12, server, twoHierarchies)).toBeNull();
+        expect(freemiumDateHierarchyClauses(undefined)).toEqual([]);
+    });
+
+    it("keeps the pinned sentences byte-identical when no shape is passed", () => {
+        expect(freemiumColumnCapRefusal(20, server)).toBe(
+            "This visual has 8 more data fields than the free tier allows. A license lifts the limit - or, if you would rather stay on the free tier, remove 8 fields and generate again."
+        );
+    });
+
+    it("stays silent where the server sent no template, whatever the shape", () => {
+        expect(freemiumColumnCapRefusal(14, { freemiumMaxShapeColumns: 12 }, twoHierarchies)).toBeNull();
     });
 });

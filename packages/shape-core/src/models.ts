@@ -201,6 +201,13 @@ export type LLMColumnWithValue =
         isDatePart?: boolean,
         isReassembledDate?: boolean,
         dateGroupId?: string,
+        // THE FIELD A REASSEMBLED DATE CAME FROM (2026-09-23). Set on the isReassembledDate
+        // column only: the source date field's own name, taken from the hierarchy's query-name
+        // stem ("Sales.Order date.Variation.Date Hierarchy" -> "Order date"). The column's NAME
+        // stays the generic "Date" / "Date 2", because saved charts read that name and the
+        // schema hash must not move; this is what lets a consumer say WHICH date it is when a
+        // binding carries two hierarchies. Absent when the stem names no field.
+        sourceField?: string,
         // HOW THE TIME VALUES ARE SPACED, and where they stop (2026-09-12). Set on a
         // temporal non-measure column with at least three readable points; the measurement, and
         // why no threshold on it lives here, are in cadence.ts.
@@ -873,6 +880,13 @@ export type LLMRequestCodeResult =
         // fetchOnly - no input at all). "Not there YET" for the recovery poll, as a
         // flag rather than a sentence to parse. Servers from 2026-08-19.
         isVersionNotFound?: boolean,
+        // THE GENERATION WAS CANCELLED, SO NOTHING WILL EVER BE READY (2026-09-23). Set on a
+        // correlation-keyed recovery fetch whose generation the server abandoned because the
+        // client's connection dropped mid-generate - nothing was charged. isVersionNotFound is
+        // set beside it so an older client keeps its old reading; a host that knows this field
+        // stops polling, shows errorMessage (which says so in words) and lets the reader
+        // generate again. See chart-host `recoveryAnswerIsCancelled`.
+        isGenerationCancelled?: boolean,
         // The correlation id of the generation this response actually SERVED (2026-08-26).
         // Set on a correlation-keyed recovery fetch so the client can prove the chart it is
         // about to paint is its own before painting it - the check that would have stopped the

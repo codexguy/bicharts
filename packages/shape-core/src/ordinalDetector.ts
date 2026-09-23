@@ -620,7 +620,52 @@ export function detectOrdinalDomain(rawValues: string[], locale?: string): Ordin
         const verdict = detectRankCodedOrdinal(coded, locale);
         if (verdict !== undefined) return verdict;
     }
-    return detectScaleOrCalendar(normIndex, locale);
+    const plain = detectScaleOrCalendar(normIndex, locale);
+    if (plain !== null) return plain;
+    return coded !== null ? detectNumericRankPrefix(normIndex) : null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// A bare numeric rank prefix IS the order ("1.Under 10%" ... "6.Up to 90%")
+// ──────────────────────────────────────────────────────────────────────────
+// A BUCKET COLUMN THAT NUMBERS ITS OWN RUNGS SHIPPED WITH NO ORDER AT ALL (2026-09-23).
+//
+// A coverage-band column held "1.Under 10%", "2.Up to 30%" ... "6.Up to 90%". The
+// labels are the author's own bucket text, which no catalogue will ever carry, so the rank-code rule above
+// (which peels the code and matches the LABEL) found nothing and the column went out unordered. A chart that
+// drew one panel per bucket then ran them in data order, with bucket 6 first. The author had written the
+// order into every value; the detector read past it.
+//
+// So when the labels match nothing, a PURELY NUMERIC prefix is accepted as the order on its own - under rules
+// narrow enough that it cannot mistake a quantity for a rank:
+//   - EVERY distinct value carries it (splitRankCodes already guarantees one scheme with distinct numbers).
+//   - NO letter prefix. "S1 - Apple" is a code from some scheme we cannot read; a bare "1." is a numbered list.
+//   - The separator is ".", ")" or "-" - the ways people number a list - never ":" (a time) or a dash
+//     variant that the list forms do not use.
+//   - The label does NOT start with a digit, so "1.5 kg", "2.75 kg" (decimals) and "1 - 10 units" (a range)
+//     are quantities, not rungs.
+//   - At least three values and at most twenty: two points are not a scale, and a numbered list of hundreds
+//     is a list of things rather than rungs of one measurement.
+// The domain ships in ascending number order and in the column's own strings, like every other domain here.
+const NUMERIC_RANK_PREFIX = /^([0-9]+)\s*(?:\.|\)|-)\s*([^\s\d].*)$/u;
+const NUMERIC_RANK_MIN = 3;
+const NUMERIC_RANK_MAX = 20;
+
+function detectNumericRankPrefix(normIndex: Map<string, string>): OrdinalDetectionResult | null {
+    if (normIndex.size < NUMERIC_RANK_MIN || normIndex.size > NUMERIC_RANK_MAX) return null;
+    const seen = new Set<number>();
+    const ranked: { n: number; original: string }[] = [];
+    for (const original of normIndex.values()) {
+        const m = NUMERIC_RANK_PREFIX.exec(original.trim());
+        if (!m) return null;
+        if (normalize(m[2]) === "") return null;
+        const n = Number(m[1]);
+        if (seen.has(n)) return null;
+        seen.add(n);
+        ranked.push({ n, original });
+    }
+    ranked.sort((a, b) => a.n - b.n);
+    return { pattern: "numeric_rank_prefix", orderedDomain: ranked.map(r => r.original) };
 }
 
 // The catalogue + calendar matching over an already-built normalized index.

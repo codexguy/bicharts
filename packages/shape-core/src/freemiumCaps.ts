@@ -76,7 +76,8 @@ export function freemiumColumnsOverCap(
  */
 export function freemiumColumnCapRefusal(
     shapeColumnCount: number,
-    status: FreemiumColumnCapStatus | null | undefined
+    status: FreemiumColumnCapStatus | null | undefined,
+    shape?: readonly FreemiumDateGroupColumn[] | null
 ): string | null {
     const overBy = freemiumColumnsOverCap(shapeColumnCount, status);
     if (overBy === null || overBy <= 0) return null;
@@ -88,7 +89,64 @@ export function freemiumColumnCapRefusal(
     // answers, which is exactly today's behaviour.
     if (typeof template !== "string" || template.trim().length === 0) return null;
 
-    return template
+    const sentence = template
         .split("{n}").join(String(overBy))
         .split("{fields}").join(overBy === 1 ? "field" : "fields");
+    const clauses = freemiumDateHierarchyClauses(shape);
+    return clauses.length === 0 ? sentence : sentence + " " + clauses.join(" ");
+}
+
+/** The fields of a bound shape column the date-hierarchy clause reads. A partial, so a host can
+ *  pass whatever column type it holds. */
+export type FreemiumDateGroupColumn = {
+    name?: string,
+    isDatePart?: boolean,
+    isReassembledDate?: boolean,
+    dateGroupId?: string,
+    sourceField?: string,
+};
+
+/**
+ * A DATE HIERARCHY COUNTS AS SEVERAL FIELDS, AND THE REFUSAL SAYS SO (2026-09-23).
+ *
+ * When a host reassembles a shredded date hierarchy (Year / Quarter / Month / Day) it keeps the
+ * levels and adds the reassembled date, so one hierarchy in the reader's field well is five entries
+ * in the shape the cap counts. The count is right for the cap's purpose - every one of them is a
+ * described column - but a reader with six fields in their field well who is told to remove two
+ * has no way to see that the date hierarchies are what cost them. Binding the date itself instead
+ * of its hierarchy frees all but one of those slots without losing a field.
+ *
+ * So each date group in the shape adds one clause naming it, in the order the groups first appear.
+ * `{n}` is the group's levels plus the reassembled date; the name is the source field the date was
+ * reassembled from when the host knows it, else the reassembled column's own name. A group with no
+ * reassembled column is not a hierarchy this knows how to name, and adds nothing.
+ *
+ * THE LITERAL IS PINNED ON BOTH SIDES. The server composes the same clause for a request whose
+ * shape carries a source field, so a reader is told the same sentence whichever side answers.
+ */
+export function freemiumDateHierarchyClauses(shape: readonly FreemiumDateGroupColumn[] | null | undefined): string[] {
+    if (!shape || shape.length === 0) return [];
+    const order: string[] = [];
+    const parts = new Map<string, number>();
+    const names = new Map<string, string>();
+    for (const c of shape) {
+        const gid = typeof c?.dateGroupId === "string" ? c.dateGroupId.trim() : "";
+        if (gid === "") continue;
+        if (!parts.has(gid)) { order.push(gid); parts.set(gid, 0); }
+        if (c.isDatePart === true) parts.set(gid, parts.get(gid)! + 1);
+        if (c.isReassembledDate === true && !names.has(gid)) {
+            const field = typeof c.sourceField === "string" ? c.sourceField.trim() : "";
+            const own = typeof c.name === "string" ? c.name.trim() : "";
+            const name = field !== "" ? field : own;
+            if (name !== "") names.set(gid, name);
+        }
+    }
+    const out: string[] = [];
+    for (const gid of order) {
+        const name = names.get(gid);
+        const levels = parts.get(gid) ?? 0;
+        if (!name || levels === 0) continue;
+        out.push(`'${name}' is a date hierarchy and counts as ${levels + 1} fields - bind the date itself instead of its hierarchy.`);
+    }
+    return out;
 }

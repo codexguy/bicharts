@@ -129,3 +129,79 @@ describe("the profiler ships the coded domain", () => {
         expect(cols[0].orderedDomain).toEqual(["S4 - Trivial", "S3 - Minor", "S2 - Major", "S1 - Critical"]);
     });
 });
+
+// A BUCKET COLUMN THAT NUMBERS ITS OWN RUNGS. The labels are the author's own text ("Under 10%", "Up to
+// 90%"), which no catalogue carries, so the peel-and-match rule above finds nothing - but every value
+// states its rank in a bare numeric prefix. That prefix is the order.
+describe("a bare numeric rank prefix orders a column whose labels match nothing", () => {
+    const BANDS = [
+        "4.Up to 70%", "1.Under 10%", "6.Up to 90%",
+        "2.Up to 30%", "5.Up to 80%", "3.Up to 50%",
+    ];
+
+    it("orders the buckets by their number, whatever order the rows arrive in", () => {
+        const r = detectOrdinalDomain(BANDS);
+        expect(r).not.toBeNull();
+        expect(r!.pattern).toBe("numeric_rank_prefix");
+        expect(r!.orderedDomain).toEqual([
+            "1.Under 10%", "2.Up to 30%", "3.Up to 50%",
+            "4.Up to 70%", "5.Up to 80%", "6.Up to 90%",
+        ]);
+        const reversed = detectOrdinalDomain([...BANDS].reverse());
+        expect(reversed!.orderedDomain).toEqual(r!.orderedDomain);
+    });
+
+    it("reads the ')' and '-' list forms, spaced or not, and orders by number rather than text", () => {
+        expect(detectOrdinalDomain(["10) Tail", "2) Middle", "1) Head"])!.orderedDomain)
+            .toEqual(["1) Head", "2) Middle", "10) Tail"]);
+        expect(detectOrdinalDomain(["3 - Ripe", "1 - Green", "2 - Turning"])!.orderedDomain)
+            .toEqual(["1 - Green", "2 - Turning", "3 - Ripe"]);
+    });
+
+    it("ships the order through the profiler when rows arrive shuffled", () => {
+        const t = new IndexedText();
+        t.dedupRows = false;
+        t.setColumns([
+            { name: "Coverage band", dataType: "String", isMeasure: false } as any,
+            { name: "Lots", dataType: "Integer", isMeasure: true } as any,
+        ]);
+        const rows: [string, number][] = [
+            ["6.Up to 90%", 3], ["1.Under 10%", 40], ["4.Up to 70%", 9], ["2.Up to 30%", 22],
+            ["6.Up to 90%", 1], ["3.Up to 50%", 14], ["5.Up to 80%", 6], ["1.Under 10%", 2],
+        ];
+        for (const r of rows) t.addRow(r);
+        const cols = t.getColumnsWithStats("20");
+        expect(cols[0].ordinalPattern).toBe("numeric_rank_prefix");
+        expect(cols[0].orderedDomain![0]).toBe("1.Under 10%");
+        expect(cols[0].orderedDomain![5]).toBe("6.Up to 90%");
+    });
+
+    it("needs at least three values", () => {
+        expect(detectOrdinalDomain(["1.Under 10%", "2.Up to 30%"])).toBeNull();
+    });
+
+    it("never reads a quantity as a rank: decimals and ranges stay unordered", () => {
+        expect(detectOrdinalDomain(["1.5 kg", "2.25 kg", "3.75 kg"])).toBeNull();
+        expect(detectOrdinalDomain(["1 - 10 units", "11 - 20 units", "21 - 30 units"])).toBeNull();
+    });
+
+    it("needs a prefix on EVERY value, distinct numbers, and no letter scheme", () => {
+        expect(detectOrdinalDomain(["1.Under 10%", "2.Up to 30%", "Over 30%"])).toBeNull();
+        expect(detectOrdinalDomain(["1.Under 10%", "1.Up to 30%", "2.Over 30%"])).toBeNull();
+        expect(detectOrdinalDomain(["S1 - Apple", "S2 - Banana", "S3 - Cherry"])).toBeNull();
+    });
+
+    it("is not a colon or a time", () => {
+        expect(detectOrdinalDomain(["1: Apple", "2: Banana", "3: Cherry"])).toBeNull();
+    });
+
+    it("leaves a long numbered list alone", () => {
+        const many = Array.from({ length: 25 }, (_, i) => `${i + 1}. Item ${String.fromCharCode(65 + (i % 26))}`);
+        expect(detectOrdinalDomain(many)).toBeNull();
+    });
+
+    it("does not override a catalogue match or a contradiction", () => {
+        expect(detectOrdinalDomain(["3. High", "1. Low", "2. Medium"])!.pattern).toBe("severity_low_critical");
+        expect(detectOrdinalDomain(["1. High", "2. Low", "3. Medium"])).toBeNull();
+    });
+});
