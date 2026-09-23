@@ -867,6 +867,12 @@ export type LLMRequestCodeResult =
         // of nothing. A host's retry loop must stop on it; see isDeterministicRefusal(). Absent
         // on older servers, which reads as false.
         isRefusal?: boolean,
+        // WHICH REFUSAL, as a code rather than a sentence (servers from 2026-09-23). "FREEMIUM_COLUMN_CAP"
+        // for the free tier's field cap - a wall that spent nothing, so a host keeps the reader's chart-type
+        // pick through it. Hosts recognised that answer by matching its wording, and the wording is
+        // edited (it gained a date-hierarchy clause the same day); the code is what they read first, the
+        // wording only for an older server. Absent on success and on every other answer.
+        refusalCode?: string,
         // Blocked by the per-DEVICE/IP rate limit (not per-key credit exhaustion).
         // The client shows a coherent "daily device limit" message instead of the
         // contradictory "Freemium: 0% used" banner. 2026-06-21.

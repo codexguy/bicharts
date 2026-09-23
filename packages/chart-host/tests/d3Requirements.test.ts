@@ -87,8 +87,8 @@ describe("requiredD3Plugins — what this chart needs, before running it", () =>
 
     it("is not fooled by whitespace, and ignores look-alike member names", () => {
         expect(requiredD3Plugins("d3 . sankey ( )")).toEqual(["d3-sankey"]);
-        // `mysankey(` is not `d3.sankey(`, and a bare property read is not a call.
-        expect(requiredD3Plugins("mysankey(); const f = d3.sankey;")).toEqual([]);
+        // `mysankey(` is not `d3.sankey(`. (A bare read of d3.sankey IS a use since 2026-09-23 - see below.)
+        expect(requiredD3Plugins("mysankey();")).toEqual([]);
     });
 
     it("never throws on empty, null or non-string input", () => {
@@ -147,11 +147,19 @@ describe("requiredD3Plugins — a plugin reached through a member", () => {
         expect(requiredD3Plugins("d3.llmSlider(svg, {}); d3.llmScrubber(svg, {});")).toEqual([]);
     });
 
-    it("still reports nothing for a bare property READ — the dot has to lead somewhere", () => {
-        // The pre-existing contract (a read is not a use) has to survive the widening: the name
-        // here ends at a semicolon, which is neither a dot nor a parenthesis.
-        expect(requiredD3Plugins("const m = d3.mermaid;")).toEqual([]);
-        expect(requiredD3Plugins("mysankey(); const f = d3.sankey;")).toEqual([]);
+    it("reports a bare READ, an alias, a bracket and a destructure - any reference is a use", () => {
+        // Was "a read is not a use". Reversed on 2026-09-23: a chart that aliases the plugin needs
+        // it as much as one that calls it, and the Power BI visual kept a loose test of its own to cover
+        // that. One contract now serves every host.
+        expect(requiredD3Plugins("const m = d3.mermaid;")).toEqual(["mermaid"]);
+        expect(requiredD3Plugins("mysankey(); const f = d3.sankey;")).toEqual(["d3-sankey"]);
+        expect(requiredD3Plugins("if (typeof d3.hexbin === 'function') {}")).toEqual(["d3-hexbin"]);
+        expect(requiredD3Plugins("const layout = d3['sankey'];")).toEqual(["d3-sankey"]);
+        expect(requiredD3Plugins("const { sankey, sankeyLinkHorizontal: link } = d3;")).toEqual(["d3-sankey"]);
+        // still gated by the map: a core member or a look-alike name is nothing to install
+        expect(requiredD3Plugins("const s = d3.scaleLinear; const x = d3.sankeyish;")).toEqual([]);
+        // and still blind to comments
+        expect(requiredD3Plugins("// const f = d3.sankey;\nd3.select('svg');")).toEqual([]);
     });
 
     it("leaves every PRE-EXISTING answer exactly where it was", () => {

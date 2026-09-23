@@ -383,7 +383,7 @@ export function classifyAdditivity(args: {
     // groups, the measure is a part-of-whole partitioned by C.
     const SERIES_CARD_CAP = 100;   // C must look like a series, not an ID
     const TOL_FRAC = 0.01;         // within 1% of the whole
-    const SEP = "";
+    const SEP = "\x01";
     for (const c of candidateDims) {
         if (c.distinct < 2 || c.distinct > SERIES_CARD_CAP) continue;
         const otherDims = candidateDims.filter(d => d.idx !== c.idx).map(d => d.idx);
@@ -1084,10 +1084,10 @@ export class IndexedText implements IValueCollection {
                     pairCounts.set(pk(candIdx[x], candIdx[y]), new Map<string, number>());
             for (const row of this._rows) {
                 for (let x = 0; x < candIdx.length; x++) {
-                    const va = this.STR(row[candIdx[x]]) + "";  // sep: guards ("ab","c") vs ("a","bc")
+                    const va = this.STR(row[candIdx[x]]) + "\x01";  // sep: guards ("ab","c") vs ("a","bc")
                     for (let y = x + 1; y < candIdx.length; y++) {
                         const vb = String.fromCharCode(1) + this.STR(row[candIdx[y]]);
-                        const cm = pairCounts.get(pk(candIdx[x], candIdx[y]))!; const ck = va + "" + vb; cm.set(ck, (cm.get(ck) ?? 0) + 1);
+                        const cm = pairCounts.get(pk(candIdx[x], candIdx[y]))!; const ck = va + "\x01" + vb; cm.set(ck, (cm.get(ck) ?? 0) + 1);
                     }
                 }
             }

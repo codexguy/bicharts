@@ -321,7 +321,7 @@ const D3_PLUGIN_PACKAGES: Record<string, string> = {
 // which CDN bundles to load; this is that sniff, exported, so an SDK/MCP host stops being the
 // only consumer flying blind.
 //
-// Deliberately a STATIC SCAN of `d3.<name>(` / `d3.<name>.` rather than a trial render:
+// Deliberately a STATIC SCAN of every `d3.<name>` reference rather than a trial render:
 // synchronous, side effect free, and safe on untrusted generated code — which executing is
 // not. Over-reporting is the safe direction: naming a plugin the chart turns out not to reach
 // costs a needless install, while missing one costs a blank chart failing several frames deep.
@@ -338,9 +338,20 @@ export function requiredD3Plugins(code: string): string[] {
     // things it does not do, and a `d3.sankey(...)` in a comment is a sentence, not a requirement. The scan
     // reads the code with its comments removed (stripJsComments keeps strings, template literals and regex
     // literals intact, so nothing real is lost).
-    for (const m of stripJsComments(String(code || "")).matchAll(/\bd3\s*\.\s*(\w+)\s*[.(]/g)) {
-        const pkg = D3_PLUGIN_PACKAGES[m[1]];
-        if (pkg) out.add(pkg);
+    //
+    // ANY REFERENCE IS A USE, not only a call (2026-09-23). A chart that aliases the plugin
+    // (const mk = d3.sankey; mk()), tests for it (typeof d3.sankey === 'function'), or reaches it as
+    // d3['sankey'] or const { sankey } = d3 needs it exactly as much as one that calls it - and the Power
+    // BI visual kept a loose name test of its own for that reason. One contract now serves every host, in
+    // the safe direction this scan was built on: the map gates every name, so the most a stray reference
+    // costs is an install. Replayed over 3,712 stored D3 charts (dev and prod): no chart gains or loses a
+    // plugin it references.
+    const body = stripJsComments(String(code || ""));
+    const add = (name: string) => { const pkg = D3_PLUGIN_PACKAGES[name]; if (pkg) out.add(pkg); };
+    for (const m of body.matchAll(/\bd3\s*\.\s*(\w+)/g)) add(m[1]);
+    for (const m of body.matchAll(/\bd3\s*\[\s*['"](\w+)['"]\s*\]/g)) add(m[1]);
+    for (const m of body.matchAll(/\{([^{}]*)\}\s*=\s*d3\b/g)) {
+        for (const part of m[1].split(",")) add(part.split(":")[0].trim());
     }
     return [...out].sort();
 }

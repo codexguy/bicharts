@@ -21,7 +21,12 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.10.0";
+export const HOST_CONTRACT_VERSION = "1.11.0";
+// 1.11.0 (2026-09-23): VIEW-ONLY KEYS. VIEW_ONLY_UI_STATE_KEYS names the view-state keys that record
+// how the READER is looking at a chart (a 3D camera, a diagram's zoom and scroll) rather than a setting
+// of the chart itself. A host whose durable store sits behind a "remember my view" switch drops these
+// keys from that store when the switch is off, and keeps them for the session. One list, so a new
+// view key is a one-word change every host reads. Additive: a host that ignores it persists them all.
 // 1.10.0 (2026-09-17): CONTROL GESTURES ARE REPORTABLE. RenderOptions gains onControlChange, which a
 // chart's own controls call when a READER works them (the segmented row today), so a host can log the
 // gesture instead of inferring it from the view-state write that follows. Item 639: the visual logged
@@ -127,6 +132,22 @@ export const CONTAINER_SLOT_INITIAL_XF_MARK = "__llmInitialXfMark"; // a mark to
 // host, so the element is where a session's resting state belongs. See HOST_CONTRACT_VERSION
 // 1.5.0 and the store install in createChartHost.
 export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
+
+// VIEW-ONLY view-state keys (contract 1.11.0): how the reader is LOOKING at the chart, not a
+// setting of it. `camera` is the D3 3D chart's orbit; `llmZoom` is a Mermaid diagram's zoom and
+// scroll, written by d3.llmMermaid's zoom pad. A host with a "remember my view" switch leaves
+// these out of its durable store when the switch is off (the Power BI visual's report file).
+export const VIEW_ONLY_UI_STATE_KEYS: readonly string[] = Object.freeze(["camera", "llmZoom"]);
+
+/** The bag with every view-only key removed: what a host persists when the reader has not asked
+ *  for their view to be remembered. Returns the SAME object when there was nothing to remove. */
+export function withoutViewOnlyKeys<T extends Record<string, unknown>>(bag: T): T {
+    if (!bag || typeof bag !== "object") return bag;
+    if (!VIEW_ONLY_UI_STATE_KEYS.some(k => Object.prototype.hasOwnProperty.call(bag, k))) return bag;
+    const out: Record<string, unknown> = { ...bag };
+    for (const k of VIEW_ONLY_UI_STATE_KEYS) delete out[k];
+    return out as T;
+}
 
 /**
  * WHERE A CHART'S RESTING VIEW-STATE LIVES between draws (contract 1.6.0).

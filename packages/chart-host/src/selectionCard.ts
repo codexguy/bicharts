@@ -173,6 +173,18 @@ function aggLabel(agg: Agg): string {
     }
 }
 
+/** THE LINE'S LABEL: "<aggregation> of <column>", unless the column's name already says it.
+ *  An Excel table copied from a pivot, or a Power BI implicit measure, arrives with a column
+ *  named "Sum of Orders"; composing onto that printed "Sum of Sum of Orders" (dev, Excel add-in
+ *  1.0.0.47, a click on the order-fulfilment chart). Only the SAME aggregation's words are
+ *  dropped: "Average of Sum of Orders" is a true statement - it averages per-row sums - and
+ *  stays composed. */
+export function measureLineLabel(agg: Agg, name: string): string {
+    const col = String(name ?? "");
+    const prefix = aggLabel(agg) + " of ";
+    return col.trim().toLowerCase().startsWith(prefix.toLowerCase()) ? col.trim() : prefix + col;
+}
+
 function isSynthetic(name: string): boolean {
     return String(name ?? "").startsWith(SYNTHETIC_PREFIX);
 }
@@ -254,7 +266,7 @@ function toNumber(v: any): number | null {
 
 function reduce(values: number[], agg: Agg, distinctRaw: any[]): number | null {
     if (agg === "count") return values.length;
-    if (agg === "distinctcount") return new Set(distinctRaw.map(v => (v == null ? " " : String(v)))).size;
+    if (agg === "distinctcount") return new Set(distinctRaw.map(v => (v == null ? "\x00" : String(v)))).size;
     if (!values.length) return null;
     switch (agg) {
         case "average": return values.reduce((a, b) => a + b, 0) / values.length;
@@ -397,7 +409,7 @@ export function computeSelectionCard(
 
         lines.push({
             column: String(col?.name ?? ""),
-            label: `${aggLabel(colAgg)} of ${col?.name ?? ""}`,
+            label: measureLineLabel(colAgg, String(col?.name ?? "")),
             value,
             valueText: value == null ? "—" : fmtNumber(value, opts.cultureCode),
             sharePct,
