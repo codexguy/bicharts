@@ -19,7 +19,7 @@
 export {
     HOST_CONTRACT_VERSION,
     GEO_POINT_PRECISIONS,
-    MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS, ROW_IDX_ATTR, LIFT_SELECTED_CLASS,
+    MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS, ROW_IDX_ATTR, LIFT_SELECTED_CLASS, CONTROL_CLASS,
     XFILTER_REFRESH_EVENT,
     CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE,
@@ -76,7 +76,7 @@ export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./date
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
     sessionViewStateProvider, noopViewStateProvider,
     type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
-export { createMarkResolver, type MarkResolver, type MarkResolverEnv } from "./selection";
+export { createMarkResolver, isInsideControl, type MarkResolver, type MarkResolverEnv } from "./selection";
 // Deterministic charts for shapes with exactly one defensible answer: a single value, a
 // single categorical column, a single numeric column. Returns null for everything else, so
 // a host can ask BEFORE paying for a generation and fall through the moment the answer

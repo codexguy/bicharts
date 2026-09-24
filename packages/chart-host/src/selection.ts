@@ -8,6 +8,24 @@
 //
 // Each function carries the prod lesson that created it — do not simplify.
 
+import { CONTROL_CLASS } from "./contract";
+
+/**
+ * True when a click's target sits inside a reader-operated control the chart drew (CONTROL_CLASS
+ * on the target or an ancestor), looking no further out than `container` - a page that wraps the
+ * whole chart in the class does not make every click a control click. A text node is read through
+ * its parent. A click inside a control is neither a selection nor a click on empty canvas.
+ */
+export function isInsideControl(target: EventTarget | Node | null | undefined, container: Element): boolean {
+    let el: any = target;
+    if (el && el.nodeType !== 1) el = el.parentElement ?? el.parentNode ?? null;
+    while (el && el !== container) {
+        if (el.nodeType === 1 && el.classList?.contains?.(CONTROL_CLASS)) return true;
+        el = el.parentElement ?? el.parentNode ?? null;
+    }
+    return false;
+}
+
 export interface MarkResolverEnv {
     root: HTMLElement;                              // the chart container (hit scope)
     doc: Document;                                  // owner document (elementsFromPoint)

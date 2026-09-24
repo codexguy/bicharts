@@ -29,7 +29,7 @@ import { stripJsComments } from "./codeComments";
 // which every consumer then paid for even to draw a bar chart (GAP-11). geoLazy holds the
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
-import { createMarkResolver } from "./selection";
+import { createMarkResolver, isInsideControl } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
@@ -733,6 +733,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // A chart that dispatched for THIS gesture has already been handled by onXf, which
         // runs first (the chart's own handler sits on the tick; this one on the container).
         if (Date.now() - xfAt < XF_ECHO_MS) return;
+        // A CLICK IN THE CHART'S OWN CONTROL (2026-09-24) - a number box, a slider's hit area - is
+        // not a gesture on the data. It resolves no mark, so below it would read as empty canvas
+        // and clear the reader's selection the moment they focused a box to type; and the
+        // geometry fallback could select whatever mark sits under the box. Skipped before both.
+        if (isInsideControl(e?.target, container)) return;
         let el: any = resolver.findMark(e?.target, clickSel, e as MouseEvent);
         // OVERLAY PENETRATION then GEOMETRY — the two hardenings the visual has carried
         // since two production charts exposed it, already ported into selection.ts but never wired up here.

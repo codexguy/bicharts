@@ -21,7 +21,12 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.11.0";
+export const HOST_CONTRACT_VERSION = "1.12.0";
+// 1.12.0 (2026-09-24): CONTROLS. CONTROL_CLASS names an element a chart draws for the reader to
+// WORK - a number box in the knob strip, a slider's hit area - rather than a mark. It carries no mark
+// class and no row index, and a click inside one is neither a selection nor a click on empty
+// canvas: the host's click delegation ignores it, so focusing a box to type does not drop the
+// reader's filter. Additive: a chart without the class behaves exactly as before.
 // 1.11.0 (2026-09-23): VIEW-ONLY KEYS. VIEW_ONLY_UI_STATE_KEYS names the view-state keys that record
 // how the READER is looking at a chart (a 3D camera, a diagram's zoom and scroll) rather than a setting
 // of the chart itself. A host whose durable store sits behind a "remember my view" switch drops these
@@ -113,6 +118,9 @@ export const AXIS_FILTER_CLASS = "d3-axis-filter";   // an axis/scrubber tick (u
 // the one thing selected. Inside a declared group a selected mark is lifted to full paint.
 // Per group, so a chart can protect an alpha ENCODING elsewhere on the same canvas.
 export const LIFT_SELECTED_CLASS = "d3-lift-selected";
+// A reader-operated control inside the chart (a number box, a slider). Never a mark: a click inside
+// one selects nothing and clears nothing. See isInsideControl.
+export const CONTROL_CLASS = "lch-control";
 
 // The attribute each filterable mark carries: comma-joined __rowIdx__ values,
 // frame-scoped for animated charts.
