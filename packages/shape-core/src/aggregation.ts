@@ -34,6 +34,7 @@
 // union of the two arrays below is exactly the server's list.
 
 import { nameWords } from "./util";
+import { foldName } from "./nameReader";
 
 /** Every aggregation any BIC surface offers. `first` is the one that only makes sense for a
  *  dimension — "which value is this?" — and it is why a categorical column can have a line at
@@ -201,12 +202,14 @@ export const POSITIONAL_SUFFIX_TOKENS: readonly string[] = ["latitude", "longitu
  *  `normalize("NFD").replace(...)` is NOT — that shortens the string, and `stripHostAggPrefix`
  *  below needs a match offset in the FOLDED text to slice the ORIGINAL. A character folds only
  *  when its decomposition collapses back to a single code point; anything else is passed
- *  through untouched, so a surrogate pair survives intact. The server mirrors this exactly. */
+ *  through untouched, so a surrogate pair survives intact. The server mirrors this exactly.
+ *
+ *  NOW THE NAME READER'S FOLD (2026-09-24), which also folds `ł ı ø đ ð` - letters with no
+ *  decomposition, so `udzial` and `sicaklik` above could never meet `Udział` and `Sıcaklık` -
+ *  and reads native and full-width digits as ASCII. One fold for every vocabulary; see
+ *  nameReader.ts. */
 export function foldAccents(s: string): string {
-    return Array.from(s).map(ch => {
-        const d = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
-        return d.length === 1 ? d : ch;
-    }).join("");
+    return foldName(s);
 }
 
 /* parity:localized-default-agg:begin */

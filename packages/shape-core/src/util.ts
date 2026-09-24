@@ -18,19 +18,13 @@
  *  shape. Three name tests already read names as words; the fourth did not, and nothing made them
  *  agree.
  *
- *  Two boundaries and no others — camelCase, then the `_ - . /` separators. A consumer that
- *  re-derives this rule for itself has to match it exactly: this flag is read first and such a
- *  consumer only falls back to its own copy, so widening one side alone decides the same column
- *  two different ways depending on which side sees it. */
-export function nameWords(name: string): string[] {
-    if (!name) return [];
-    return name
-        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")   // camelCase → words
-        .replace(/[_\-./]+/g, " ")                 // separators → space
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(t => t.length > 0);
-}
+ *  THE READING NOW LIVES IN nameReader.ts (2026-09-24), which extends the same two boundaries to
+ *  every script: camelCase on any cased script, and a word is a run of letters, marks and digits.
+ *  A consumer that re-derives this rule for itself has to match it exactly: this flag is read
+ *  first and such a consumer only falls back to its own copy, so widening one side alone decides
+ *  the same column two different ways depending on which side sees it. The shared fixture file
+ *  (tests/fixtures/name-reader.json) is what both sides tokenise. */
+export { nameWords } from "./nameReader";
 
 /** Null/undefined-safe stringify. Mirrors Shared.STR. */
 export function STR(v: any): string {

@@ -143,6 +143,16 @@ export type {
     SupportedLanguage, SupportedLanguageCode, LanguageScript, ResolvedLanguage,
 } from "./languages";
 
+// THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
+// script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,
+// and the views a vocabulary needs where whole words are blind: compound suffixes, glued prefixes
+// and unsegmented scripts. `nameWords` above is its word view.
+export {
+    foldName, readName, matchNameToken, wordEndsWith, gluedPrefixStems, unsegmentedRuns,
+    hasUnsegmentedScript, COMPOUND_MIN_STEM, GLUED_STEM_MIN, SUBSTRING_MIN,
+} from "./nameReader";
+export type { NameReading, NameTokenView } from "./nameReader";
+
 // THE INGEST FRONT DOOR — many source shapes, one measured result. Adapters no longer need
 // to hand-build columns and feed addRow themselves; a decoder translates what the source
 // already knows into descriptors, and the shared core does the rest. Also published as the

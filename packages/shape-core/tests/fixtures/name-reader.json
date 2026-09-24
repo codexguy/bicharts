@@ -1,0 +1,178 @@
+{
+  "about": "The column-name reader's contract, as data. Every implementation of the reader - this package's nameReader.ts and any server-side twin - must tokenise these names, fold these strings and find these tokens exactly as written here. Hand-written, not generated from either implementation: a fixture produced by the code it checks proves nothing.",
+  "rules": {
+    "words": "NFC; camelCase split where a lower-case letter or a decimal digit is followed by an upper-case letter, in any cased script; then whitespace, the ASCII separators _ - . / and every NON-ASCII character that is not a letter, mark or number separate words; other ASCII punctuation stays attached to its word; lower-cased with the locale-independent mapping.",
+    "folded": "The name is folded (see fold) BEFORE it is read, so the folded words line up one-to-one with the words.",
+    "fold": "One UTF-16 unit in, one out. l-stroke, dotless i, o-stroke, d-stroke and eth (both cases) fold to l, i, o, d, d; Arabic-Indic, extended Arabic-Indic, Devanagari, Thai and full-width digits fold to 0-9; full-width Latin letters fold to ASCII; any other character folds to its NFD base when every mark removed lies in U+0300-U+036F and one character remains; everything else is unchanged.",
+    "views": "word: the folded token equals a folded word (unfolded for a fold-sensitive language, vi). suffix: for a compounding language (de nl sv da nb fi hu), a folded word ends with the token and keeps at least 3 code points before it. prefix: for ar and he, a word minus one of the language's glued prefixes equals the token and keeps at least 2 code points. substring: a token in Han, Hiragana, Katakana or Thai of at least 2 code points occurs inside one of the name's runs of those scripts. null: no view finds it."
+  },
+  "names": [
+    { "lang": "en", "kind": "camel", "name": "OlympicYear", "words": ["olympic", "year"], "folded": ["olympic", "year"] },
+    { "lang": "en", "kind": "underscore", "name": "fiscal_year", "words": ["fiscal", "year"], "folded": ["fiscal", "year"] },
+    { "lang": "en", "kind": "punctuation", "name": "Sales (USD)", "words": ["sales", "(usd)"], "folded": ["sales", "(usd)"] },
+    { "lang": "en", "kind": "camel", "name": "XMLHttpCount", "words": ["xmlhttp", "count"], "folded": ["xmlhttp", "count"] },
+    { "lang": "en", "kind": "digits", "name": "FY2024", "words": ["fy2024"], "folded": ["fy2024"] },
+
+    { "lang": "nl", "kind": "camel", "name": "GemiddeldeTemperatuur", "words": ["gemiddelde", "temperatuur"], "folded": ["gemiddelde", "temperatuur"] },
+    { "lang": "nl", "kind": "underscore", "name": "klant_nummer", "words": ["klant", "nummer"], "folded": ["klant", "nummer"] },
+    { "lang": "nl", "kind": "punctuation", "name": "Omzet – Totaal", "words": ["omzet", "totaal"], "folded": ["omzet", "totaal"] },
+
+    { "lang": "de", "kind": "compound", "name": "Durchschnittstemperatur", "words": ["durchschnittstemperatur"], "folded": ["durchschnittstemperatur"] },
+    { "lang": "de", "kind": "camel", "name": "KundenNr", "words": ["kunden", "nr"], "folded": ["kunden", "nr"] },
+    { "lang": "de", "kind": "accented", "name": "Längengrad", "words": ["längengrad"], "folded": ["langengrad"] },
+    { "lang": "de", "kind": "camel", "name": "ÄnderungÜberVorjahr", "words": ["änderung", "über", "vorjahr"], "folded": ["anderung", "uber", "vorjahr"] },
+
+    { "lang": "fr", "kind": "accented", "name": "Température moyenne", "words": ["température", "moyenne"], "folded": ["temperature", "moyenne"] },
+    { "lang": "fr", "kind": "camel", "name": "PrixUnitaire", "words": ["prix", "unitaire"], "folded": ["prix", "unitaire"] },
+    { "lang": "fr", "kind": "punctuation", "name": "Chiffre d'affaires", "words": ["chiffre", "d'affaires"], "folded": ["chiffre", "d'affaires"] },
+    { "lang": "fr", "kind": "punctuation", "name": "Chiffre d’affaires", "words": ["chiffre", "d", "affaires"], "folded": ["chiffre", "d", "affaires"] },
+
+    { "lang": "es", "kind": "accented", "name": "Prom. Ocupación", "words": ["prom", "ocupación"], "folded": ["prom", "ocupacion"] },
+    { "lang": "es", "kind": "accented", "name": "Año", "words": ["año"], "folded": ["ano"] },
+    { "lang": "es", "kind": "camel", "name": "IngresosTotales", "words": ["ingresos", "totales"], "folded": ["ingresos", "totales"] },
+
+    { "lang": "pt", "kind": "accented", "name": "Receita Líquida", "words": ["receita", "líquida"], "folded": ["receita", "liquida"] },
+    { "lang": "pt", "kind": "camel", "name": "DataDeVenda", "words": ["data", "de", "venda"], "folded": ["data", "de", "venda"] },
+
+    { "lang": "it", "kind": "underscore", "name": "Fatturato_Annuo", "words": ["fatturato", "annuo"], "folded": ["fatturato", "annuo"] },
+    { "lang": "it", "kind": "accented", "name": "Città", "words": ["città"], "folded": ["citta"] },
+
+    { "lang": "pl", "kind": "accented", "name": "Udział", "words": ["udział"], "folded": ["udzial"] },
+    { "lang": "pl", "kind": "camel", "name": "ŚredniaCena", "words": ["średnia", "cena"], "folded": ["srednia", "cena"] },
+    { "lang": "pl", "kind": "underscore", "name": "kod_pocztowy", "words": ["kod", "pocztowy"], "folded": ["kod", "pocztowy"] },
+
+    { "lang": "cs", "kind": "accented", "name": "Průměrná teplota", "words": ["průměrná", "teplota"], "folded": ["prumerna", "teplota"] },
+    { "lang": "cs", "kind": "camel", "name": "PočetObjednávek", "words": ["počet", "objednávek"], "folded": ["pocet", "objednavek"] },
+
+    { "lang": "sk", "kind": "underscore", "name": "Priemerná_cena", "words": ["priemerná", "cena"], "folded": ["priemerna", "cena"] },
+    { "lang": "sk", "kind": "accented", "name": "Štvrťrok", "words": ["štvrťrok"], "folded": ["stvrtrok"] },
+
+    { "lang": "sv", "kind": "compound", "name": "Medeltemperatur", "words": ["medeltemperatur"], "folded": ["medeltemperatur"] },
+    { "lang": "sv", "kind": "camel", "name": "KundNummer", "words": ["kund", "nummer"], "folded": ["kund", "nummer"] },
+    { "lang": "sv", "kind": "accented", "name": "År", "words": ["år"], "folded": ["ar"] },
+
+    { "lang": "da", "kind": "compound", "name": "Gennemsnitstemperatur", "words": ["gennemsnitstemperatur"], "folded": ["gennemsnitstemperatur"] },
+    { "lang": "da", "kind": "accented", "name": "Måned", "words": ["måned"], "folded": ["maned"] },
+
+    { "lang": "nb", "kind": "compound", "name": "Gjennomsnittstemperatur", "words": ["gjennomsnittstemperatur"], "folded": ["gjennomsnittstemperatur"] },
+    { "lang": "nb", "kind": "underscore", "name": "Sjø_Temperatur", "words": ["sjø", "temperatur"], "folded": ["sjo", "temperatur"] },
+
+    { "lang": "fi", "kind": "compound", "name": "Keskilämpötila", "words": ["keskilämpötila"], "folded": ["keskilampotila"] },
+    { "lang": "fi", "kind": "underscore", "name": "Asiakas_ID", "words": ["asiakas", "id"], "folded": ["asiakas", "id"] },
+
+    { "lang": "hu", "kind": "compound", "name": "Átlaghőmérséklet", "words": ["átlaghőmérséklet"], "folded": ["atlaghomerseklet"] },
+    { "lang": "hu", "kind": "camel", "name": "VevőKód", "words": ["vevő", "kód"], "folded": ["vevo", "kod"] },
+
+    { "lang": "tr", "kind": "accented", "name": "Sıcaklık", "words": ["sıcaklık"], "folded": ["sicaklik"] },
+    { "lang": "tr", "kind": "accented", "name": "YIL", "words": ["yil"], "folded": ["yil"] },
+    { "lang": "tr", "kind": "camel", "name": "MüşteriSayısı", "words": ["müşteri", "sayısı"], "folded": ["musteri", "sayisi"] },
+    { "lang": "tr", "kind": "accented", "name": "İl", "words": ["i̇l"], "folded": ["il"] },
+
+    { "lang": "ro", "kind": "accented", "name": "Temperatură medie", "words": ["temperatură", "medie"], "folded": ["temperatura", "medie"] },
+    { "lang": "ro", "kind": "accented", "name": "Țara", "words": ["țara"], "folded": ["tara"] },
+
+    { "lang": "hr", "kind": "underscore", "name": "Prosječna_temperatura", "words": ["prosječna", "temperatura"], "folded": ["prosjecna", "temperatura"] },
+    { "lang": "hr", "kind": "accented", "name": "Đakovo", "words": ["đakovo"], "folded": ["dakovo"] },
+    { "lang": "hr", "kind": "camel", "name": "KupacID", "words": ["kupac", "id"], "folded": ["kupac", "id"] },
+
+    { "lang": "id", "kind": "camel", "name": "RataRata_Suhu", "words": ["rata", "rata", "suhu"], "folded": ["rata", "rata", "suhu"] },
+    { "lang": "id", "kind": "words", "name": "Pendapatan Bersih", "words": ["pendapatan", "bersih"], "folded": ["pendapatan", "bersih"] },
+
+    { "lang": "vi", "kind": "accented", "name": "Nhiệt độ", "words": ["nhiệt", "độ"], "folded": ["nhiet", "do"] },
+    { "lang": "vi", "kind": "camel", "name": "DoanhThu", "words": ["doanh", "thu"], "folded": ["doanh", "thu"] },
+    { "lang": "vi", "kind": "accented", "name": "Tháng", "words": ["tháng"], "folded": ["thang"] },
+
+    { "lang": "ru", "kind": "words", "name": "Температура", "words": ["температура"], "folded": ["температура"] },
+    { "lang": "ru", "kind": "camel", "name": "СредняяЦена", "words": ["средняя", "цена"], "folded": ["средняя", "цена"] },
+    { "lang": "ru", "kind": "underscore", "name": "Код_клиента", "words": ["код", "клиента"], "folded": ["код", "клиента"] },
+    { "lang": "ru", "kind": "accented", "name": "Район", "words": ["район"], "folded": ["раион"] },
+
+    { "lang": "uk", "kind": "underscore", "name": "Середня_ціна", "words": ["середня", "ціна"], "folded": ["середня", "ціна"] },
+    { "lang": "uk", "kind": "words", "name": "Рік", "words": ["рік"], "folded": ["рік"] },
+
+    { "lang": "el", "kind": "accented", "name": "Θερμοκρασία", "words": ["θερμοκρασία"], "folded": ["θερμοκρασια"] },
+    { "lang": "el", "kind": "camel", "name": "ΜέσηΤιμή", "words": ["μέση", "τιμή"], "folded": ["μεση", "τιμη"] },
+    { "lang": "el", "kind": "accented", "name": "Έτος", "words": ["έτος"], "folded": ["ετος"] },
+
+    { "lang": "zh", "kind": "cjk", "name": "平均温度", "words": ["平均温度"], "folded": ["平均温度"] },
+    { "lang": "zh", "kind": "underscore", "name": "销售额_2024", "words": ["销售额", "2024"], "folded": ["销售额", "2024"] },
+    { "lang": "zh", "kind": "cjk", "name": "成本/CNY", "words": ["成本", "cny"], "folded": ["成本", "cny"] },
+    { "lang": "zh", "kind": "cjk", "name": "Amount 的总和", "words": ["amount", "的总和"], "folded": ["amount", "的总和"] },
+
+    { "lang": "ja", "kind": "cjk", "name": "平均気温", "words": ["平均気温"], "folded": ["平均気温"] },
+    { "lang": "ja", "kind": "digits", "name": "売上高２０２４", "words": ["売上高２０２４"], "folded": ["売上高2024"] },
+    { "lang": "ja", "kind": "cjk", "name": "カテゴリー", "words": ["カテゴリー"], "folded": ["カテゴリー"] },
+    { "lang": "ja", "kind": "punctuation", "name": "顧客・地域", "words": ["顧客", "地域"], "folded": ["顧客", "地域"] },
+    { "lang": "ja", "kind": "digits", "name": "ＱＴＹ", "words": ["ｑｔｙ"], "folded": ["qty"] },
+
+    { "lang": "ko", "kind": "cjk", "name": "평균 온도", "words": ["평균", "온도"], "folded": ["평균", "온도"] },
+    { "lang": "ko", "kind": "underscore", "name": "매출액_2024", "words": ["매출액", "2024"], "folded": ["매출액", "2024"] },
+
+    { "lang": "ar", "kind": "glued", "name": "الإيرادات", "words": ["الإيرادات"], "folded": ["الإيرادات"] },
+    { "lang": "ar", "kind": "underscore", "name": "متوسط_درجة_الحرارة", "words": ["متوسط", "درجة", "الحرارة"], "folded": ["متوسط", "درجة", "الحرارة"] },
+    { "lang": "ar", "kind": "digits", "name": "السنة ٢٠٢٤", "words": ["السنة", "٢٠٢٤"], "folded": ["السنة", "2024"] },
+    { "lang": "ar", "kind": "punctuation", "name": "المبيعات، الإجمالي", "words": ["المبيعات", "الإجمالي"], "folded": ["المبيعات", "الإجمالي"] },
+
+    { "lang": "he", "kind": "glued", "name": "והכנסות", "words": ["והכנסות"], "folded": ["והכנסות"] },
+    { "lang": "he", "kind": "underscore", "name": "שנה_2024", "words": ["שנה", "2024"], "folded": ["שנה", "2024"] },
+
+    { "lang": "hi", "kind": "words", "name": "मुंबई", "words": ["मुंबई"], "folded": ["मुंबई"] },
+    { "lang": "hi", "kind": "words", "name": "औसत तापमान", "words": ["औसत", "तापमान"], "folded": ["औसत", "तापमान"] },
+    { "lang": "hi", "kind": "digits", "name": "वर्ष२०२४", "words": ["वर्ष२०२४"], "folded": ["वर्ष2024"] },
+
+    { "lang": "th", "kind": "cjk", "name": "อุณหภูมิเฉลี่ย", "words": ["อุณหภูมิเฉลี่ย"], "folded": ["อุณหภูมิเฉลี่ย"] },
+    { "lang": "th", "kind": "digits", "name": "ยอดขาย๒๕๖๗", "words": ["ยอดขาย๒๕๖๗"], "folded": ["ยอดขาย2567"] }
+  ],
+  "fold": [
+    { "in": "Udział", "out": "Udzial" },
+    { "in": "Sıcaklık", "out": "Sicaklik" },
+    { "in": "Sjø", "out": "Sjo" },
+    { "in": "ØRESUND", "out": "ORESUND" },
+    { "in": "Đakovo", "out": "Dakovo" },
+    { "in": "Ðoa", "out": "Doa" },
+    { "in": "Þór", "out": "Þor" },
+    { "in": "Straße", "out": "Straße" },
+    { "in": "Température", "out": "Temperature" },
+    { "in": "Việt", "out": "Viet" },
+    { "in": "٢٠٢٤", "out": "2024" },
+    { "in": "۱۴۰۳", "out": "1403" },
+    { "in": "२०२४", "out": "2024" },
+    { "in": "๒๕๖๗", "out": "2567" },
+    { "in": "２０２４", "out": "2024" },
+    { "in": "ＱＴＹ", "out": "QTY" },
+    { "in": "が", "out": "が" },
+    { "in": "الإيرادات", "out": "الإيرادات" },
+    { "in": "Йогурт", "out": "Иогурт" },
+    { "in": "😀 x", "out": "😀 x" }
+  ],
+  "matches": [
+    { "lang": "de", "token": "temperatur", "name": "Durchschnittstemperatur", "view": "suffix" },
+    { "lang": "de", "token": "temperatur", "name": "Temperatur", "view": "word" },
+    { "lang": "de", "token": "temperatur", "name": "Temperaturen", "view": null },
+    { "lang": "de", "token": "anteil", "name": "Marktanteil", "view": "suffix" },
+    { "lang": "nl", "token": "temperatuur", "name": "GemiddeldeTemperatuur", "view": "word" },
+    { "lang": "sv", "token": "temperatur", "name": "Medeltemperatur", "view": "suffix" },
+    { "lang": "fi", "token": "lämpötila", "name": "Keskilämpötila", "view": "suffix" },
+    { "lang": "hu", "token": "hőmérséklet", "name": "Átlaghőmérséklet", "view": "suffix" },
+    { "lang": "en", "token": "age", "name": "Usage", "view": null },
+    { "lang": "es", "token": "ocupacion", "name": "Prom. Ocupación", "view": "word" },
+    { "lang": "tr", "token": "sicaklik", "name": "Sıcaklık", "view": "word" },
+    { "lang": "pl", "token": "udzial", "name": "Udział", "view": "word" },
+    { "lang": "vi", "token": "tháng", "name": "Tháng", "view": "word" },
+    { "lang": "vi", "token": "thang", "name": "Tháng", "view": null },
+    { "lang": "ru", "token": "цена", "name": "СредняяЦена", "view": "word" },
+    { "lang": "el", "token": "θερμοκρασια", "name": "Θερμοκρασία", "view": "word" },
+    { "lang": "ar", "token": "إيرادات", "name": "الإيرادات", "view": "prefix" },
+    { "lang": "ar", "token": "حرارة", "name": "متوسط_درجة_الحرارة", "view": "prefix" },
+    { "lang": "he", "token": "הכנסות", "name": "והכנסות", "view": "prefix" },
+    { "lang": "he", "token": "שנה", "name": "שנה_2024", "view": "word" },
+    { "lang": "hi", "token": "तापमान", "name": "औसत तापमान", "view": "word" },
+    { "lang": "zh", "token": "温度", "name": "平均温度", "view": "substring" },
+    { "lang": "zh", "token": "总和", "name": "Amount 的总和", "view": "substring" },
+    { "lang": "zh", "token": "年", "name": "年份", "view": null },
+    { "lang": "ja", "token": "気温", "name": "平均気温", "view": "substring" },
+    { "lang": "ja", "token": "売上", "name": "売上高２０２４", "view": "substring" },
+    { "lang": "th", "token": "อุณหภูมิ", "name": "อุณหภูมิเฉลี่ย", "view": "substring" },
+    { "lang": "ko", "token": "온도", "name": "평균 온도", "view": "word" }
+  ]
+}
