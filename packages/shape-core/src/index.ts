@@ -153,9 +153,9 @@ export type { PayloadPreviewOptions } from "./payloadPreview";
 // codeColumnReads.ts for why code that picks columns by role or position keeps every name.
 export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads } from "./codeColumnReads";
 
-// FREEMIUM ENTITLEMENT WALLS A HOST CAN ANTICIPATE (item 634). The column cap is ENFORCED only on
+// FREEMIUM ENTITLEMENT WALLS A HOST CAN ANTICIPATE (2026-09-17). The column cap is ENFORCED only on
 // the server; these let a host refuse in 0 ms in the SERVER'S OWN WORDS rather than pay a round
-// trip that prod 2958 proved can be lost in transport and read as "the service is down". The
+// trip that a production request proved can be lost in transport and read as "the service is down". The
 // sentence is never authored in a host - see freemiumCaps.ts for the two rules that keeps.
 export { freemiumColumnsOverCap, freemiumColumnCapRefusal, freemiumDateHierarchyClauses } from "./freemiumCaps";
 export type { FreemiumColumnCapStatus, FreemiumDateGroupColumn } from "./freemiumCaps";

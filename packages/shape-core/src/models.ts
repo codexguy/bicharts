@@ -1010,11 +1010,11 @@ export type GetLicenseStatusResult =
         freemiumWarnAtPercent?: number,
         freemiumExhausted?: boolean,
         freemiumStatusMessage?: string,
-        // FREEMIUM COLUMN CAP, so a host can ANTICIPATE it (item 634, 2026-09-17).
+        // FREEMIUM COLUMN CAP, so a host can ANTICIPATE it (2026-09-17).
         //
         // The cap is ENFORCED only on the server and always will be. These let a host that already
         // knows its bound column count refuse in 0 ms in the SERVER'S OWN WORDS rather than pay a
-        // round trip to be told. Prod 2958: the server answered a 20-field binding in 31 ms naming
+        // round trip to be told. In production the server answered a 20-field binding in 31 ms naming
         // exactly how many fields to drop, the response was lost through the reader's corporate
         // proxy, and what they read was "We couldn't reach the charting service".
         //

@@ -29,7 +29,7 @@ export const HOST_CONTRACT_VERSION = "1.11.0";
 // view key is a one-word change every host reads. Additive: a host that ignores it persists them all.
 // 1.10.0 (2026-09-17): CONTROL GESTURES ARE REPORTABLE. RenderOptions gains onControlChange, which a
 // chart's own controls call when a READER works them (the segmented row today), so a host can log the
-// gesture instead of inferring it from the view-state write that follows. Item 639: the visual logged
+// gesture instead of inferring it from the view-state write that follows. Until then the visual logged
 // that write and the add-in did not, so "the buttons do nothing" left no record in one host and an
 // indirect one in the other. Additive and optional in both directions — a host that ignores it is
 // unchanged, and a control whose host supplies nothing behaves exactly as before.

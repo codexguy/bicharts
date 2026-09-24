@@ -536,6 +536,31 @@ export interface ColumnNameAlias {
     reason: "doubled-agg-prefix" | "english-implicit-agg";
 }
 
+/**
+ * A CATEGORY DOES NOT END IN A SPACE (2026-09-24). `'Student Rush '` and `'Student Rush'` are two grouping keys to
+ * every chart, so one category was split in two and the smaller half pooled into an 'Other' of one member. Excel,
+ * MCP and React already trim at ingest (ingest's convert, the MCP csvAdapter); the Power BI visual handed its matrix
+ * values through untouched. This is the one seam every host's rows pass, and both the shape (getColumnsWithStats)
+ * and the rows the chart reads (toObjectArray, getCSVAsync) are built from what it stores - so a trim here reaches
+ * them together.
+ *
+ * Strings only, and only their leading and trailing whitespace: a blank stays a blank (never null), so code that
+ * reads "" keeps reading it. The row's array is copied only when a cell actually changes. Cross-filter is untouched:
+ * `data-row-idx` carries row indices, and the visual's group identities come from the matrix values, not from here.
+ */
+export function trimmedCells(colvals: any[]): any[] {
+    let out: any[] | null = null;
+    for (let i = 0; i < colvals.length; i++) {
+        const v = colvals[i];
+        if (typeof v !== "string" || v.length === 0) continue;
+        const t = v.trim();
+        if (t.length === v.length) continue;
+        if (!out) out = colvals.slice();
+        out[i] = t;
+    }
+    return out || colvals;
+}
+
 export class IndexedText implements IValueCollection {
     private _computedStatsForLevel: string = null;
     private _cols: LLMColumnWithValue[] = [];
@@ -1897,6 +1922,10 @@ export class IndexedText implements IValueCollection {
         // round-tripping, or repetition is itself the signal (raw event streams, where
         // the same reading twice is data rather than noise). The hashing is skipped
         // entirely in that mode, so it costs nothing to turn off.
+        //
+        // The hash reads the values AS THE HOST SENT THEM, before trimmedCells: two source rows that differ only by
+        // whitespace stay two rows, so a merge of 'Student Rush ' into 'Student Rush' never costs a row its identity
+        // or its measure.
         if (this.dedupRows) {
             let str = "";
             for (const v of colvals) {
@@ -1910,7 +1939,7 @@ export class IndexedText implements IValueCollection {
             this._rowHashes.add(hash);
         }
 
-        this._rows.push(colvals);
+        this._rows.push(trimmedCells(colvals));
         this._origIndices.push(originalIdx === undefined || originalIdx === null ? -1 : originalIdx);
         return true;
     }

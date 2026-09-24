@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { freemiumColumnsOverCap, freemiumColumnCapRefusal, freemiumDateHierarchyClauses } from "../packages/shape-core/src/freemiumCaps";
 
-// ITEM 634 — a host anticipating the freemium column cap in the server's own words.
+// A host anticipating the freemium column cap in the server's own words (2026-09-17).
 //
 // The templates below are the server's, verbatim from LLMManager.FreemiumColumnCapTemplate. If
 // that method's wording changes, these fixtures go stale and say so loudly — which is the point of
@@ -22,7 +22,7 @@ describe("freemiumColumnsOverCap", () => {
         expect(freemiumColumnsOverCap(11, server)).toBe(0);
         expect(freemiumColumnsOverCap(12, server)).toBe(0);
         expect(freemiumColumnsOverCap(13, server)).toBe(1);
-        // Prod 2958's own binding.
+        // The production binding that motivated this.
         expect(freemiumColumnsOverCap(20, server)).toBe(8);
     });
 
@@ -41,7 +41,7 @@ describe("freemiumColumnCapRefusal", () => {
         expect(freemiumColumnCapRefusal(1, server)).toBeNull();
     });
 
-    it("renders prod 2958's refusal exactly as the server would have", () => {
+    it("renders the production refusal exactly as the server would have", () => {
         expect(freemiumColumnCapRefusal(20, server)).toBe(
             "This visual has 8 more data fields than the free tier allows. A license lifts the limit - or, if you would rather stay on the free tier, remove 8 fields and generate again."
         );

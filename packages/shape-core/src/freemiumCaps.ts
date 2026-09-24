@@ -1,7 +1,7 @@
 /**
  * Freemium entitlement walls a host can ANTICIPATE, in the server's own words.
  *
- * ITEM 634 (2026-09-17), from the prod 2956-2962 review.
+ * Added 2026-09-17, from a review of production requests.
  *
  * A first-time freemium reader behind a corporate proxy bound twenty fields against a cap of
  * twelve. The server did everything right: it refused at the routing boundary in 31 ms, charged
@@ -72,7 +72,7 @@ export function freemiumColumnsOverCap(
  *
  * The plural is chosen here rather than by the server for the one reason the server cannot: it
  * depends on the reader's count. It is English-only, like every other plural in this codebase, and
- * belongs to item 543's catalogue work rather than to this one.
+ * belongs to the message-catalogue work rather than to this one.
  */
 export function freemiumColumnCapRefusal(
     shapeColumnCount: number,

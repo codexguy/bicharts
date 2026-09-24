@@ -3,12 +3,12 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-// THE EAGER-LOAD GATE, MADE LOAD-BEARING (item 637).
+// THE EAGER-LOAD GATE, MADE LOAD-BEARING (2026-09-17).
 //
 // `scripts/checkEagerSize.mjs` has existed for months and has been correct throughout. What it
 // lacked was any power to stop the thing it guards: `Release` and `CI` are separate workflows on
 // the same push, and the publishing one never consulted the other. So the check went red at
-// 0.5.88, was raised to 600 with the cause recorded (item 398), went red again at 0.5.103, and
+// 0.5.88, was raised to 600 with the cause recorded, went red again at 0.5.103, and
 // stayed red for ELEVEN consecutive runs through 0.5.113 — every one of them published anyway.
 // Twice now the honest conclusion has been written down and twice the gate could not act on it.
 //
