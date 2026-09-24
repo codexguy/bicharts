@@ -286,6 +286,19 @@ export interface ChartHost {
 const parseRowIdxs = (s: string | null | undefined): number[] =>
     (s || "").split(",").map(x => parseInt(x, 10)).filter(n => Number.isFinite(n));
 
+/**
+ * ONE d3 OBJECT FROM d3 AND ITS PLUGINS - the object a chart is handed as `d3`.
+ *
+ * In a bundled app d3 and each plugin (d3-sankey, d3-hexbin, ...) are separate module
+ * namespaces, and a chart reaches all of them through one `d3`. A namespace is also FROZEN, and a
+ * generated chart installs its own helpers onto the d3 it is given, so the object must be a plain
+ * extensible copy: `assembleD3(d3, d3Sankey, d3Hexbin)`. Later arguments win on a name clash.
+ * `requiredD3Plugins(code)` names the plugin packages a given chart needs.
+ */
+export function assembleD3(base: object, ...plugins: object[]): Record<string, any> {
+    return Object.assign({}, base, ...plugins);
+}
+
 // d3 plugins are separate packages that ATTACH onto the d3 object. When one is missing the
 // generated code fails as `d3.sankey is not a function` several frames deep inside compiled
 // chart source — a message that tells a host nothing about what to install. Name the cause

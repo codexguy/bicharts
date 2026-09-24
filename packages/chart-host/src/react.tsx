@@ -16,12 +16,18 @@
 // its payload renumbers from zero, so the same integers now denote different records —
 // silently. The group owns the source table, builds each chart's payload, keeps the
 // payload-row -> source-row map, and translates selections across it. Consumers never see it.
+//
+// THE GROUP ITSELF IS THE CORE'S createChartGroup (group.ts) since 2026-09-24, so a host with
+// no React coordinates charts by the same rules. What stays here is only what is React's: the
+// context, the effects that hand a member its payload, and the state a page reads.
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { createChartHost, type ChartHost, type ChartHostConfig } from "./host";
 import type { ResolveOptionsInput } from "./defaults";
-import { buildRenderPayload, type GeoPointBinding } from "./payload";
+import type { GeoPointBinding } from "./payload";
 import { geoFromCache, loadGeo } from "./geoLazy";
+import { createChartGroup, syncMemberSelection, toSourceRows, type ChartGroup, type ChartGroupSelection } from "./group";
+export { assembleD3 } from "./host";
 
 export interface BicChartProps {
     /** Generated render() source (an ES module's `code` export, or the raw string). */
@@ -92,21 +98,13 @@ export interface BicChartProps {
 // not (it keeps showing all its marks, with the selected ones highlighted, so the user
 // can see what they picked in context and click again to change it). That single rule
 // gives mutual cross-filtering for free: click a bubble and the table filters, click a
-// table row and the map filters, with no possibility of a feedback loop.
-interface GroupSelection { sourceId: string | null; rows: number[] }
+// table row and the map filters, with no possibility of a feedback loop. The rules live in
+// the core group; the context carries it and a snapshot of its selection - a new object on
+// every publish and clear, which is what re-renders the members.
 interface GroupCtx {
-    /** Source rows as objects, shared by every member. */
-    rows: Record<string, any>[];
-    columns: any[];
-    geo?: { column: string; kind: string } | null;
-    point?: GeoPointBinding | null;
-    /** Publish a member's selection, already translated to SOURCE row indices. */
-    publish(id: string, sourceRowIdxs: number[]): void;
-    /** The filter `id` should APPLY (null = show everything). Never its own selection. */
-    filterFor(id: string | undefined): number[] | null;
+    group: ChartGroup;
     /** The whole group's active selection, whoever produced it. */
-    selection: GroupSelection;
-    clear(): void;
+    selection: ChartGroupSelection;
 }
 const Ctx = createContext<GroupCtx | null>(null);
 
@@ -114,9 +112,9 @@ const Ctx = createContext<GroupCtx | null>(null);
 export function useBicSelection() {
     const g = useContext(Ctx);
     return {
-        rows: g?.selection.rows ?? [],
+        rows: (g?.selection.rows ?? []) as number[],
         sourceId: g?.selection.sourceId ?? null,
-        clear: () => g?.clear(),
+        clear: () => g?.group.clear(),
     };
 }
 
@@ -137,31 +135,25 @@ export interface BicChartGroupProps {
  * indices in both directions, so a click in one chart filters another CORRECTLY.
  */
 export function BicChartGroup({ rows, columns, geo, point, children }: BicChartGroupProps) {
-    const [sel, setSel] = useState<GroupSelection>({ sourceId: null, rows: [] });
-    const value = useMemo<GroupCtx>(() => ({
-        rows, columns, geo, point,
-        selection: sel,
-        publish: (id, sourceRowIdxs) =>
-            setSel(sourceRowIdxs.length ? { sourceId: id, rows: sourceRowIdxs }
-                                        : { sourceId: null, rows: [] }),
-        // A chart never filters itself — that is what keeps the gesture reversible:
-        // the origin chart still shows every mark, so there is always something left
-        // to click to change or clear the selection.
-        filterFor: (id) => (sel.rows.length && sel.sourceId && sel.sourceId !== id) ? sel.rows : null,
-        clear: () => setSel({ sourceId: null, rows: [] }),
-    }), [rows, columns, geo, point, sel]);
+    // ONE core group for the component's life. A member captures it when its host is built, so
+    // it is never replaced: a new source table goes in through setSource, which keeps the
+    // selection, as this component always did.
+    const groupRef = useRef<ChartGroup | null>(null);
+    if (!groupRef.current) groupRef.current = createChartGroup(columns, rows, { geo, point });
+    const group = groupRef.current;
+    const [sel, setSel] = useState<ChartGroupSelection>(group.selection);
+    // Applied during render, before the members render, so they derive from the new table in
+    // the same pass. Idempotent, so StrictMode's double render costs nothing.
+    const source = useMemo(() => {
+        group.setSource(columns, rows, { geo, point });
+        return {};
+    }, [group, rows, columns, geo, point]);
+    // A "source" change is this component's own props: the render already carries it.
+    useEffect(() => group.onChange((s, change) => { if (change !== "source") setSel(s); }), [group]);
+    const value = useMemo<GroupCtx>(() => ({ group, selection: sel }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [group, sel, source]);
     return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
-
-/** Build a payload for a subset of source rows, keeping the payload->source index map. */
-function payloadFor(g: GroupCtx, sourceIdxs: number[] | null) {
-    const idxs = sourceIdxs ?? g.rows.map((_, i) => i);
-    const subset = idxs.map(i => g.rows[i]);
-    const p = buildRenderPayload(g.columns, subset, g.geo ?? undefined, g.point ?? undefined);
-    // p.rows[k] corresponds to source row idxs[k]. __rowIdx__ inside the payload was
-    // re-based to 0..n-1 by the builder — THIS map is what makes the indices comparable
-    // across charts, and it is exactly what a hand-rolled integration forgets.
-    return { payload: p, rowMap: idxs };
 }
 
 export function BicChart(props: BicChartProps) {
@@ -170,15 +162,13 @@ export function BicChart(props: BicChartProps) {
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
-    const group = useContext(Ctx);
+    const ctx = useContext(Ctx);
+    const group = ctx ? ctx.group : null;
 
     // Resolve this chart's payload: from the group (filtered + mapped) or the raw prop.
     // `filteredBy` narrows this to ONE partner when a page wants explicit one-way wiring;
     // omit it and the chart responds to whichever sibling published — mutual by default.
-    const active = group ? group.selection : null;
-    const incoming = !group ? null
-        : (filteredBy ? (active!.sourceId === filteredBy ? group.filterFor(id) : null)
-                      : group.filterFor(id));
+    const incoming = group ? group.incomingFor(id, filteredBy) : null;
     // HIGHLIGHT mode keeps the FULL payload — the sibling's selection is painted onto the
     // marks below instead of removing rows. Splitting it here rather than downstream is
     // what makes it a re-paint and not a re-render: the chart is never rebuilt, so a map
@@ -187,9 +177,9 @@ export function BicChart(props: BicChartProps) {
     const filterSel = highlightMode ? null : incoming;
     const built = useMemo(() => {
         if (!group) return null;
-        return payloadFor(group, filterSel);
+        return group.payloadFor(filterSel);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [group, filterSel && filterSel.join(",")]);
+    }, [ctx, filterSel && filterSel.join(",")]);
     const data = built ? built.payload : props.data;
     rowMapRef.current = built ? built.rowMap : null;
 
@@ -244,9 +234,8 @@ export function BicChart(props: BicChartProps) {
             // Publishing it would overwrite the selection another chart just made — the
             // feedback loop that makes mutual cross-filtering fight itself.
             if (source === "host") return;
-            const map = rowMapRef.current;
             // Translate to SOURCE indices before anything leaves this chart.
-            const sourceIdxs = map ? payloadIdxs.map(i => map[i]).filter(i => i !== undefined) : payloadIdxs;
+            const sourceIdxs = toSourceRows(rowMapRef.current, payloadIdxs);
             if (group && id) group.publish(id, sourceIdxs);
             onSelectRef.current?.(sourceIdxs);
         });
@@ -286,22 +275,39 @@ export function BicChart(props: BicChartProps) {
     // host's `"host"` source, so nothing published here comes back as a new selection.
     useEffect(() => {
         const host = hostRef.current;
-        if (!host || !group) return;
-        const mine = group.selection.sourceId === id && group.selection.rows.length > 0;
-        if (mine) return;                       // our own selection — the host already painted it
-        if (highlightMode && incoming && incoming.length) {
-            // Group members share one row space (every member is handed the same rows), so
-            // the sibling's source indices ARE this chart's payload indices — no
-            // translation. That equality is exactly what payloadFor's rowMap buys, and it
-            // holds only while this chart keeps the unfiltered payload, which is what
-            // highlight mode guarantees.
-            host.selection.highlight(incoming);
-            return;
-        }
-        if (host.selection.current && host.selection.current.length) host.selection.clear();
+        if (!host || !ctx) return;
+        syncMemberSelection(host, ctx.selection, id, highlightMode, incoming);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [group?.selection, id, group, highlightMode, incoming && incoming.join(",")]);
+    }, [ctx?.selection, id, ctx, highlightMode, incoming && incoming.join(",")]);
 
     // No children: the chart owns this element's contents.
     return <div ref={ref} className={className} style={style} />;
+}
+
+/**
+ * THE SIZE A CHART SHOULD DRAW AT: the element's measured box, kept current as it resizes.
+ *
+ * A chart draws to `options.width` / `options.height`, and a page that hard-codes them draws the
+ * same size in a phone and on a wall. Give the element its size in CSS (a width of 100%, a height
+ * or an aspect ratio) and pass what this measures. `{ width: 0, height: 0 }` until the element has
+ * been measured - skip rendering until then rather than drawing at zero.
+ */
+export function useMeasuredSize(ref: RefObject<Element | null>): { width: number; height: number } {
+    const [size, setSize] = useState({ width: 0, height: 0 });
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const read = () => {
+            const r = el.getBoundingClientRect();
+            const width = Math.round(r.width), height = Math.round(r.height);
+            // Same box, same object: a resize callback that changes nothing must not re-render.
+            setSize(s => (s.width === width && s.height === height ? s : { width, height }));
+        };
+        read();
+        if (typeof ResizeObserver === "undefined") return;
+        const ro = new ResizeObserver(read);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [ref]);
+    return size;
 }

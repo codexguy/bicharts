@@ -74,8 +74,14 @@ export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./date
 // module-form artifact and wants to compile it itself needs the same normalization the
 // host applies, or the two paths disagree about what a valid chart artifact is.
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
-    sessionViewStateProvider, noopViewStateProvider,
+    sessionViewStateProvider, noopViewStateProvider, assembleD3,
     type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
+// THE CROSS-FILTER GROUP (2026-09-24): several charts over one source table and one selection,
+// with the payload-row -> source-row translation owned here. <BicChartGroup> in "./react" is a
+// wrapper over it; a host without React calls it directly.
+export { createChartGroup, toSourceRows, syncMemberSelection,
+    type ChartGroup, type ChartGroupMember, type ChartGroupSelection, type ChartGroupChange,
+    type ChartGroupMemberOptions, type ChartGroupSourceOptions, type ChartGroupPayload } from "./group";
 export { createMarkResolver, isInsideControl, type MarkResolver, type MarkResolverEnv } from "./selection";
 // Deterministic charts for shapes with exactly one defensible answer: a single value, a
 // single categorical column, a single numeric column. Returns null for everything else, so

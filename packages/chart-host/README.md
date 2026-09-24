@@ -114,6 +114,31 @@ host.setOptions({ colorScaleLow: "#eee" });   // live restyle — never a regene
 host.destroy();                               // call on unmount
 ```
 
+### Several charts, one selection, without React
+
+`createChartGroup` is the group `<BicChartGroup>` wraps: it owns the source table, derives each
+member's payload, and translates every click to **source** row indices, so the row-index hazard
+above is handled the same way in any framework (or none).
+
+```js
+import { createChartGroup, createChartHost, assembleD3 } from "@bicharts/chart-host";
+
+const group = createChartGroup(columns, rows, { point: { city: "City" } });
+const d3all = assembleD3(d3, d3Sankey);                     // one extensible d3 for every chart
+
+function mount(id, el, code, opts = {}) {                   // opts: { filteredBy, respondsWith }
+  const host = createChartHost(el, { code, d3: d3all, data: group.memberPayload(id, opts).payload,
+                                     options: { width: 800, height: 500 } });
+  host.render();
+  return group.attach(id, host, opts);                      // .detach() on teardown
+}
+mount("map", mapEl, mapCode, { respondsWith: "highlight" });
+mount("table", tableEl, tableCode);
+
+group.onChange(sel => console.log(sel.sourceId, sel.rows));  // SOURCE row indices
+group.clear();
+```
+
 ## Sizing is yours
 
 `width`/`height` have **no defaults**. A chart draws once at whatever it is handed and does not
@@ -124,6 +149,9 @@ a background or headless tab, where frames are barely produced.
 ```tsx
 useLayoutEffect(() => setW(ref.current.getBoundingClientRect().width), []);
 ```
+
+In React, `useMeasuredSize(ref)` from `@bicharts/chart-host/react` does exactly that and follows
+later resizes: give the element its size in CSS and pass what it measures.
 
 ## Maps
 
