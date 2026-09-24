@@ -5,6 +5,9 @@
 That is what **RegiaBI** is for; this package is the part that measures your data so the
 rest of it can be honest about what your data will actually support.
 
+RegiaBI hands you a chart that fits your data on the first try, as source you own, and it runs in your React app or any web page on a free, open-source runtime with no call back to us.
+[RegiaBI for developers](https://bizintelligencechampions.com/regiabi/developers?loc=npmshape)
+
 A **host-agnostic data-shape profiler**. Feed it a dataset's rows through the
 `IValueCollection.addRow` seam; read back the measured shape as an
 `LLMColumnWithValue[]` payload — the exact contract the
