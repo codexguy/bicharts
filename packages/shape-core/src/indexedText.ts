@@ -19,6 +19,7 @@ import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
+import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence } from "./cadence";
@@ -1636,85 +1637,11 @@ export class IndexedText implements IValueCollection {
                           lonP5: number, lonP95: number, n: number } | null = null;
     private _geoExtentComputed: boolean = false;
 
+    // Class- and script-preserving mask of one sample value. See sampleMask.ts for why the
+    // classes are Unicode categories and the pools are per script (2026-09-24: Cyrillic and
+    // CJK values used to ship verbatim, because only ASCII letters counted as letters).
     private obfuscateString(input: string): string {
-        const lowers = 'abcdefghijklmnopqrstuvwxyz';
-        const getRandomLower = (): string => lowers[Math.floor(GET_RANDOM() * lowers.length)];
-        const getRandomUpper = (): string => getRandomLower().toUpperCase();
-        const getRandomDigit = (): string => Math.floor(GET_RANDOM() * 10).toString();
-
-        // Class-preserving substitution:
-        //   uppercase letter → random uppercase letter
-        //   lowercase letter → random lowercase letter
-        //   digit            → random digit
-        //   anything else    → unchanged (whitespace, dashes, underscores,
-        //                      parens, punctuation, currency symbols, etc.)
-        // Preserves the shape signal — acronyms stay uppercase, Title Case
-        // stays Title Case, "USD-12345" stays "<UPPER>-<DIGITS>". Loses the
-        // exact value but keeps the format pattern the LLM needs for
-        // semantic-type / id-likeness recognition.
-        const substituteSameClass = (origChar: string): string => {
-            if (/[A-Z]/.test(origChar)) return getRandomUpper();
-            if (/[a-z]/.test(origChar)) return getRandomLower();
-            if (/[0-9]/.test(origChar)) return getRandomDigit();
-            return origChar;
-        };
-
-        const isEmail = input.includes('@') && input.includes('.');
-        const emailParts = isEmail ? input.split('@') : [input];
-        const domain = isEmail ? emailParts[1] : '';
-
-        const preserveSuffix = domain.endsWith('.com');
-        const suffix = preserveSuffix ? '.com' : '';
-        const domainName = preserveSuffix ? domain.slice(0, -4) : domain;
-
-        const obfuscatePart = (str: string): string => {
-            let result = '';
-            for (const char of str) {
-                result += substituteSameClass(char);
-
-                // Random length jitter (~20%). Insert ONLY after letters or
-                // digits — NEVER after whitespace (breaks word boundaries)
-                // AND NEVER after punctuation (would duplicate dashes /
-                // underscores / colons / etc., changing the format pattern
-                // — e.g. 'flight-1234' must not become 'flight--1234').
-                // The inserted char matches the just-processed char's
-                // class so a letters-only input never gains a digit and a
-                // digits-only input never gains a letter (per the strict
-                // class-preservation invariant required here).
-                if (/[a-zA-Z0-9]/.test(char) && GET_RANDOM() < 0.2) {
-                    result += substituteSameClass(char);
-                }
-            }
-
-            // Random length jitter (down): remove up to 2 chars. NEVER
-            // remove a whitespace character (changes word count) and
-            // never remove structural separators ('.', '@', ',', '-', '_').
-            // Only letters and digits are removable.
-            if (result.length > 6) {
-                const numToRemove = Math.floor(GET_RANDOM() * Math.min(3, result.length - 6));
-                for (let i = 0; i < numToRemove; i++) {
-                    let attempts = 0;
-                    while (attempts < 5) {
-                        const removeIndex = Math.floor(GET_RANDOM() * result.length);
-                        if (/[a-zA-Z0-9]/.test(result[removeIndex])) {
-                            result = result.slice(0, removeIndex) + result.slice(removeIndex + 1);
-                            break;
-                        }
-                        attempts++;
-                    }
-                }
-            }
-
-            return result;
-        };
-
-        if (isEmail) {
-            const localPart = obfuscatePart(emailParts[0]);
-            const obfuscatedDomain = obfuscatePart(domainName);
-            return `${localPart}@${obfuscatedDomain}${suffix}`;
-        } else {
-            return obfuscatePart(input);
-        }
+        return maskSampleText(input, GET_RANDOM);
     }
 
     public toObjectArray(): Record<string, any>[] {

@@ -153,6 +153,12 @@ export {
 } from "./nameReader";
 export type { NameReading, NameTokenView } from "./nameReader";
 
+// NUMBERS WRITTEN AS TEXT (2026-09-24): which character is a column's decimal point, decided from
+// its values with the culture as the tiebreak. `ingest` applies it; exported for a host that still
+// parses text of its own, which must read `12,5` the same way.
+export { detectDecimalSeparator, decimalSeparatorOf, parseNumberText } from "./numberText";
+export type { DecimalSeparator } from "./numberText";
+
 // THE INGEST FRONT DOOR — many source shapes, one measured result. Adapters no longer need
 // to hand-build columns and feed addRow themselves; a decoder translates what the source
 // already knows into descriptors, and the shared core does the rest. Also published as the

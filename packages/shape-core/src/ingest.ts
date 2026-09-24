@@ -28,6 +28,7 @@
 import Papa from "papaparse";
 import { IndexedText, isIdentifierName } from "./indexedText";
 import { parseDateStable } from "./util";
+import { detectDecimalSeparator, isNumberText, parseNumberText, type DecimalSeparator } from "./numberText";
 import type { LLMColumnWithValue } from "./models";
 
 /** Engine value types. Anything a decoder cannot map confidently becomes "String". */
@@ -80,7 +81,9 @@ export interface IngestOptions {
     nonAdditive?: string[];
     /** "0" | "10" | "20" | "30" — how much detail the measured shape carries. Default "20". */
     privacyLevel?: string;
-    /** Locale for temporal classification (month-name matching). Default "en". */
+    /** Locale for temporal classification (month-name matching), and the tiebreak for a text
+     *  column whose values do not say which character is the decimal point (`12,500` alone could
+     *  be either). Default "en". */
     locale?: string;
     /**
      * Collapse value-identical rows. DEFAULT TRUE, which preserves the engine's long-standing
@@ -130,11 +133,15 @@ export type DataSource =
 
 const TYPE_SAMPLE_CAP = 500;
 const INT_RE = /^[+-]?\d{1,15}$/;
-const NUM_RE = /^[+-]?(\d{1,3}(,\d{3})*|\d+)(\.\d+)?([eE][+-]?\d+)?$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 const SLASH_DATE_RE = /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/;
 
-function inferDataType(samples: any[]): EngineDataType {
+// THE DECIMAL SEPARATOR IS A COLUMN'S, NOT THE PARSER'S (2026-09-24). Every text number used to be
+// read the English way, so a German export's `12,5` made its column text and its `1.234` read as
+// 1.234. Each column's separator is now decided from its own values (numberText.ts), with the
+// caller's locale as the tiebreak and the dot as the default - so a column that reads the English
+// way reads exactly as it always did.
+function inferDataType(samples: any[], decimal: DecimalSeparator = "."): EngineDataType {
     let ints = 0, nums = 0, dates = 0, nonblank = 0;
 
     for (const raw of samples) {
@@ -147,7 +154,7 @@ function inferDataType(samples: any[]): EngineDataType {
         if (v === "") continue;
         nonblank++;
         if (INT_RE.test(v)) { ints++; nums++; continue; }
-        if (NUM_RE.test(v)) { nums++; continue; }
+        if (isNumberText(v, decimal)) { nums++; continue; }
         if ((ISO_DATE_RE.test(v) || SLASH_DATE_RE.test(v)) && !isNaN(Date.parse(v))) { dates++; continue; }
     }
 
@@ -172,7 +179,7 @@ function inferDataType(samples: any[]): EngineDataType {
     return "String";
 }
 
-function convert(v: any, dataType: string): any {
+function convert(v: any, dataType: string, decimal: DecimalSeparator = "."): any {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") return dataType === "String" ? String(v) : v;
     if (v instanceof Date) return dataType === "DateTime" ? v : v.toISOString();
@@ -181,7 +188,7 @@ function convert(v: any, dataType: string): any {
     if (s === "") return null;
     switch (dataType) {
         case "Integer": return INT_RE.test(s) ? parseInt(s, 10) : null;
-        case "Decimal": return NUM_RE.test(s) ? parseFloat(s.replace(/,/g, "")) : null;
+        case "Decimal": return parseNumberText(s, decimal);
         // parseDateStable, not Date.parse: a zone-less date-TIME and every non-ISO spelling
         // are LOCAL to Date.parse, so the same text became a different instant on every
         // machine. An ISO date is untouched - it is already UTC.
@@ -234,9 +241,11 @@ function buildProfile(
 
     const n = descriptors.length;
 
-    // 1. Types — the descriptor's own, else inferred from a bounded sample.
-    const types: string[] = descriptors.map((d, c) =>
-        d.dataType ?? inferDataType(rows.slice(0, TYPE_SAMPLE_CAP).map(r => r?.[c])));
+    // 1. Types — the descriptor's own, else inferred from a bounded sample. Each column's decimal
+    //    separator is read from the same sample first, because it decides what counts as a number.
+    const samples = descriptors.map((_, c) => rows.slice(0, TYPE_SAMPLE_CAP).map(r => r?.[c]));
+    const decimals: DecimalSeparator[] = samples.map(s => detectDecimalSeparator(s, opts.locale));
+    const types: string[] = descriptors.map((d, c) => d.dataType ?? inferDataType(samples[c], decimals[c]));
 
     // 2. Roles, by the ladder above.
     const forceM = new Set((opts.measures ?? []).map(s => s.toLowerCase()));
@@ -261,7 +270,7 @@ function buildProfile(
     index.setColumns(cols);
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
-        index.addRow(Array.from({ length: n }, (_, c) => convert(r?.[c], types[c])), i);
+        index.addRow(Array.from({ length: n }, (_, c) => convert(r?.[c], types[c], decimals[c])), i);
     }
 
     // 4. Measure.
