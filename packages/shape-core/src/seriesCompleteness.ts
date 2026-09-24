@@ -35,8 +35,21 @@
 //     at every tier, because that is what the privacy setting promises.
 // Absent means withheld, never empty: a consumer phrases the fact without it.
 //
+// SO THE UNNAMED FACT CARRIES ITS OWN STRUCTURE. With the names withheld, and below the
+// detailed-stats tier the dates too, a consumer still has to be able to say what is true: how many
+// series start late and by how much, how many end early, how many have holes and how wide the widest
+// is, which periods no series has, and how the least covered one looks. Every one of those is a
+// COUNT of periods or of series, measured relative to the axis's own first and last period, so no
+// calendar date and no category value can be read back from any of them - they ship at every tier,
+// with the cadence's own counts (`points`, `runs`, `largestGapUnits`). A position relative to the
+// axis turns into a date only against the axis's bounds, and those ship only at the tier where
+// `first` / `last` already do. The maxima are over EVERY series, not only the listed ones, so a
+// consumer's threshold is applied to the whole panel.
+//
 // MEASUREMENT ONLY. What a consumer says about a short series, and whether one missing month is
-// worth saying, is policy and lives with it.
+// worth saying, is policy and lives with it. `largestGap` is measured in the unit the column's
+// cadence measures `largestGapUnits` in, so a consumer applies the SAME noise floor to one series
+// that it applies to the column.
 
 import { analyseCadence, parseTemporalPoint, unitsBetween, type Stamp } from "./cadence";
 import { detectFormatSignature } from "./formatDetector";
@@ -51,8 +64,17 @@ export type SeriesCoverage = {
     first?: string;
     /** ISO start of the last period the series is observed in. Absent below privacy tier 20. */
     last?: string;
+    /** Periods of the axis before the series' first observation: a late start when above 0. */
+    missingBefore: number;
+    /** Periods of the axis after the series' last observation: an early end when above 0. */
+    missingAfter: number;
     /** Periods absent between its own first and last - holes, as distinct from a late start or an early end. */
     missingInterior: number;
+    /**
+     * The widest step between two consecutive observations of the series, in periods - the unit of
+     * the cadence's `largestGapUnits`: 1 = no hole, one missing period reads 2.
+     */
+    largestGap: number;
     /** Share of the axis's periods the series is observed in, 0..1 to three places. */
     coverage: number;
 };
@@ -64,8 +86,24 @@ export type SeriesCompleteness = {
     grain: string;
     /** Periods on the axis, first to last observed across every series, endpoints included. */
     periods: number;
+    /** Series on the axis: the key's values that have at least one observed period. */
+    seriesCount: number;
     /** Series missing at least one period. */
     incompleteSeries: number;
+    /** Series whose first observation is after the axis's first period. */
+    lateStarts: number;
+    /** Series whose last observation is before the axis's last period. */
+    earlyEnds: number;
+    /** Series missing at least one period between their own first and last. */
+    withHoles: number;
+    /** Periods of the axis that no series is observed in - a gap in the whole panel, not in one series. */
+    columnWideMissing: number;
+    /** The latest start over every series: the most periods any one misses before its first observation. */
+    maxMissingBefore: number;
+    /** The earliest end over every series: the most periods any one misses after its last observation. */
+    maxMissingAfter: number;
+    /** The widest `largestGap` of any series, in the same unit. */
+    largestGap: number;
     /** At most SERIES_COMPLETENESS_MAX_LISTED of them, least covered first. */
     series: SeriesCoverage[];
     /** Incomplete series not listed. */
@@ -260,9 +298,28 @@ export function measureSeriesCompleteness(input: {
     for (const acc of bySeries.values()) cells += acc.seen.size;
     if (cells / (bySeries.size * span) < (input.minFill ?? SERIES_COMPLETENESS_MIN_FILL)) return null;
 
-    const incomplete: { key: string; acc: Acc; coverage: number }[] = [];
+    type Shape = { key: string; acc: Acc; coverage: number; before: number; after: number; interior: number; gap: number };
+    const incomplete: Shape[] = [];
+    const union = new Set<number>();
+    let lateStarts = 0, earlyEnds = 0, withHoles = 0, maxBefore = 0, maxAfter = 0, widest = 1;
     for (const [key, acc] of bySeries) {
-        if (acc.seen.size < span) incomplete.push({ key, acc, coverage: acc.seen.size / span });
+        for (const i of acc.seen) union.add(i);
+        if (acc.seen.size >= span) continue;
+        // The widest step between consecutive observations, as the cadence measures its own.
+        const idx = [...acc.seen].sort((x, y) => x - y);
+        let gap = 1;
+        for (let k = 1; k < idx.length; k++) gap = Math.max(gap, idx[k] - idx[k - 1]);
+        const s: Shape = {
+            key, acc, coverage: acc.seen.size / span,
+            before: acc.lo, after: span - 1 - acc.hi, interior: (acc.hi - acc.lo + 1) - acc.seen.size, gap,
+        };
+        incomplete.push(s);
+        if (s.before > 0) lateStarts++;
+        if (s.after > 0) earlyEnds++;
+        if (s.interior > 0) withHoles++;
+        maxBefore = Math.max(maxBefore, s.before);
+        maxAfter = Math.max(maxAfter, s.after);
+        widest = Math.max(widest, gap);
     }
     if (incomplete.length === 0) return null;
 
@@ -275,18 +332,29 @@ export function measureSeriesCompleteness(input: {
         seriesColumn: input.seriesColumn,
         grain,
         periods: span,
+        seriesCount: bySeries.size,
         incompleteSeries: incomplete.length,
-        series: listed.map(({ key, acc, coverage }) => {
+        lateStarts,
+        earlyEnds,
+        withHoles,
+        columnWideMissing: span - union.size,
+        maxMissingBefore: maxBefore,
+        maxMissingAfter: maxAfter,
+        largestGap: widest,
+        series: listed.map(s => {
             // Built in wire order: name, first, last, then the counts. A withheld part is left
             // off entirely rather than sent empty.
             const out = {} as SeriesCoverage;
-            if (input.includeNames) out.name = key;
+            if (input.includeNames) out.name = s.key;
             if (input.includeDates) {
-                out.first = periodStart(acc.loStamp, grain);
-                out.last = periodStart(acc.hiStamp, grain);
+                out.first = periodStart(s.acc.loStamp, grain);
+                out.last = periodStart(s.acc.hiStamp, grain);
             }
-            out.missingInterior = (acc.hi - acc.lo + 1) - acc.seen.size;
-            out.coverage = Math.round(coverage * 1000) / 1000;
+            out.missingBefore = s.before;
+            out.missingAfter = s.after;
+            out.missingInterior = s.interior;
+            out.largestGap = s.gap;
+            out.coverage = Math.round(s.coverage * 1000) / 1000;
             return out;
         }),
         more: incomplete.length - listed.length,

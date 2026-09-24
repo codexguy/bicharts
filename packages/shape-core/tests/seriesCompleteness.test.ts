@@ -71,11 +71,28 @@ describe("series completeness - the motivating shape", () => {
         expect(sc.incompleteSeries).toBe(4);
         expect(sc.more).toBe(0);
         expect(sc.series).toEqual([
-            { first: "2025-05-01", last: "2025-08-01", missingInterior: 0, coverage: 0.333 },   // Rhode Island: a ragged start
-            { first: "2025-02-01", last: "2025-08-01", missingInterior: 0, coverage: 0.583 },   // North Carolina: a ragged start
-            { first: "2024-09-01", last: "2025-08-01", missingInterior: 1, coverage: 0.917 },   // Illinois: one hole
-            { first: "2024-09-01", last: "2025-08-01", missingInterior: 1, coverage: 0.917 },   // New York: one hole
+            { first: "2025-05-01", last: "2025-08-01", missingBefore: 8, missingAfter: 0, missingInterior: 0, largestGap: 1, coverage: 0.333 },   // Rhode Island: a ragged start
+            { first: "2025-02-01", last: "2025-08-01", missingBefore: 5, missingAfter: 0, missingInterior: 0, largestGap: 1, coverage: 0.583 },   // North Carolina: a ragged start
+            { first: "2024-09-01", last: "2025-08-01", missingBefore: 0, missingAfter: 0, missingInterior: 1, largestGap: 2, coverage: 0.917 },   // Illinois: one hole
+            { first: "2024-09-01", last: "2025-08-01", missingBefore: 0, missingAfter: 0, missingInterior: 1, largestGap: 2, coverage: 0.917 },   // New York: one hole
         ]);
+    });
+
+    it("carries the panel's structure as counts, so the fact can be stated with every name and date withheld", () => {
+        const sc = month(panelTable("0")).seriesCompleteness!;
+        expect({
+            seriesCount: sc.seriesCount, lateStarts: sc.lateStarts, earlyEnds: sc.earlyEnds, withHoles: sc.withHoles,
+            columnWideMissing: sc.columnWideMissing, maxMissingBefore: sc.maxMissingBefore,
+            maxMissingAfter: sc.maxMissingAfter, largestGap: sc.largestGap,
+        }).toEqual({
+            // Eight states; two start late (the later by eight months), none ends early, two have a
+            // one-month hole, and every month has rows for some state.
+            seriesCount: 8, lateStarts: 2, earlyEnds: 0, withHoles: 2,
+            columnWideMissing: 0, maxMissingBefore: 8, maxMissingAfter: 0, largestGap: 2,
+        });
+        // Per series, the late start and the hole are told apart without a date.
+        expect(sc.series.map(s => [s.missingBefore, s.missingAfter, s.missingInterior, s.largestGap]))
+            .toEqual([[8, 0, 0, 1], [5, 0, 0, 1], [0, 0, 1, 2], [0, 0, 1, 2]]);
     });
 
     it("fires on ONE missing state-month, and is silent on the same panel with none missing", () => {
@@ -90,8 +107,9 @@ describe("series completeness - the motivating shape", () => {
             return month(t.getColumnsWithStats("20")).seriesCompleteness;
         };
         expect(build(true)).toEqual({
-            seriesColumn: "State", grain: "month", periods: 12, incompleteSeries: 1,
-            series: [{ first: "2024-09-01", last: "2025-08-01", missingInterior: 1, coverage: 0.917 }], more: 0,
+            seriesColumn: "State", grain: "month", periods: 12, seriesCount: 8, incompleteSeries: 1,
+            lateStarts: 0, earlyEnds: 0, withHoles: 1, columnWideMissing: 0, maxMissingBefore: 0, maxMissingAfter: 0, largestGap: 2,
+            series: [{ first: "2024-09-01", last: "2025-08-01", missingBefore: 0, missingAfter: 0, missingInterior: 1, largestGap: 2, coverage: 0.917 }], more: 0,
         });
         expect(build(false)).toBeUndefined();
     });
@@ -117,7 +135,8 @@ describe("series completeness - a ragged END, on period strings", () => {
         expect(sc.grain).toBe("quarter");
         expect(sc.periods).toBe(8);
         expect(sc.incompleteSeries).toBe(1);
-        expect(sc.series).toEqual([{ first: "2023-01-01", last: "2024-01-01", missingInterior: 0, coverage: 0.625 }]);
+        expect(sc.series).toEqual([{ first: "2023-01-01", last: "2024-01-01", missingBefore: 0, missingAfter: 3, missingInterior: 0, largestGap: 1, coverage: 0.625 }]);
+        expect([sc.lateStarts, sc.earlyEnds, sc.withHoles, sc.maxMissingAfter]).toEqual([0, 1, 0, 3]);
     });
 });
 
@@ -160,7 +179,7 @@ describe("series completeness - silence where a panel is not", () => {
         });
         const sc = t.getColumnsWithStats("20").find(c => c.name === "Month")!.seriesCompleteness!;
         expect(sc.seriesColumn).toBe("Region");
-        expect(sc.series).toEqual([{ first: "2024-09-01", last: "2025-05-01", missingInterior: 0, coverage: 0.75 }]);
+        expect(sc.series).toEqual([{ first: "2024-09-01", last: "2025-05-01", missingBefore: 0, missingAfter: 3, missingInterior: 0, largestGap: 1, coverage: 0.75 }]);
     });
 
     it("and a table whose only categorical is an ID key has no series at all - the same column named as an entity does", () => {
@@ -176,7 +195,7 @@ describe("series completeness - silence where a panel is not", () => {
         };
         expect(build("Customer ID")).toBeUndefined();
         // C1..C4 are safe short codes, so at this tier the name ships with them.
-        expect(build("Customer")?.series).toEqual([{ name: "C1", first: "2025-01-01", last: "2025-08-01", missingInterior: 0, coverage: 0.667 }]);
+        expect(build("Customer")?.series).toEqual([{ name: "C1", first: "2025-01-01", last: "2025-08-01", missingBefore: 4, missingAfter: 0, missingInterior: 0, largestGap: 1, coverage: 0.667 }]);
     });
 });
 
@@ -197,10 +216,50 @@ describe("series completeness - the cap", () => {
     });
 });
 
+describe("series completeness - the panel-wide counts", () => {
+    it("the maxima cover EVERY series, including one past the listed eight", () => {
+        // Twenty-four months. Nine sites miss every other month for most of the span - never two in a
+        // row - so they are the least covered and fill the list. A tenth misses six months in a row
+        // and closes two months early: better covered, so unlisted, and the only one with a real hole
+        // or an early end.
+        const days = Array.from({ length: 24 }, (_, i) => new Date(Date.UTC(2023, i, 1)));
+        const t = new IndexedText();
+        t.setColumns([col("Month", "DateTime"), col("Site", "String"), col("Output", "Integer", true)]);
+        let n = 0;
+        days.forEach((d, m) => {
+            t.addRow([d, "Anchor", 1 + n++]);                                   // keeps every month on the axis
+            for (let s = 0; s < 9; s++) if (!(m % 2 === 1 && m < 21)) t.addRow([d, `Site ${s}`, 1 + n++]);
+            if (!(m >= 8 && m < 14) && m < 22) t.addRow([d, "Tenth", 1 + n++]);
+        });
+        const sc = t.getColumnsWithStats("0").find(c => c.name === "Month")!.seriesCompleteness!;
+        expect(sc.incompleteSeries).toBe(10);
+        expect(sc.more).toBe(2);
+        expect(Math.max(...sc.series.map(s => s.largestGap))).toBe(2);   // what the listed eight alone would say
+        expect(sc.largestGap).toBe(7);                                     // six missing in a row
+        expect(sc.maxMissingAfter).toBe(2);
+        expect([sc.lateStarts, sc.earlyEnds, sc.withHoles]).toEqual([0, 1, 10]);
+    });
+
+    it("a period no series has is counted once for the panel, as well as inside each series", () => {
+        const t = new IndexedText();
+        t.setColumns([col("Week", "DateTime"), col("Hub", "String"), col("Parcels", "Integer", true)]);
+        let n = 0;
+        for (let w = 0; w < 10; w++) for (const h of ["North", "South", "East"]) {
+            if (w === 4) continue;                                             // the whole network is shut one week
+            t.addRow([new Date(Date.UTC(2025, 0, 6 + 7 * w)), h, 200 + n++]);
+        }
+        const sc = t.getColumnsWithStats("20").find(c => c.name === "Week")!.seriesCompleteness!;
+        expect(sc.grain).toBe("week");
+        expect(sc.columnWideMissing).toBe(1);
+        expect(sc.withHoles).toBe(3);
+        expect(sc.series.every(s => s.missingInterior === 1 && s.largestGap === 2)).toBe(true);
+    });
+});
+
 describe("series completeness - privacy tiers", () => {
     const structure = (cols: LLMColumnWithValue[]) => {
         const sc = month(cols).seriesCompleteness!;
-        return { ...sc, series: sc.series.map(s => ({ missingInterior: s.missingInterior, coverage: s.coverage })) };
+        return { ...sc, series: sc.series.map(({ name, first, last, ...counts }) => counts) };
     };
 
     it("the counts ship at EVERY tier and are identical at each; the key never changes with the tier", () => {
@@ -250,7 +309,7 @@ describe("series completeness - privacy tiers", () => {
             const cols = build(level);
             expect(cols.find(c => c.name === "Zone")!.safeDistinctValues).toEqual(["Z-01", "Z-02", "Z-03", "Z-04"]);
             expect(cols.find(c => c.name === "Month")!.seriesCompleteness!.series).toEqual([
-                { name: "Z-04", first: "2024-12-01", last: "2025-08-01", missingInterior: 0, coverage: 0.75 },
+                { name: "Z-04", first: "2024-12-01", last: "2025-08-01", missingBefore: 3, missingAfter: 0, missingInterior: 0, largestGap: 1, coverage: 0.75 },
             ]);
         }
     });
@@ -261,7 +320,7 @@ describe("series completeness - privacy tiers", () => {
             series: ["a", "a", "a", "b", "b", "b", "c"],
             seriesColumn: "Unit",
         })!;
-        expect(out.series).toEqual([{ missingInterior: 0, coverage: 0.333 }]);
+        expect(out.series).toEqual([{ missingBefore: 2, missingAfter: 0, missingInterior: 0, largestGap: 1, coverage: 0.333 }]);
     });
 });
 
@@ -332,7 +391,7 @@ describe("month names are measurable periods", () => {
         const c = t.getColumnsWithStats("20", "en-US").find(x => x.name === "Month")!;
         expect(c.isTemporal).toBe(true);
         expect(c.temporalCadence?.grain).toBe("month");
-        expect(c.seriesCompleteness?.series).toEqual([{ first: "2025-07-01", last: "2025-12-01", missingInterior: 0, coverage: 0.5 }]);
+        expect(c.seriesCompleteness?.series).toEqual([{ first: "2025-07-01", last: "2025-12-01", missingBefore: 6, missingAfter: 0, missingInterior: 0, largestGap: 1, coverage: 0.5 }]);
     });
 
     it("a month column in the report's own language is read in that language", () => {
