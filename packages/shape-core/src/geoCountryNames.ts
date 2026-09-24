@@ -100,13 +100,20 @@ export const ISO2_SET: Set<string> = new Set(ISO2_TO_ISO3.keys());
 export const ISO3_SET: Set<string> = new Set(ISO2_TO_ISO3.values());
 
 
-// The 27 languages the visual localizes to (mirrors lib/shared/Localizer.ts
-// PHRASES — the definition of "languages the visual supports today"). Country
-// names are recognized in every one of these via Intl. If Localizer's set
-// changes, mirror it here.
-export const SUPPORTED_LANGS = [
+// The languages country names are recognized in, via Intl: every Tier 1 language in
+// languages.ts, and a test holds the two sets equal. (2026-09-24: this was its own list of 27,
+// copied from the visual's phrase table - so it wrote Norwegian as `no` where every host sends
+// `nb`, and lacked Slovak, Hungarian and Croatian, whose readers' country columns went
+// unrecognised.)
+//
+// ORDER IS BEHAVIOUR: the first language to produce a normalized key keeps it (English first,
+// always). The original 27 keep their original order and the three added languages come last,
+// which was measured to leave every one of the 4,436 existing keys on the same country; the
+// three add 317 keys and `no` -> `nb` adds none (the runtime's names are identical).
+export const SUPPORTED_LANGS: readonly string[] = [
     "en", "fr", "es", "de", "it", "pt", "ru", "ja", "zh", "ko", "ar", "hi", "tr",
-    "pl", "he", "nl", "sv", "fi", "no", "da", "cs", "el", "uk", "ro", "id", "vi", "th",
+    "pl", "he", "nl", "sv", "fi", "nb", "da", "cs", "el", "uk", "ro", "id", "vi", "th",
+    "sk", "hu", "hr",
 ];
 
 // Flat alias overlay for country-name forms Intl.DisplayNames does NOT emit —
@@ -178,7 +185,7 @@ export function iso2ToIso3(a2: string): string | null {
 }
 
 /**
- * Resolve ANY country identifier to ISO-3: a name in any of the 27 supported
+ * Resolve ANY country identifier to ISO-3: a name in any of the 30 supported
  * languages, an ISO-2 code, an ISO-3 code, or an overlay alias ("USA", "UK",
  * "Holland"). Null when it is not a country.
  *

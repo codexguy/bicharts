@@ -23,7 +23,7 @@
 //   • ISO codes are the interchange. Normal form: country → ISO 3166-1 alpha-3;
 //     US state → USPS. (Normalization to normal form is Phase 1's __geoIso__
 //     builder; Phase 0 only DETECTS.)
-//   • Country NAMES are recognized in all 27 languages the visual supports, built
+//   • Country NAMES are recognized in all 30 Tier 1 languages (languages.ts), built
 //     at runtime from Intl.DisplayNames(type:'region') (the monthNames.ts pattern —
 //     zero shipped name table), UNION a small flat alias overlay (alias → ISO3) for
 //     forms Intl doesn't emit ("USA", "UK", "Holland", historical names). The
@@ -205,7 +205,7 @@ type Candidate = { kind: GeoKind; pct: number; matched: number; spec: number };
  * @param rawValues DISTINCT raw cell values (order irrelevant; duplicates are
  *   harmless but the caller usually passes the distinct set).
  * @param columnName the source column name (tiebreaker/guard for ambiguous codes).
- * @param _locale reserved (country names already union all 27 languages; the
+ * @param _locale reserved (country names already union all 30 languages; the
  *   report locale is not needed to match). Kept for signature symmetry.
  */
 export function detectGeo(
@@ -247,7 +247,7 @@ export function detectGeo(
 
     let iso3 = 0, iso2 = 0, usps = 0, cName = 0, sName = 0, zip = 0, county = 0, cityHits = 0;
     let cityWorldHits = 0;   // the same values against the WORLD rows — see the loop below
-    // A country in ANY form (ISO-3, ISO-2, a name in 27 languages, an alias) — the union
+    // A country in ANY form (ISO-3, ISO-2, a name in 30 languages, an alias) — the union
     // the three per-form counters cannot see between them. See the mixed-form note below.
     let anyCountry = 0;
     // 4-digit values, held aside: a ZIP whose leading zero integer storage ate, or just a year.
@@ -487,7 +487,7 @@ export function toGeoIso(value: string | null | undefined, geoKind: GeoKind): st
         // branches each accepted one form and nulled the others, so a country column with a
         // stray "UK" beside its ISO-3 codes, or a stray "DEU" beside its names, dropped that
         // region off the map and counted it unmatched — with the tolerant resolver
-        // (countryIso3: ISO-3, then ISO-2, then names in 27 languages, then the alias
+        // (countryIso3: ISO-3, then ISO-2, then names in 30 languages, then the alias
         // overlay) sitting right there, already used by the POINT cascade over the very same
         // values. That is the same drift the ZIP reader had: two matchers, one column, two
         // answers. Detection still picks the kind; resolution no longer punishes the outliers.

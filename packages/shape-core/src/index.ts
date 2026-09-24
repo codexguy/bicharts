@@ -131,6 +131,18 @@ export { monthLookupFor, normalizeMonthKey } from "./monthNames";
 // Pure utilities (shared so adapters can hash/stringify identically to the engine).
 export { STR, SIMPLE_STRING_HASH, GET_RANDOM, isDeterministicRefusal, nameWords, DEFAULT_TEMPERATURE } from "./util";
 
+// THE LANGUAGE LIST (2026-09-24): the thirty Tier 1 languages every vocabulary and string catalog
+// is checked against, and the ONE reading of a host's culture tag. A host resolves its culture
+// here rather than cutting a tag to two letters itself - that cut is how `nb` met a table keyed
+// `no` and `zh-TW` read as Simplified. Data vocabulary never keys on this: a Spanish model sits in
+// an English UI, so vocabulary is the union of all thirty.
+export {
+    SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, supportedLanguage, resolveLanguage,
+} from "./languages";
+export type {
+    SupportedLanguage, SupportedLanguageCode, LanguageScript, ResolvedLanguage,
+} from "./languages";
+
 // THE INGEST FRONT DOOR — many source shapes, one measured result. Adapters no longer need
 // to hand-build columns and feed addRow themselves; a decoder translates what the source
 // already knows into descriptors, and the shared core does the rest. Also published as the
