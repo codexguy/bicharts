@@ -159,3 +159,12 @@ export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads 
 // sentence is never authored in a host - see freemiumCaps.ts for the two rules that keeps.
 export { freemiumColumnsOverCap, freemiumColumnCapRefusal, freemiumDateHierarchyClauses } from "./freemiumCaps";
 export type { FreemiumColumnCapStatus, FreemiumDateGroupColumn } from "./freemiumCaps";
+
+// HOST SERVICES, the wire-level half (2026-09-24). Shared client logic reaches its host only
+// through services the host constructs - a signer, a transport, credentials, a clock - and
+// branches on whether an optional service is present, never on which host it runs in. Types
+// only; each host's adapter is proven by the matching check in "@bicharts/shape-core/testing".
+export type {
+    WireSigner, WireTransport, WireResponse, CredentialTriple, CredentialSource,
+    ViewportSource, Clock, DiagnosticEntry, DiagnosticsSink, RendererId, WireServices,
+} from "./host/services";

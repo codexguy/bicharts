@@ -24,8 +24,17 @@ describe("published declarations are self-contained", () => {
             throw new Error("dist/types missing — run `npm run build` before this test");
         }
         const offenders: string[] = [];
-        for (const f of readdirSync(distTypes)) {
-            if (!f.endsWith(".d.ts")) continue;
+        // Recursive: the host-service contracts and the testing entry emit under host/ and
+        // testing/, and a subfolder is as published as the top level.
+        const files: string[] = [];
+        const walk = (d: string, rel: string) => {
+            for (const e of readdirSync(d, { withFileTypes: true })) {
+                if (e.isDirectory()) walk(join(d, e.name), rel + e.name + "/");
+                else if (e.name.endsWith(".d.ts")) files.push(rel + e.name);
+            }
+        };
+        walk(distTypes, "");
+        for (const f of files) {
             // Strip comments first: .d.ts files PRESERVE JSDoc, and a doc comment that
             // quotes an import example ("… `geoForKind` from \"@bicharts/chart-host/geo\" …")
             // is prose, not a dependency. Then match only real import/export statements.

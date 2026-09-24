@@ -349,3 +349,12 @@ export { reconcileChartPick, type ChartPickReconciliation } from "./chartPick";
 // browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
 // per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
 export { stableFingerprintOptions, fingerprintComponentDigest, type ClientIdSource } from "./clientIdentity";
+// HOST SERVICES (2026-09-24): the object a host constructs and passes to shared logic, and the
+// render-level services inside it - marker storage, preferences, theme, thumbnail consent, the
+// snapshot target. An absent optional member is the host saying it cannot do that thing. Types
+// only; each host's adapter is proven by the matching check in "@bicharts/chart-host/testing".
+export type {
+    HostServices, MarkerStore, PreferenceSource, HostTheme, ThemeSource, ThumbnailConsent, SnapshotTarget,
+    WireSigner, WireTransport, WireResponse, CredentialTriple, CredentialSource,
+    ViewportSource, Clock, DiagnosticEntry, DiagnosticsSink, RendererId,
+} from "./host/services";
