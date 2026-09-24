@@ -545,6 +545,11 @@ export type LLMClientHints =
         // ignored by the server (it maps to multiplier 1.0), so the wire stays forgiving across
         // client/server version skew in both directions.
         levelOfDetail?: string,
+        // WHERE THE CLIENT ID CAME FROM: "persisted" (a minted id the host keeps), "fingerprint" (derived from the
+        // browser - chart-host's stableFingerprintOptions) or "session" (neither was available, so it lives for this
+        // session only). Telemetry, never a gate: it measures on every request how durable each host's identity is.
+        // Absent from a host with no identity of its own; the service derives one.
+        clientIdSource?: "persisted" | "fingerprint" | "session",
     };
 
 export type LLMRequestCode =

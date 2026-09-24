@@ -345,3 +345,7 @@ export { stripJsComments } from "./codeComments";
 // A standing chart-type pick checked against a fresh qualify list - the one place a pick may be dropped
 // for the reader, and always with a sentence saying so.
 export { reconcileChartPick, type ChartPickReconciliation } from "./chartPick";
+// Client identity (2026-09-24): the one ThumbmarkJS recipe every browser host fingerprints with - the user agent and
+// browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
+// per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
+export { stableFingerprintOptions, fingerprintComponentDigest, type ClientIdSource } from "./clientIdentity";
