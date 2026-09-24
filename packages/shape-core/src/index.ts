@@ -174,3 +174,6 @@ export type {
 // the envelope and the algorithm are these, once.
 export { encodePayload, keyedSigner, messageSignature, readWireField } from "./wire";
 export type { GzipText } from "./wire";
+// READING A GENERATE RESPONSE (2026-09-24): the NDJSON stream or the buffered JSON body, by one set
+// of rules - the content type decides first, an unknown line is skipped, no result is a loud throw.
+export { readGenerateStream, isNdjsonContentType, wireResponseFromFetch } from "./wireStream";

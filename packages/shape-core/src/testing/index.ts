@@ -10,7 +10,8 @@
 // property, so a host calls it from whatever runner it already has (`await expect(...)
 // .resolves` or a bare call inside a test body both work).
 
-import type { WireSigner } from "../host/services";
+import type { WireSigner, WireResponse } from "../host/services";
+import { readGenerateStream, isNdjsonContentType } from "../wireStream";
 
 /** Thrown by every conformance check. `failures` names each property the adapter broke. */
 export class ConformanceError extends Error {
@@ -72,5 +73,75 @@ export function assertWireSignerConformance(signer: WireSigner): void {
     r.check(typeof a1 !== "string" || a1.trim() !== "", "sign() returned a blank signature");
     r.check(a1 === a2, "sign() is not deterministic: the same body signed twice gave two signatures");
     r.check(a1 !== b, "sign() gave two different bodies the same signature");
+    r.throwIfFailed();
+}
+
+/**
+ * A host's WireResponse adapter, driven through the four responses every transport meets: an
+ * NDJSON stream read as it arrives, a buffered JSON body, a body that errors part-way (an abort
+ * or a dropped connection), and a 204 with no body. `adapt` turns a platform fetch `Response`
+ * into a WireResponse - a host that wraps some other client passes the function that wraps that
+ * client's response. Needs a global `Response` (browsers; Node 18 and later).
+ */
+export async function assertWireResponseConformance(adapt: (res: Response) => WireResponse): Promise<void> {
+    const r = new ConformanceReport("WireResponse");
+    const enc = new TextEncoder();
+    const lines = [
+        '{"type":"progress","stage":"Reading your data"}\n',
+        '{"type":"result","result":{"code":"x","version":2}}\n',
+    ];
+    const streamOf = (chunks: Uint8Array[], failAfter = false) => new ReadableStream<Uint8Array>({
+        start(ctl) {
+            for (const c of chunks) ctl.enqueue(c);
+            if (failAfter) ctl.error(Object.assign(new Error("the connection dropped"), { name: "AbortError" }));
+            else ctl.close();
+        },
+    });
+
+    try {
+        const ndjson = adapt(new Response(streamOf(lines.map(l => enc.encode(l))), {
+            status: 200, headers: { "Content-Type": "application/x-ndjson; charset=utf-8" },
+        }));
+        r.check(ndjson.status === 200, `a streamed 200 reported status ${ndjson.status}`);
+        r.check(isNdjsonContentType(ndjson.contentType), `a streamed response reported content type ${JSON.stringify(ndjson.contentType)}`);
+        const stages: string[] = [];
+        const out = await readGenerateStream(ndjson, s => stages.push(s));
+        r.check(out?.code === "x" && out?.version === 2, "the stream's result line did not come back as the result");
+        r.check(stages.join("|") === "Reading your data", `progress stages read as ${JSON.stringify(stages)}`);
+    } catch (e) {
+        r.fail(`reading an NDJSON stream threw: ${describeThrow(e)}`);
+    }
+
+    try {
+        const buffered = adapt(new Response('{"code":"y","errorMessage":""}', {
+            status: 200, headers: { "Content-Type": "application/json" },
+        }));
+        r.check(!isNdjsonContentType(buffered.contentType), "a JSON response reported an NDJSON content type");
+        const out = await readGenerateStream(buffered);
+        r.check(out?.code === "y", "a buffered JSON body did not come back as the result");
+    } catch (e) {
+        r.fail(`reading a buffered JSON body threw: ${describeThrow(e)}`);
+    }
+
+    try {
+        const cut = adapt(new Response(streamOf([enc.encode(lines[0])], true), {
+            status: 200, headers: { "Content-Type": "application/x-ndjson" },
+        }));
+        let err: any = null;
+        try { await readGenerateStream(cut); } catch (e) { err = e; }
+        r.check(!!err, "a body that errored part-way was read as a success");
+        r.check(!err || err.name === "AbortError", `a body that errored part-way surfaced as ${err?.name}: ${err?.message}, not the body's own error`);
+    } catch (e) {
+        r.fail(`adapting a response whose body errors threw before it was read: ${describeThrow(e)}`);
+    }
+
+    try {
+        const empty = adapt(new Response(null, { status: 204 }));
+        r.check(empty.status === 204, `a 204 reported status ${empty.status}`);
+        const t = await empty.text();
+        r.check(t === "", `a 204's text() returned ${JSON.stringify(t)}`);
+    } catch (e) {
+        r.fail(`a 204 with no body threw: ${describeThrow(e)}`);
+    }
     r.throwIfFailed();
 }
