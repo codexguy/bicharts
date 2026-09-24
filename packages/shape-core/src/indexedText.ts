@@ -23,6 +23,7 @@ import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence } from "./cadence";
+import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
 
 // ============================================================================
 // ValueNature classification (Continuous / Ordinal / Categorical)
@@ -792,6 +793,7 @@ export class IndexedText implements IValueCollection {
                 const cad = measureCadence(vals.keys(), {
                     includeBounds: pl >= 20,
                     pattern: col.temporalTextPattern,
+                    locale,
                 });
                 if (cad) col.temporalCadence = cad;
             }
@@ -1323,8 +1325,61 @@ export class IndexedText implements IValueCollection {
             }
         }
 
+        this.applySeriesCompleteness(pl, locale, colValueSets);
+
         this._computedStatsForLevel = privacyLevel;
         return this._cols;
+    }
+
+    // PER-SERIES COMPLETENESS pass (2026-09-24). Which series of each time axis miss periods the
+    // axis has - see seriesCompleteness.ts. Runs after every per-column signal it reads is final:
+    // isMeasure after promotion, geoKind, isBinaryFlag, and the time column's own cadence.
+    //
+    // The KEY is chosen from structure and name alone, identically at every privacy tier, so a
+    // tighter tier changes what is withheld and never which series are described.
+    private applySeriesCompleteness(pl: number, locale: string | undefined, colValueSets: (Set<string> | null)[]): void {
+        // A second call at another tier re-measures; a descriptor from the last one must not survive it.
+        for (const c of this._cols) if (c.seriesCompleteness !== undefined) delete c.seriesCompleteness;
+        const temporal = this._cols
+            .map((c, i) => ({ c, i }))
+            .filter(({ c }) => c.isTemporal && !c.isMeasure && c.temporalCadence && c.temporalCadence.grain !== "irregular");
+        if (temporal.length === 0) return;
+
+        const idx: number[] = [];
+        const cands: SeriesKeyCandidate[] = [];
+        this._cols.forEach((c, i) => {
+            const set = colValueSets[i];
+            if (!set) return;                       // a measure, or wider than any series key
+            idx.push(i);
+            cands.push({
+                name: c.name, dataType: c.dataType, isMeasure: !!c.isMeasure,
+                isTemporal: !!c.isTemporal, isDatePart: !!c.isDatePart, isReassembledDate: !!c.isReassembledDate,
+                isBinaryFlag: !!c.isBinaryFlag, geoKind: c.geoKind,
+                identifierNamed: isIdentifierName(c.name),
+                values: set, rows: this._rows.length, locale,
+            });
+        });
+        const pick = pickSeriesColumn(cands);
+        if (pick < 0) return;
+        const si = idx[pick];
+        const sc = this._cols[si];
+        const series = this._rows.map(r => this.STR(r[si]));
+        // A value ships only where this column's values already would: a non-text column's top
+        // values at the detailed-stats tier, or a text column's safe short codes at that tier.
+        const includeNames = pl >= 20 && (sc.dataType !== "String" || Array.isArray(sc.safeDistinctValues));
+
+        for (const { c, i } of temporal) {
+            const out = measureSeriesCompleteness({
+                periods: this._rows.map(r => this.STR(r[i])),
+                series,
+                seriesColumn: sc.name,
+                pattern: c.temporalTextPattern,
+                locale,
+                includeDates: pl >= 20,
+                includeNames,
+            });
+            if (out) c.seriesCompleteness = out;
+        }
     }
 
     private updateColumnStats20(pl: number, arr: any[], nonblank: number, sumval: number, col: LLMColumnWithValue, datalen: number, hastime: boolean, minval: any, maxval: any, prec: number, vals: Map<string, number>, locale?: string) {

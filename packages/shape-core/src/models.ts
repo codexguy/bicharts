@@ -1,5 +1,7 @@
 import type { TemporalCadence } from "./cadence";
+import type { SeriesCompleteness } from "./seriesCompleteness";
 export type { TemporalCadence, TemporalRun } from "./cadence";
+export type { SeriesCompleteness, SeriesCoverage } from "./seriesCompleteness";
 
 export type LLMRequestModifier =
     {
@@ -224,6 +226,23 @@ export type LLMColumnWithValue =
         // tier. `runBounds` is the exception and names calendar dates, so it rides the pl>=20
         // gate lowValue / highValue already ride; a consumer must still work without it.
         temporalCadence?: TemporalCadence,
+        // WHICH SERIES OF THIS TIME AXIS ARE SHORT (2026-09-24). On the same temporal column as
+        // temporalCadence: temporalCadence says whether the COLUMN skips periods, this says which
+        // series of one categorical (seriesColumn) miss periods the axis has - a late start, an
+        // early end, a hole - and how much of the axis each covers. A panel whose date column is
+        // perfectly contiguous can still have half its series starting late, and a chart drawing
+        // one line or lane per series zero-fills them into falls no observation supports.
+        //
+        // ABSENT when no series is missing a period, when fewer than half the (series x period)
+        // cells hold an observation (an event log or an identifier, not a panel), when no regular
+        // grain resolved, or when no column qualifies as the series key. The measurement, the key
+        // rule and the thresholds are in seriesCompleteness.ts.
+        //
+        // Counts, ratios and the column's name ship at every privacy tier. Inside each series,
+        // `first` / `last` name calendar periods and ride the pl>=20 gate runBounds rides; `name`
+        // is a category value and ships only where that column's values already ship verbatim.
+        // A consumer must phrase the fact without either.
+        seriesCompleteness?: SeriesCompleteness,
         // Per-column value-set OVERLAP statistic (2026-06-07). For each OTHER
         // non-measure column, the PERCENT of THIS column's distinct values that
         // also appear in that column. A STATISTIC about values (never the values

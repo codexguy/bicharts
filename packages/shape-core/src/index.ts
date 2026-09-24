@@ -33,6 +33,18 @@ export type { TextDateDetection } from "./indexedText";
 export { measureCadence, parseTemporalPoint, DEFAULT_GAP_FACTOR, MAX_RUN_BOUNDS } from "./cadence";
 export type { TemporalCadence, TemporalRun } from "./cadence";
 
+// PER-SERIES COMPLETENESS (2026-09-24) — which series of a time axis start late, end early or have
+// holes, measured over one entity-like key. IndexedText attaches it to the time column as
+// `seriesCompleteness`; the pieces are public so a host measuring rows of its own reaches the same
+// answer, and so the key rule can be asked why it refused a column.
+export {
+    measureSeriesCompleteness, pickSeriesColumn, seriesKeyVerdict,
+    SERIES_COMPLETENESS_MAX_LISTED, SERIES_COMPLETENESS_MIN_FILL, SERIES_KEY_MAX_DISTINCT,
+} from "./seriesCompleteness";
+export type {
+    SeriesCompleteness, SeriesCoverage, SeriesKeyCandidate, SeriesKeyVerdict,
+} from "./seriesCompleteness";
+
 // WHICH AGGREGATIONS ARE HONEST for a column (2026-09-01). The two axes a presentation surface
 // needs and that no single enum carried: what KIND of scale this is, and whether SUM means
 // anything over it. Public because the answer has to be identical in the selection card, in the

@@ -22,6 +22,8 @@
 // a POLICY question and lives server-side with every other threshold, exactly like eta2 and
 // spreadRatio. This module reports the shape and stops.
 
+import { monthLookupFor, normalizeMonthKey } from "./monthNames";
+
 /** One contiguous stretch of observations, and how many it holds. */
 export type TemporalRun = { from: string; to: string; points: number };
 
@@ -90,7 +92,8 @@ const MIN_POINTS = 3;
 
 const MS_DAY = 86400000;
 
-type Stamp = {
+/** One parsed point on the calendar. Exported for the per-series measurement beside this one. */
+export type Stamp = {
     /** Epoch ms at the point's start. */
     ms: number;
     /** Calendar parts, for the month/quarter/year arithmetic that epoch ms cannot do. */
@@ -106,6 +109,29 @@ const QUARTER_YEAR = /^Q([1-4])[-\s](\d{4})$/i;
 const YEAR_ONLY = /^(\d{4})$/;
 const YYYYMM = /^(\d{4})(0[1-9]|1[0-2])$/;
 const YYYYMMDD = /^(\d{4})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
+// A MONTH WRITTEN AS A WORD, beside a four-digit year, in either order: "Apr 2025", "April-2025",
+// "janv. 2024", "2024 Januar". The word is everything that is not the year and not a separator.
+const WORD_THEN_YEAR = /^(\D+?)[\s\-/.,']*((?:19|20)\d{2})$/u;
+const YEAR_THEN_WORD = /^((?:19|20)\d{2})[\s\-/.,']+(\D+)$/u;
+
+/**
+ * A month name -> 1..12, in English or in the reader's language, or 0 when it is not a month.
+ *
+ * The SAME Intl lookup classifyTemporal reads a localized month period with, so a column that is
+ * called temporal for its month names is also measurable here. English is always tried, because
+ * an English month label in a non-English report is the commonest export there is; "Sept" is added
+ * by hand because Intl's English short form is "Sep".
+ */
+function monthFromWord(word: string, locale?: string): number {
+    const key = normalizeMonthKey(word);
+    if (!key) return 0;
+    if (key === "sept") return 9;
+    for (const loc of locale && !/^en\b/i.test(locale) ? ["en", locale] : ["en"]) {
+        const m = monthLookupFor(loc)[key];
+        if (m !== undefined) return m + 1;
+    }
+    return 0;
+}
 
 function stamp(y: number, m: number, d: number, hh = 0, mi = 0, ss = 0): Stamp | null {
     if (!(y >= 1 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
@@ -153,8 +179,11 @@ function parseByPattern(s: string, pattern: string): Stamp | null {
  * the period and integer-key forms classifyTemporal already recognises as time axes. A value it
  * cannot read is DROPPED, never guessed at, and a column where most values drop yields no
  * cadence at all (see the parse floor in measureCadence).
+ *
+ * `locale` is read only by the month-NAME branch, the last one tried: "Ene 2024" is a month in
+ * Spanish and nothing in English.
  */
-export function parseTemporalPoint(raw: string, pattern?: string): Stamp | null {
+export function parseTemporalPoint(raw: string, pattern?: string, locale?: string): Stamp | null {
     const s = (raw ?? "").trim();
     if (s === "") return null;
 
@@ -191,6 +220,22 @@ export function parseTemporalPoint(raw: string, pattern?: string): Stamp | null 
         // Same window classifyTemporal uses for a year-as-integer; outside it this is a number.
         if (y >= 1900 && y <= 2100) return stamp(y, 1, 1);
         return null;
+    }
+
+    // MONTH NAMES (2026-09-24). "Apr 2025" is a period classifyTemporal has always called temporal,
+    // and this reader could not read it: the column was a time axis with no cadence, so nothing
+    // downstream could say whether it was monthly or had a hole in it. Tried LAST so no value any
+    // branch above already reads changes meaning. A two-digit year is refused: "Apr 25" is as
+    // likely the 25th of April as the year 2025, and a wrong reading turns days into years.
+    m = WORD_THEN_YEAR.exec(s);
+    if (m) {
+        const mo = monthFromWord(m[1], locale);
+        return mo ? stamp(+m[2], mo, 1) : null;
+    }
+    m = YEAR_THEN_WORD.exec(s);
+    if (m) {
+        const mo = monthFromWord(m[2], locale);
+        return mo ? stamp(+m[1], mo, 1) : null;
     }
     return null;
 }
@@ -237,7 +282,7 @@ function snapGrain(medianDays: number): GrainName {
 }
 
 /** Distance between two stamps measured in whole periods of `grain`. */
-function unitsBetween(a: Stamp, b: Stamp, grain: GrainName, stepMs: number): number {
+export function unitsBetween(a: Stamp, b: Stamp, grain: GrainName, stepMs: number): number {
     switch (grain) {
         case "year": return b.y - a.y;
         case "quarter": return (b.y * 4 + Math.floor((b.m - 1) / 3)) - (a.y * 4 + Math.floor((a.m - 1) / 3));
@@ -262,8 +307,23 @@ function unitsBetween(a: Stamp, b: Stamp, grain: GrainName, stepMs: number): num
  */
 export function measureCadence(
     values: Iterable<string>,
-    opts?: { gapFactor?: number; includeBounds?: boolean; pattern?: string },
+    opts?: { gapFactor?: number; includeBounds?: boolean; pattern?: string; locale?: string },
 ): TemporalCadence | null {
+    return analyseCadence(values, opts)?.cadence ?? null;
+}
+
+/**
+ * The measurement measureCadence reports, together with the sorted points and the step it was
+ * taken from. Not on the package surface: it exists so a measurement made PER SERIES over the
+ * same column (seriesCompleteness.ts) indexes its periods on exactly the grid the column's own
+ * cadence was measured on, rather than on a second reading that could disagree with it.
+ */
+export type CadenceAnalysis = { cadence: TemporalCadence; points: Stamp[]; stepMs: number };
+
+export function analyseCadence(
+    values: Iterable<string>,
+    opts?: { gapFactor?: number; includeBounds?: boolean; pattern?: string; locale?: string },
+): CadenceAnalysis | null {
     const gapFactor = opts?.gapFactor ?? DEFAULT_GAP_FACTOR;
 
     // `seen` / `parsed` count VALUES, while `byMs` holds distinct POINTS — the parse floor
@@ -276,7 +336,7 @@ export function measureCadence(
     for (const v of values) {
         if (v === null || v === undefined || v === "") continue;
         seen++;
-        const p = parseTemporalPoint(String(v), opts?.pattern);
+        const p = parseTemporalPoint(String(v), opts?.pattern, opts?.locale);
         if (p) { parsed++; byMs.set(p.ms, p); }
     }
     const pts = [...byMs.values()].sort((a, b) => a.ms - b.ms);
@@ -336,5 +396,5 @@ export function measureCadence(
         gapFactor,
     };
     if (opts?.includeBounds && bounds.length <= MAX_RUN_BOUNDS) out.runBounds = bounds;
-    return out;
+    return { cadence: out, points: pts, stepMs };
 }
