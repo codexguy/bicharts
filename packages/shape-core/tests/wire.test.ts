@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { gzipSync, gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
-    encodePayload, keyedSigner, messageSignature, readWireField, SIMPLE_STRING_HASH, type GzipText,
+    encodePayload, gzipWireText, keyedSigner, messageSignature, readWireField, SIMPLE_STRING_HASH,
+    type GzipText,
 } from "../src/index";
 import { assertWireSignerConformance } from "../src/testing/index";
 
@@ -60,42 +65,85 @@ describe("keyedSigner + messageSignature", () => {
     });
 });
 
+// THE ENVELOPE'S KNOWN ANSWERS (2026-09-24). One pako, pinned exactly, compresses every host's
+// request, so the bytes of an envelope are a property of the payload and can be pinned here. The
+// literals below were derived once from pako 3.0.2's gzip at its default level; every host's own
+// suite carries the same values for the fixtures it shares with this one.
+const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+const KAT_FIXTURES: { payload: unknown; envelope?: string; sha256: string }[] = [
+    { payload: {}, envelope: "H4sIAAAAAAAAA6uuBQBDv6ajAgAAAA==",
+      sha256: "352c430f41c9481890d202d008898f2602e97efc4ca89db18f76c991fd57a996" },
+    { payload: { a: 1, b: "two", c: [3, 4], d: { e: null } },
+      envelope: "H4sIAAAAAAAAA6tWSlSyMtRRSlKyUiopz1fSUUpWsoo21jGJ1VFKUbKqVkpVssorzcmprQUAz5lB5SoAAAA=",
+      sha256: "2f76e1c1e08fc110ed5aee4a1ac061c522d4b18409fa5db3eb14b3556bb6394d" },
+    // Its plain base64 carries a '/', so this answer also pins the substitution.
+    { payload: { text: "héllo ☃ 日本", n: -0.5, t: true },
+      envelope: "H4sIAAAAAAAAA6tWKkmtKFGyUso4vDInJ1.h0YxmhWfTlz6bs0ZJRylPyUrXQM9UR6lEyaqkqDS1FgCjCwpGLgAAAA==",
+      sha256: "d6a4722295bfe9f4fb8e8308ca6606fcb30c4a4c44795d0a75f27df94989f8e8" },
+    { payload: { blob: "x".repeat(5000) },
+      envelope: "H4sIAAAAAAAAA+3BwQkAIAwEsF1uDMfpu+BXEHd3iv6S3FTvysoBAAAAAMblfU26976TEwAA",
+      sha256: "76a651e1d9f7c5eb92963816dd0826c46f9610f8243c1478cbc8e6e35aa6bbc1" },
+    { payload: { rows: Array.from({ length: 20000 }, (_, i) => ({ i, name: `row ${i}` })) },
+      sha256: "ebfb0e7b0109f808cabdd44073b5ee7c781be6f4be489cdbc1042d3b0eb41212" },
+];
+
 describe("encodePayload: JSON -> gzip -> base64 -> '/' to '.'", () => {
-    it("hands the compressor the JSON text, and writes every '/' of the base64 as '.'", () => {
-        // A fixed byte string whose base64 is "+/+/AD8+EA==": two slashes to substitute, and
-        // '+' left alone. The gzip step is the host's; this pins what the envelope does around it.
-        const seen: string[] = [];
-        const fixed: GzipText = text => { seen.push(text); return Uint8Array.from([0xfb, 0xff, 0xbf, 0x00, 0x3f, 0x3e, 0x10]); };
-        expect(encodePayload({ a: 1, b: "two" }, fixed)).toBe("+.+.AD8+EA==");
-        expect(seen).toEqual(['{"a":1,"b":"two"}']);
+    it("compresses with pako pinned to one EXACT version, and that version is the one installed", () => {
+        const manifest = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
+        const pinned: string = manifest.dependencies.pako;
+        expect(pinned, "a range would let two installs send two byte streams").toMatch(/^\d+\.\d+\.\d+$/);
+        const req = createRequire(resolve(__dirname, "../package.json"));
+        const installed = JSON.parse(readFileSync(req.resolve("pako/package.json"), "utf8")).version;
+        expect(installed).toBe(pinned);
+    });
+
+    KAT_FIXTURES.forEach(({ payload, envelope, sha256: digest }, i) => {
+        it(`fixture ${i}: the known answer, and it inflates to exactly the payload's JSON`, () => {
+            const body = encodePayload(payload);
+            if (envelope) expect(body).toBe(envelope);
+            expect(sha256(body)).toBe(digest);
+            expect(gunzipSync(Buffer.from(body.replace(/\./g, "/"), "base64")).toString("utf-8"))
+                .toBe(JSON.stringify(payload));
+        });
+    });
+
+    it("is gzipWireText's bytes as standard base64 with every '/' written as '.'", () => {
+        const payload = KAT_FIXTURES[2].payload;
+        const plain = Buffer.from(gzipWireText(JSON.stringify(payload))).toString("base64");
+        expect(plain).toContain("/");
+        expect(encodePayload(payload)).toBe(plain.replace(/\//g, "."));
     });
 
     it("inflates back to the original JSON, exactly as the server undoes it", () => {
         const payload = { a: 1, b: "two", c: [3, 4], d: { e: null }, u: "héllo ☃" };
-        expect(inflate(encodePayload(payload, zlibGzip))).toEqual(payload);
+        expect(inflate(encodePayload(payload))).toEqual(payload);
     });
 
     it("leaves no '/' in the output of a realistic payload", () => {
         const payload = { blob: "x".repeat(5000), note: "slashes appear in base64 of most binary" };
-        expect(encodePayload(payload, zlibGzip)).not.toContain("/");
+        expect(encodePayload(payload)).not.toContain("/");
     });
 
     it("handles a payload large enough to break the naive String.fromCharCode(...bytes)", () => {
         const payload = { rows: Array.from({ length: 20000 }, (_, i) => ({ i, name: `row ${i}` })) };
-        const encoded = encodePayload(payload, zlibGzip);
+        const encoded = encodePayload(payload);
         expect(encoded.length).toBeGreaterThan(1000);
         expect(inflate(encoded).rows).toHaveLength(20000);
     });
 
     it("base64 is the standard alphabet, byte for byte what Buffer produces", () => {
         const payload = { rows: Array.from({ length: 3000 }, (_, i) => ({ i, v: (i * 7919) % 1000 / 7 })) };
-        const bytes = zlibGzip(JSON.stringify(payload));
+        const bytes = gzipWireText(JSON.stringify(payload));
         const expected = Buffer.from(bytes).toString("base64").replace(/\//g, ".");
-        expect(encodePayload(payload, () => bytes)).toBe(expected);
+        expect(encodePayload(payload)).toBe(expected);
     });
 
-    it("refuses to run without a compressor", () => {
-        expect(() => encodePayload({}, undefined as unknown as GzipText)).toThrow(/gzip/);
+    it("ignores a compressor passed by a caller written against the old two-argument form", () => {
+        // Node's zlib emits different bytes for the same text; the envelope must not.
+        const payload = KAT_FIXTURES[4].payload;
+        expect(zlibGzip(JSON.stringify(payload))).not.toEqual(gzipWireText(JSON.stringify(payload)));
+        expect(encodePayload(payload, zlibGzip)).toBe(encodePayload(payload));
+        expect(encodePayload({}, undefined as unknown as GzipText)).toBe(KAT_FIXTURES[0].envelope);
     });
 });
 

@@ -170,9 +170,9 @@ export type {
 } from "./host/services";
 
 // THE REQUEST WIRE (2026-09-24): the envelope every signed request travels in, the signature over
-// it, and a response field read in either casing. The host passes its gzip and its signing key;
-// the envelope and the algorithm are these, once.
-export { encodePayload, keyedSigner, messageSignature, readWireField } from "./wire";
+// it, and a response field read in either casing. The host passes its signing key; the envelope,
+// its one pinned compressor and the algorithm are these, once.
+export { encodePayload, gzipWireText, keyedSigner, messageSignature, readWireField } from "./wire";
 export type { GzipText } from "./wire";
 // READING A GENERATE RESPONSE (2026-09-24): the NDJSON stream or the buffered JSON body, by one set
 // of rules - the content type decides first, an unknown line is skipped, no result is a loud throw.

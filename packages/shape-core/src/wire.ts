@@ -9,30 +9,42 @@
 // substitution unconditionally before base64-decoding, so an unsubstituted body fails to
 // inflate. The signature: a keyed hash over the ENCODED body, sent as a header. The key stays
 // in the host, which passes a WireSigner; the algorithm lives here.
+//
+// ONE COMPRESSOR FOR EVERY HOST (2026-09-24). Two gzip implementations at the same level emit
+// different - equally valid - byte streams for the same text, and until this date each host
+// compressed with its own (two pako majors and Node's zlib), so the same request left three
+// hosts as three byte streams. The server inflates any valid gzip, so nothing failed; but a
+// request could not be compared across hosts byte for byte, and a known answer held for one
+// host only. The envelope now compresses with ONE pako, pinned to an exact version in this
+// package's manifest (no range), so the bytes of a request are a property of the request.
 
+import { gzip } from "pako";
 import type { WireSigner } from "./host/services";
 import { SIMPLE_STRING_HASH } from "./util";
 
-/**
- * Gzip one string (the request's JSON) to bytes. The HOST passes its compressor, and that is
- * deliberate rather than a missing dependency: two gzip implementations at the same level emit
- * different - equally valid - byte streams for the same text, and each host's requests stay
- * byte-identical to what it sent before this function existed only if it keeps its own. The
- * server inflates any valid gzip.
- */
+/** Gzip one string (the request's JSON) to bytes. */
 export type GzipText = (text: string) => Uint8Array;
 
 /**
- * JSON -> gzip -> base64 -> '/' to '.'. The body every signed request sends.
- *
- * `gzip` is required: a request that silently went out uncompressed would fail to inflate on
- * the server and read as a network fault.
+ * The envelope's compressor: pako's gzip at its default level (6), from the exact pako version
+ * this package pins. Exported so a host's test can derive a known answer from the same
+ * function the envelope uses; a host never needs to call it.
  */
-export function encodePayload(payload: unknown, gzip: GzipText): string {
-    if (typeof gzip !== "function") {
-        throw new TypeError("encodePayload needs the host's gzip function");
-    }
-    return base64FromBytes(gzip(JSON.stringify(payload))).replace(/\//g, ".");
+export const gzipWireText: GzipText = text => gzip(text);
+
+/**
+ * JSON -> gzip -> base64 -> '/' to '.'. The body every signed request sends, compressed with
+ * `gzipWireText`.
+ */
+export function encodePayload(payload: unknown): string;
+/**
+ * @deprecated The compressor is no longer the host's: every envelope is compressed with this
+ * package's pinned pako (`gzipWireText`), and a second argument is IGNORED. The overload is
+ * kept only so a caller written against 0.6.1-0.6.3 still compiles; drop the argument.
+ */
+export function encodePayload(payload: unknown, gzip: GzipText): string;
+export function encodePayload(payload: unknown): string {
+    return base64FromBytes(gzipWireText(JSON.stringify(payload))).replace(/\//g, ".");
 }
 
 /**

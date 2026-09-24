@@ -86,8 +86,10 @@ await build({
     target: "es2022",
     outdir: dist,
     outExtension: { ".js": ".mjs" },
-    // A real dependency, not something to inline — consumers resolve their own copy.
-    external: ["papaparse"],
+    // Real dependencies, not something to inline — consumers resolve their own copy. pako is
+    // pinned to an EXACT version in package.json (the request envelope's bytes depend on it), so
+    // the copy a consumer resolves is that version whether or not it also depends on pako.
+    external: ["papaparse", "pako"],
     minify: MINIFY,
     // Attribution survives minification: GeoNames CC BY 4.0 is a licence CONDITION, and
     // esbuild strips ordinary comments. `legalComments: "inline"` keeps /*! */ blocks, and
