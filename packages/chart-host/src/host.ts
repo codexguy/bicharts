@@ -29,7 +29,7 @@ import { stripJsComments } from "./codeComments";
 // which every consumer then paid for even to draw a bar chart (GAP-11). geoLazy holds the
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
-import { createMarkResolver, isInsideControl } from "./selection";
+import { createMarkResolver, isInsideControl, nextSelection } from "./selection";
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
@@ -812,37 +812,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // not a tick: it names a series, and its own MARK_SELECTED_CLASS already says so.
         const tick = (el.classList?.contains?.(AXIS_FILTER_CLASS)) ? el : null;
 
-        // MULTI-SELECT (Ctrl / Cmd / Shift), matching the Power BI visual.
-        // Without this a chart that grows a selection fine inside Power BI silently cannot
-        // outside it — a parity gap in the one thing this package exists to guarantee.
+        // MULTI-SELECT (Ctrl / Cmd / Shift) and the plain click's replace-or-toggle-off, by the
+        // one rule the Power BI visual applies too (nextSelection). Without the modifiers a chart
+        // that grows a selection fine inside Power BI silently could not outside it.
         //
-        // The semantics are TOGGLE-PER-ROW, not union. That distinction is the whole bug the
-        // visual's own comment warns about: "a naive union would leave previously-selected
-        // marks lit up after the user Ctrl-clicked them off." Ctrl-clicking a selected mark
-        // must REMOVE it, and a mark spanning several rows (a legend swatch) toggles each of
-        // its rows independently — which is what makes Ctrl-clicking a legend swatch off
-        // leave the other series still selected.
-        if (e?.ctrlKey || e?.metaKey || e?.shiftKey) {
-            const next = new Set(current ?? []);
-            for (const r of rows) {
-                if (next.has(r)) next.delete(r);
-                else next.add(r);
-            }
-            // Toggling the last row off is a legitimate way to reach empty; notify([]) is
-            // the clear, so a modifier-click can undo a selection without hunting for canvas.
-            // A multi-select mixes origins; the last click decides, exactly as the visual
-            // does — ticks do not participate in multi-select in practice, so this stays
-            // simple rather than tracking a per-row origin map.
-            notify(Array.from(next), "user", tick);
-            return;
-        }
-
-        // Re-clicking the SAME mark toggles it off — the other half of that gesture. Only
-        // on the non-modifier path: with a modifier, per-row toggling already covers it, and
-        // running both is the dual-owner drift the visual hit (it clears lastMarkClickSig
-        // when isMulti for exactly this reason).
-        const same = !!current && current.length === rows.length && rows.every(r => current!.includes(r));
-        notify(same ? [] : rows, "user", same ? null : tick);
+        // A multi-select mixes origins; the last click decides, exactly as the visual does -
+        // ticks do not participate in multi-select in practice, so this stays simple rather than
+        // tracking a per-row origin map. A plain click that clears (a toggle-off) lights no tick.
+        const multi = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
+        const next = nextSelection(current, rows, { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey });
+        const toggledOff = !multi && next.length === 0;
+        notify(next, "user", toggledOff ? null : tick);
     };
     container.addEventListener(XFILTER_REFRESH_EVENT, onXf);
     container.addEventListener("click", onClick);
