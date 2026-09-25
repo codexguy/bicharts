@@ -23,6 +23,7 @@
 // spreadRatio. This module reports the shape and stops.
 
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
+import { readPeriodCode } from "./vocab/periodCodes";
 
 /** One contiguous stretch of observations, and how many it holds. */
 export type TemporalRun = { from: string; to: string; points: number };
@@ -133,6 +134,14 @@ function monthFromWord(word: string, locale?: string): number {
     return 0;
 }
 
+function localizedQuarterPoint(s: string): Stamp | null {
+    const readings = readPeriodCode(s).filter(r => r.yearDigits === 4);
+    if (readings.length === 0 || readings.some(r => r.lang === "en")) return null;
+    const first = readings[0];
+    if (readings.some(r => r.grain !== "quarter" || r.n !== first.n || r.year !== first.year)) return null;
+    return stamp(first.year!, (first.n - 1) * 3 + 1, 1);
+}
+
 function stamp(y: number, m: number, d: number, hh = 0, mi = 0, ss = 0): Stamp | null {
     if (!(y >= 1 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
     const ms = Date.UTC(y, m - 1, d, hh, mi, ss);
@@ -221,6 +230,14 @@ export function parseTemporalPoint(raw: string, pattern?: string, locale?: strin
         if (y >= 1900 && y <= 2100) return stamp(y, 1, 1);
         return null;
     }
+
+    // ANOTHER LANGUAGE'S QUARTER, BESIDE A FOUR-DIGIT YEAR (vocab/periodCodes.ts): `T1 2024`, `2024-K3`,
+    // `1er trimestre 2024`, `2024年第1四半期`, `3 кв. 2023`. Only where every language that reads the label
+    // reads the same quarter of the same year and nothing else: `S1 2024` is a half-year AND a week, so
+    // it is no point here. A label English reads (`Qtr 1 2024`) is left exactly as the English branches
+    // above left it. Before the month names, which would otherwise answer "no month" for it and stop.
+    const quarter = localizedQuarterPoint(s);
+    if (quarter) return quarter;
 
     // MONTH NAMES (2026-09-24). "Apr 2025" is a period classifyTemporal has always called temporal,
     // and this reader could not read it: the column was a time axis with no cadence, so nothing

@@ -176,6 +176,15 @@ export {
 } from "./vocab/calendarWords";
 export type { CycleConcept, CalendarWordHit } from "./vocab/calendarWords";
 
+// PERIOD CODES (2026-09-25): how every language labels a quarter, a half-year and a week (`T1 2024`,
+// `1. Quartal`, `KW 12`, `第1四半期`, `1분기`), read one language per series with English labels joining,
+// and a letter code counted only beside a year. The canonical copy the server's period readers are
+// generated from.
+export {
+    PERIOD_CODE_FORMS, PERIOD_ORDINALS, PERIOD_UNFOLDED, PERIOD_CODE_MEMBERS, readPeriodCode, periodCodeSeries,
+} from "./vocab/periodCodes";
+export type { PeriodCodeGrain, PeriodCodeForms, PeriodCodeReading, PeriodCodeSeries } from "./vocab/periodCodes";
+
 // THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
 // script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,
 // and the views a vocabulary needs where whole words are blind: compound suffixes, glued prefixes

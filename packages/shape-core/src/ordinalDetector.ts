@@ -35,6 +35,7 @@
 
 import { nameWords } from "./util";
 import { localizedCycleIn, localizedYearWordIn } from "./vocab/calendarWords";
+import { periodCodeSeries } from "./vocab/periodCodes";
 
 type OrdinalPattern = {
     name: string;
@@ -392,7 +393,7 @@ function detectCalendarOrdinal(normIndex: Map<string, string>, locale?: string):
         const dict =
             fam.name === "weekday_mon_sun" ? mergeDicts(fam.dict, loc.weekday) :
             fam.name === "month_jan_dec"   ? mergeDicts(fam.dict, loc.month)   :
-            fam.dict;                                        // quarter stays English (Q1..Q4 near-universal)
+            fam.dict;                                        // quarter: English here, other languages below
         let allInDict = true;
         const byPos = new Map<number, string>();   // position → first original at that position
         for (const [norm, original] of normIndex) {
@@ -405,7 +406,26 @@ function detectCalendarOrdinal(normIndex: Map<string, string>, locale?: string):
         const orderedDomain = [...byPos.entries()].sort((a, b) => a[0] - b[0]).map(e => e[1]);
         return { pattern: fam.name, orderedDomain };
     }
-    return null;
+    return detectLocalizedQuarterOrdinal(normIndex);
+}
+
+// ANOTHER LANGUAGE'S QUARTER LABELS (vocab/periodCodes.ts), read only where the English families above
+// found nothing: `Trimestre 1`, `1. Quartal`, `Kwartał 2`, `第1四半期`, `1분기`, `الربع الأول`. The whole
+// column must read in ONE language, English Q-codes joining it. Only labels in WORDS count: a bare letter
+// code (`T1`, `K1`, `2T`) is as often a tier, a terminal or a toddler's size, so it is left to the rest of
+// this file, exactly as before. Same pattern name and the same three-member floor as the English family.
+const QUARTER_FAMILY = CALENDAR_FAMILIES.find(f => f.name === "quarter_q1_q4")!;
+
+function detectLocalizedQuarterOrdinal(normIndex: Map<string, string>): OrdinalDetectionResult | null {
+    const originals = [...normIndex.values()];
+    const series = periodCodeSeries(originals,
+        r => r.grain === "quarter" && r.year === null && (r.lang === "en" || r.form === "word"));
+    if (!series || series.lang === "en") return null;
+    const byPos = new Map<number, string>();
+    series.readings.forEach((r, i) => { if (!byPos.has(r.n)) byPos.set(r.n, originals[i]); });
+    if (byPos.size < QUARTER_FAMILY.minMatches) return null;
+    const orderedDomain = [...byPos.entries()].sort((a, b) => a[0] - b[0]).map(e => e[1]);
+    return { pattern: QUARTER_FAMILY.name, orderedDomain };
 }
 
 // Build a lookup: normalized form → original user string. When two raw

@@ -19,8 +19,9 @@ import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
-import { nameLetterRuns } from "./nameReader";
+import { nameLetterRuns, foldName } from "./nameReader";
 import { localizedYearWordIn } from "./vocab/calendarWords";
+import { readPeriodCode } from "./vocab/periodCodes";
 import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
@@ -262,6 +263,31 @@ function looksLikeLocalizedMonthPeriod(s: string, monthMap: Record<string, numbe
     return key.length > 0 && monthMap[key] !== undefined;
 }
 
+// ANOTHER LANGUAGE'S QUARTER AND WEEK LABELS, BESIDE A YEAR (vocab/periodCodes.ts): `T1 2024`, `2024-K3`,
+// `1er trimestre 2024`, `KW 12/2024`, `2024年第1四半期`, `3 кв. 2023`. Counted among the values the English
+// period pattern missed, in the ONE language that reads the most of them. English labels the pattern
+// never took (`Qtr 1 2024`) join that language's count but never make one on their own, so a column only
+// English reads is decided exactly as before. A four-digit year is required, as the English pattern
+// requires one: a bare `T1` is a tier as often as a quarter.
+const HAS_FOUR_DIGIT_YEAR = /(?:19|20)[0-9]{2}/;
+
+function localizedPeriodLabels(values: readonly string[]): number {
+    const own = new Map<string, number>();
+    let english = 0;
+    for (const v of values) {
+        if (!HAS_FOUR_DIGIT_YEAR.test(foldName(v))) continue;
+        const langs = new Set(readPeriodCode(v)
+            .filter(r => r.yearDigits === 4 && (r.grain === "quarter" || r.grain === "week"))
+            .map(r => r.lang));
+        if (langs.size === 0) continue;
+        if (langs.has("en")) { english++; continue; }
+        for (const l of langs) own.set(l, (own.get(l) ?? 0) + 1);
+    }
+    let best = 0;
+    for (const count of own.values()) best = Math.max(best, count);
+    return best > 0 ? best + english : 0;
+}
+
 export function classifyTemporal(args: {
     dataType: string; name: string; isMeasure: boolean; distinctCount: number;
     minNum?: number | null; maxNum?: number | null; sampleValues?: Iterable<string>;
@@ -309,15 +335,18 @@ export function classifyTemporal(args: {
         const monthMap = args.locale ? monthLookupFor(args.locale) : null;
         let n = 0, hit = 0;
         const seen: string[] = [];
+        const missed: string[] = [];
         for (const v of args.sampleValues) {
             if (v == null || v === "") continue;
             n++;
             const s = String(v).trim();
             seen.push(s);
             if (TEMPORAL_PERIOD_RE.test(s) || looksLikeLocalizedMonthPeriod(s, monthMap)) hit++;
+            else missed.push(s);
             if (n >= 60) break;
         }
         if (n >= 2 && hit / n >= 0.8) return true;
+        if (n >= 2 && (hit + localizedPeriodLabels(missed)) / n >= 0.8) return true;
         // FULL DATES AS TEXT (2026-08-19) - "2024-03-15", "15/03/2024". The period regex is
         // for periods; a day-level date stored as a string is a time axis too, and the
         // commonest way a real date arrives untyped. Same 80% floor, same sample.
