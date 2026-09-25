@@ -358,6 +358,10 @@ export {
     isDuplicateGenerate, armGenerateGuard, DUPLICATE_GENERATE_WINDOW_MS,
     type GenerateGuardKey, type GenerateGuardState,
 } from "./duplicateGenerateGuard";
+// The way back to the last working chart (2026-09-25): offer it whenever a positive version and its code
+// are cached, whatever the current version is; restore it by itself after a licence is saved only when
+// the reader was parked on version 0. Pure; the host passes its persisted cache.
+export { canShowLastChart, shouldRestoreVersionAfterLicenseSave } from "./lastChart";
 // Client identity (2026-09-24): the one ThumbmarkJS recipe every browser host fingerprints with - the user agent and
 // browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
 // per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
