@@ -171,10 +171,12 @@ export type { DateLevelPart, DateLevelEntry } from "./vocab/dateLevels";
 // THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
 // script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,
 // and the views a vocabulary needs where whole words are blind: compound suffixes, glued prefixes
-// and unsegmented scripts. `nameWords` above is its word view.
+// and unsegmented scripts. `nameWords` above is its word view. Korean compounds get the suffix view
+// through a Hangul token (2026-09-25); `nameLetterRuns` is the letters-only boundary older readers use.
 export {
     foldName, readName, matchNameToken, wordEndsWith, gluedPrefixStems, unsegmentedRuns,
-    hasUnsegmentedScript, COMPOUND_MIN_STEM, GLUED_STEM_MIN, SUBSTRING_MIN,
+    hasUnsegmentedScript, hangulWordEndsWith, nameLetterRuns, COMPOUND_MIN_STEM, GLUED_STEM_MIN, SUBSTRING_MIN,
+    HANGUL_MIN_STEM,
 } from "./nameReader";
 export type { NameReading, NameTokenView } from "./nameReader";
 

@@ -19,6 +19,7 @@ import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
+import { nameLetterRuns } from "./nameReader";
 import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
@@ -754,7 +755,9 @@ export class IndexedText implements IValueCollection {
                     const ks = [...vals.keys()].map(k => STR(k).trim().toLowerCase()).sort();
                     const boolPairs = [["false", "true"], ["no", "yes"], ["n", "y"], ["0", "1"], ["f", "t"]];
                     const valuesBoolean = boolPairs.some(p => ks[0] === p[0] && ks[1] === p[1]);
-                    const nameOutcome = /^(is|has)[_a-z0-9]|(?:default|churn|fraud|approv|convert|active|cancel|delinquen|flag|paid|win|pass|fail)/i.test(col.name);
+                    // After `is`/`has`, any letter, digit or underscore in any script (`hasÄnderung`);
+                    // an all-ASCII name reads exactly as it always did.
+                    const nameOutcome = /^(is|has)[_\p{L}\p{N}]|(?:default|churn|fraud|approv|convert|active|cancel|delinquen|flag|paid|win|pass|fail)/iu.test(col.name);
                     if (valuesBoolean || nameOutcome) col.isBinaryFlag = true;
                 }
             }
@@ -1668,8 +1671,9 @@ export class IndexedText implements IValueCollection {
         this._geoExtentComputed = true;
         this._geoExtent = null;
 
-        const tok = (n: string) => String(n || "")
-            .replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/);
+        // Letter runs in any script, camelCase split: the same words an ASCII name always gave, and a
+        // non-ASCII name read whole (`Längengrad` is no longer `l` + `ngengrad`).
+        const tok = (n: string) => nameLetterRuns(n, { camel: true });
         let latIdx = -1, lonIdx = -1, countryIdx = -1;
         this._cols.forEach((c, i) => {
             const t = tok(c.name);

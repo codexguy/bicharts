@@ -4,7 +4,7 @@
     "words": "NFC; camelCase split where a lower-case letter or a decimal digit is followed by an upper-case letter, in any cased script; then whitespace, the ASCII separators _ - . / and every NON-ASCII character that is not a letter, mark or number separate words; other ASCII punctuation stays attached to its word; lower-cased with the locale-independent mapping.",
     "folded": "The name is folded (see fold) BEFORE it is read, so the folded words line up one-to-one with the words.",
     "fold": "One UTF-16 unit in, one out. l-stroke, dotless i, o-stroke, d-stroke and eth (both cases) fold to l, i, o, d, d; Arabic-Indic, extended Arabic-Indic, Devanagari, Thai and full-width digits fold to 0-9; full-width Latin letters fold to ASCII; any other character folds to its NFD base when every mark removed lies in U+0300-U+036F and one character remains; everything else is unchanged.",
-    "views": "word: the folded token equals a folded word (unfolded for a fold-sensitive language, vi). suffix: for a compounding language (de nl sv da nb fi hu), a folded word ends with the token and keeps at least 3 code points before it. prefix: for ar and he, a word minus one of the language's glued prefixes equals the token and keeps at least 2 code points. substring: a token in Han, Hiragana, Katakana or Thai of at least 2 code points occurs inside one of the name's runs of those scripts. null: no view finds it."
+    "views": "word: the folded token equals a folded word (unfolded for a fold-sensitive language, vi). suffix: for a compounding language (de nl sv da nb fi hu), a folded word ends with the token and keeps at least 3 code points before it; and, whatever the language, for a token containing Hangul, a word ends with the token and keeps at least 2 code points before it (Korean compounds put the head last, so a token at the start or in the middle of a word is never found). prefix: for ar and he, a word minus one of the language's glued prefixes equals the token and keeps at least 2 code points. substring: a token in Han, Hiragana, Katakana or Thai of at least 2 code points occurs inside one of the name's runs of those scripts. null: no view finds it."
   },
   "names": [
     { "lang": "en", "kind": "camel", "name": "OlympicYear", "words": ["olympic", "year"], "folded": ["olympic", "year"] },
@@ -173,6 +173,14 @@
     { "lang": "ja", "token": "気温", "name": "平均気温", "view": "substring" },
     { "lang": "ja", "token": "売上", "name": "売上高２０２４", "view": "substring" },
     { "lang": "th", "token": "อุณหภูมิ", "name": "อุณหภูมิเฉลี่ย", "view": "substring" },
-    { "lang": "ko", "token": "온도", "name": "평균 온도", "view": "word" }
+    { "lang": "ko", "token": "온도", "name": "평균 온도", "view": "word" },
+    { "lang": "ko", "token": "온도", "name": "평균온도", "view": "suffix" },
+    { "lang": "ko", "token": "실적", "name": "매출실적", "view": "suffix" },
+    { "lang": "ko", "token": "목표", "name": "매출목표", "view": "suffix" },
+    { "lang": "ko", "token": "목표", "name": "2024_매출목표", "view": "suffix" },
+    { "lang": "ko", "token": "시가", "name": "시가총액", "view": null },
+    { "lang": "ko", "token": "목표", "name": "목표매출", "view": null },
+    { "lang": "ko", "token": "계획", "name": "무계획", "view": null },
+    { "lang": "ko", "token": "목표", "name": "매출목표액", "view": null }
   ]
 }

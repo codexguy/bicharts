@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
     nameWords, readName, foldName, matchNameToken, wordEndsWith, gluedPrefixStems, unsegmentedRuns,
+    hangulWordEndsWith, HANGUL_MIN_STEM,
 } from "../src/nameReader";
 import { SUPPORTED_LANGUAGE_CODES } from "../src/languages";
 import { foldAccents, nameLooksIntensiveRate, stripHostAggPrefix } from "../src/aggregation";
@@ -136,6 +137,22 @@ describe("the views", () => {
 
     it("an unknown language finds nothing rather than guessing", () => {
         expect(matchNameToken("Temperatur", "temperatur", "xx")).toBeNull();
+    });
+
+    it("a Hangul compound is read at its END, with a two-syllable stem in front", () => {
+        expect(hangulWordEndsWith("매출실적", "실적")).toBe(true);
+        expect(hangulWordEndsWith("시가총액", "시가")).toBe(false);   // the start is a modifier, not the head
+        expect(hangulWordEndsWith("무계획", "계획")).toBe(false);     // a one-syllable stem is often a negation
+        expect(hangulWordEndsWith("실적", "실적")).toBe(false);       // equal is a WORD match
+        expect(hangulWordEndsWith("durchschnittstemperatur", "temperatur")).toBe(false); // Hangul tokens only
+        expect(HANGUL_MIN_STEM).toBe(2);
+    });
+
+    it("the Hangul view is keyed by the token's script, like the substring view", () => {
+        expect(matchNameToken("매출실적", "실적", "ko")).toBe("suffix");
+        expect(matchNameToken("매출실적", "실적", "en")).toBe("suffix");
+        // ...and a Latin token never gains the view from a Korean name around it.
+        expect(matchNameToken("Salesactual", "actual", "ko")).toBeNull();
     });
 });
 

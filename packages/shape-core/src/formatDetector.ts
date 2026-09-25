@@ -93,24 +93,34 @@ function classifyOne(v: string): string | null {
         return "OPAQUE_ID_ALPHANUMERIC";
     }
 
-    // Words-and-text classifiers (whitespace OK).
+    // Words-and-text classifiers (whitespace OK). The casing tests read letters in ANY cased script
+    // (Latin with diacritics, Cyrillic, Greek): an ASCII-only `[A-Z][a-z]` read `Zürich` as no
+    // word at all and every multi-word Cyrillic name as prose. An all-ASCII value classifies exactly
+    // as it always did - `\p{Lu}`, `\p{Ll}` and the word boundary below are `[A-Z]`, `[a-z]` and
+    // `\b` there. Uncased scripts (Han, Arabic, Thai, ...) have no casing to describe and stay
+    // unclassified. ALL_UPPER above stays ASCII on purpose: a fixed-length ALL_UPPER column is
+    // IDENTIFIER evidence the server acts on, and widening it is a verdict change with its own replay.
     // SENTENCE_TEXT — multi-word with mixed casing OR punctuation.
     const wordCount = s.trim().split(/\s+/).length;
     const hasInternalPunct = /[.!?,;:]/.test(s);
     if (wordCount >= 2) {
-        if (hasInternalPunct || /[a-z][A-Z]/.test(s) || s.length > 40) return "SENTENCE_TEXT";
+        if (hasInternalPunct || /\p{Ll}\p{Lu}/u.test(s) || s.length > 40) return "SENTENCE_TEXT";
         // Multi-word, no internal punct, ≤ 40 chars — check casing.
-        if (/^[A-Z]/.test(s) && /\b[A-Z][a-z]+/.test(s)) return "TITLE_CASE_WORDS";
-        if (/^[a-z]/.test(s) && !/[A-Z]/.test(s)) return "LOWER_WORDS";
+        if (/^\p{Lu}/u.test(s) && TITLE_WORD.test(s)) return "TITLE_CASE_WORDS";
+        if (/^\p{Ll}/u.test(s) && !/\p{Lu}/u.test(s)) return "LOWER_WORDS";
         return "SENTENCE_TEXT";
     }
 
     // Single word.
-    if (/^[A-Z][a-z]+$/.test(s)) return "TITLE_CASE_WORDS";
-    if (/^[a-z]+$/.test(s)) return "LOWER_WORDS";
+    if (/^\p{Lu}[\p{Ll}\p{M}]*\p{Ll}[\p{Ll}\p{M}]*$/u.test(s)) return "TITLE_CASE_WORDS";
+    if (/^\p{Ll}[\p{Ll}\p{M}]*$/u.test(s)) return "LOWER_WORDS";
 
     return null;
 }
+
+/** A capitalised word inside a value: an upper-case letter that starts a word (nothing word-like
+ *  before it), then a lower-case letter. The Unicode twin of `\b[A-Z][a-z]+`. */
+const TITLE_WORD = /(?<![\p{L}\p{M}\p{N}_])\p{Lu}\p{M}*\p{Ll}/u;
 
 export function detectFormatSignature(values: string[]): string {
     if (!values || values.length === 0) return "OTHER";

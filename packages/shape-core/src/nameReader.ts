@@ -42,7 +42,9 @@
 // THE VIEWS a vocabulary needs beyond whole words, each for a script or language property that
 // makes a whole-word test blind:
 //   * compound suffix - de, nl, sv, da, nb, fi, hu glue a concept onto the END of a word
-//     (`Durchschnittstemperatur`);
+//     (`Durchschnittstemperatur`), and so does Korean, whose compound nouns are written without
+//     spaces with the head last (`매출실적`) - the same view for a Hangul token, with a stem of two
+//     syllables;
 //   * glued prefix    - ar and he glue the article and one-letter particles onto the FRONT
 //     (`الإيرادات`, `והכנסות`);
 //   * substring       - zh, ja, th write words with no spaces between them (`平均温度`).
@@ -118,6 +120,21 @@ export function nameWords(name: string): string[] {
         .filter(t => t.length > 0);
 }
 
+/**
+ * LETTER RUNS: a name cut at everything that is not a letter or a mark - digits and all punctuation
+ * included - after an optional camelCase split, lower-cased. The boundary some older readers were
+ * built on (`[^a-z]+` after lower-casing), in every script: `Längengrad` is one run where the ASCII
+ * split made `l` + `ngengrad`, and `Широта` is a run where the ASCII split left nothing. An all-ASCII
+ * name reads exactly as it did under the ASCII split. The server's twin is `NameReader.Tokens`
+ * with digits out of words.
+ */
+export function nameLetterRuns(name: string, opts: { camel?: boolean } = {}): string[] {
+    if (!name) return [];
+    let s = String(name).normalize("NFC");
+    if (opts.camel) s = s.replace(CAMEL, "$1 $2");
+    return s.toLowerCase().split(/[^\p{L}\p{M}]+/u).filter(t => t.length > 0);
+}
+
 export interface NameReading {
     /** Lower-cased words, NFC, unfolded - for a fold-sensitive language's vocabulary. */
     words: string[];
@@ -190,6 +207,25 @@ export function gluedPrefixStems(word: string, lang: VocabularyLanguageCode | st
 /** Which view found a token in a name. */
 export type NameTokenView = "word" | "suffix" | "prefix" | "substring";
 
+/** The minimum a Hangul compound's remaining stem must keep, in code points (a Hangul syllable is
+ *  one). Two, not one: a single syllable glued in front is as often a NEGATION as a subject -
+ *  `무계획` is "unplanned", `미달성` "not achieved" - and missing a one-syllable modifier (`총`,
+ *  `월`) is the cheap direction. */
+export const HANGUL_MIN_STEM = 2;
+
+const HANGUL = /\p{Script=Hangul}/u;
+
+/** HANGUL COMPOUND VIEW: does this word END in the Hangul token, leaving at least `HANGUL_MIN_STEM`
+ *  code points before it? Korean writes compound nouns without spaces and puts the head - the
+ *  thing the column IS - last: `매출실적` (sales actual), `매출목표` (sales target). A token at the
+ *  START modifies something else and is never the head: `시가총액` (market capitalisation) is not
+ *  a `시가` (opening price), and `목표매출` is sales, not a target. So the view is the end of the
+ *  word, never a substring anywhere in it. */
+export function hangulWordEndsWith(word: string, token: string): boolean {
+    if (!word || !token || !HANGUL.test(token)) return false;
+    return wordEndsWith(word, token, HANGUL_MIN_STEM);
+}
+
 /** The shortest token a substring match will look for, in code points. One Han character is a
  *  morpheme, not a word, and matches far too much (`日` is in every date column). */
 export const SUBSTRING_MIN = 2;
@@ -202,6 +238,7 @@ export const SUBSTRING_MIN = 2;
  *     `SUBSTRING_MIN` code points;
  *   - otherwise a whole word - folded, or unfolded for a fold-sensitive language (vi);
  *   - then, for a compounding language, the end of a word (`wordEndsWith`);
+ *   - then, for a token written in Hangul, the end of a word (`hangulWordEndsWith`) - "suffix" too;
  *   - then, for a glued-prefix language, a word whose stem after a prefix IS the token.
  *
  * Returns null when no view finds it. This is the reader only: a vocabulary still owns the
@@ -223,6 +260,7 @@ export function matchNameToken(name: string, token: string, lang: VocabularyLang
     const t = l.foldSensitive ? tok : foldName(token.normalize("NFC")).toLowerCase();
     if (words.includes(t)) return "word";
     if (l.compounds && words.some(w => wordEndsWith(w, t))) return "suffix";
+    if (words.some(w => hangulWordEndsWith(w, t))) return "suffix";
     if (l.gluedPrefixes.length && words.some(w => gluedPrefixStems(w, l.code).includes(t))) return "prefix";
     return null;
 }
