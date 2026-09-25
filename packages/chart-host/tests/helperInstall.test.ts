@@ -65,8 +65,7 @@ describe("a generated chart can install its own helpers", () => {
 
     it("plugins attached after the host was built are still visible", () => {
         // The counterpart risk: copying unconditionally would freeze a snapshot and lose an
-        // `Object.assign(d3, { sankey })` that lands later — which is exactly the remedy this
-        // package prints when a plugin is missing.
+        // `Object.assign(d3, { sankey })` that a host with a plain (extensible) d3 makes later.
         const d3: any = { select: () => null };
         const code = `function render(c, d, o) {
             const el = c.ownerDocument.createElement("div");

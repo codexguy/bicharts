@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { createChartHost, explainRenderFailure, requiredD3Plugins } from "../src/host";
+import { createChartHost, explainRenderFailure, requiredD3Plugins, assembleD3 } from "../src/host";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // SHAREABLE-SDK-PLAN Phase 3 (GAP-6). "Requires D3 v7" was the whole of the d3 story, and
 // it was wrong for the bundled path (compileRenderFn INJECTS d3, so there is no global).
@@ -19,7 +21,11 @@ describe("d3 failure messages are actionable", () => {
         const msg = String((e as Error).message);
         expect(msg).toContain("d3-sankey");
         expect(msg).toContain("npm install d3-sankey");
-        expect(msg).toContain("Object.assign(d3");
+        // Was `Object.assign(d3`: that advice throws on an ES-module d3 namespace (it is frozen), so
+        // the message now builds one d3 with assembleD3 and hands the host THAT d3.
+        expect(msg).toContain("const d3 = assembleD3(d3base, { sankey })");
+        expect(msg).toContain('import { assembleD3 } from "@bicharts/chart-host"');
+        expect(msg).not.toContain("Object.assign(d3");
         expect(msg).toContain("SAME d3");          // attaching to a different d3 is the trap
     });
 
@@ -188,7 +194,10 @@ describe("explainRenderFailure — a missing Mermaid says so", () => {
             expect(msg).toContain("Mermaid");
             expect(msg).toContain("d3.mermaid.render");
             expect(msg).toContain("npm install mermaid");
-            expect(msg).toContain("Object.assign(d3, { mermaid })");
+            // Was `Object.assign(d3, { mermaid })` - it throws on an ES-module d3 namespace.
+            expect(msg).toContain("const d3 = assembleD3(d3base, { mermaid })");
+            expect(msg).toContain("import mermaid from 'mermaid'");
+            expect(msg).not.toContain("Object.assign(d3");
             expect(msg).toContain("SAME d3");        // attaching to a different d3 is the trap
             expect(msg).toContain(raw);              // the original is never thrown away
             // A namespace library has a DEFAULT export; the generic plugin advice would send a
@@ -223,5 +232,51 @@ describe("d3 failure messages, continued", () => {
             d3: {},                                  // a d3 with no sankey attached
         });
         expect(() => host.render()).toThrow(/d3-sankey/);
+    });
+});
+
+// THE ADVICE MUST WORK WHERE IT IS READ. A bundled app writes `import * as d3 from "d3"`, which is a
+// module namespace: frozen, so `Object.assign(d3, { sankey })` - what this package used to print -
+// throws "object is not extensible" before any chart runs. The printed step is assembleD3, and it
+// is run here against an object as closed as a namespace (the test runner hands a test file its
+// imports as ordinary objects, so a real `import * as` here would not be frozen).
+describe("the attach step the messages and the README print is one that runs", () => {
+    const plugin = () => "sankey layout";
+    const namespaceLike = () => {
+        const ns = Object.create(null);
+        Object.defineProperty(ns, "select", { value: () => null, enumerable: true, writable: true });
+        Object.defineProperty(ns, Symbol.toStringTag, { value: "Module" });
+        return Object.preventExtensions(ns);
+    };
+
+    it("the old advice throws on a namespace-like d3, which is why it was replaced", () => {
+        const d3base = namespaceLike();
+        expect(Object.isExtensible(d3base)).toBe(false);
+        expect(() => Object.assign(d3base, { sankey: plugin })).toThrow(TypeError);
+    });
+
+    it("assembleD3 over it yields one d3 carrying core and plugin, and a chart renders with it", () => {
+        const d3base = namespaceLike();
+        const d3: any = assembleD3(d3base, { sankey: plugin });
+        expect(d3.sankey()).toBe("sankey layout");
+        expect(d3.select).toBe(d3base.select);      // the base's members come across
+        expect(Object.isExtensible(d3)).toBe(true); // a chart can install its helpers on it
+
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const host = createChartHost(container, {
+            data: { columns: [{ name: "c" }], rows: [["a", 0]] },
+            code: "function render(c,d,o){ const el = document.createElement('div'); el.className = 'd3-mark'; el.textContent = d3.sankey(); c.appendChild(el); }",
+            d3,
+        });
+        host.render();
+        expect(container.querySelector(".d3-mark")?.textContent).toBe("sankey layout");
+    });
+
+    it("the README's D3 plugins section prints assembleD3 and never assigns onto d3", () => {
+        const readme = readFileSync(resolve(__dirname, "..", "README.md"), "utf8");
+        const section = readme.split(/^## D3 plugins\s*$/m)[1]?.split(/^## /m)[0] ?? "";
+        expect(section).toContain("assembleD3(d3base, {");
+        expect(readme).not.toMatch(/Object\.assign\(\s*d3\b/);
     });
 });

@@ -392,9 +392,11 @@ export function explainRenderFailure(err: unknown, d3: any): unknown {
             "[@bicharts/chart-host] this chart draws its diagram with Mermaid, which it reaches " +
             "as d3.mermaid.render(...), and the d3 you passed has no mermaid on it — this host " +
             "did not load the library. A host supplies it exactly the way the other plugins are " +
-            "supplied: attach it onto the SAME d3 instance you hand to createChartHost —  " +
-            "npm install mermaid  then  import mermaid from 'mermaid'; " +
-            "Object.assign(d3, { mermaid });  Original error: " + msg);
+            "supplied: hand createChartHost ONE d3 that carries it, the SAME d3 every chart gets —  " +
+            "npm install mermaid  then  import * as d3base from 'd3'; import mermaid from 'mermaid'; " +
+            "import { assembleD3 } from '@bicharts/chart-host'; " +
+            "const d3 = assembleD3(d3base, { mermaid });  (an ES-module d3 namespace is frozen, so " +
+            "assigning onto it throws)  Original error: " + msg);
     }
     const m = /d3\.(\w+) is not a function|(\w+) is not a function/.exec(msg);
     const name = m?.[1] ?? m?.[2] ?? "";
@@ -402,9 +404,12 @@ export function explainRenderFailure(err: unknown, d3: any): unknown {
     if (pkg) {
         return new Error(
             `[@bicharts/chart-host] this chart calls d3.${name}(), which comes from the separate ` +
-            `"${pkg}" package and is not attached to the d3 you passed. Install it and augment ` +
-            `the SAME d3 instance:  npm install ${pkg}  then  import { ${name} } from "${pkg}"; ` +
-            `Object.assign(d3, { ${name} });  Original error: ` + msg);
+            `"${pkg}" package and is not attached to the d3 you passed. Install it and hand the ` +
+            `host ONE d3 that carries it, the SAME d3 every chart gets:  npm install ${pkg}  then  ` +
+            `import * as d3base from "d3"; import { ${name} } from "${pkg}"; ` +
+            `import { assembleD3 } from "@bicharts/chart-host"; ` +
+            `const d3 = assembleD3(d3base, { ${name} });  (an ES-module d3 namespace is frozen, so ` +
+            `assigning onto it throws)  Original error: ` + msg);
     }
     return err;
 }
@@ -447,8 +452,8 @@ export function stripEsmExports(code: string): string {
 // this, which is how it survives verification and then fails in the field.
 //
 // So take a copy when the original will not take a property. The same reasoning covers plugins:
-// the diagnostic above tells callers to `Object.assign(d3, { sankey })`, and that advice is
-// likewise inert against a namespace object.
+// assigning one onto a namespace object fails too (in an ES module it throws), which is why the
+// diagnostic above tells callers to build one d3 with `assembleD3(d3base, { sankey })`.
 function writableD3(d3: any): any {
     if (d3 == null || typeof d3 !== "object") return d3;
     // Extensible already — hand it straight back, so a caller who augments d3 later still wins.

@@ -178,12 +178,17 @@ basemap — load or provide geometry first.
 ## D3 plugins
 
 Some charts call `d3.sankey()`, `d3.hexbin()` or the voronoi family. Those are separate packages
-that **attach onto the d3 object** — install them and augment the *same* d3 you pass in:
+that **attach onto the d3 object** — install them and pass the host *one* d3 that carries them.
+`import * as d3` is a module namespace, which is frozen, so assigning a plugin onto it throws;
+`assembleD3` builds a plain copy instead:
 
 ```js
-import * as d3 from "d3";
+import * as d3base from "d3";
 import { sankey, sankeyLinkHorizontal } from "d3-sankey";
-Object.assign(d3, { sankey, sankeyLinkHorizontal });
+import { assembleD3 } from "@bicharts/chart-host";
+
+const d3 = assembleD3(d3base, { sankey, sankeyLinkHorizontal });
+createChartHost(el, { code, data, d3 });
 ```
 
 The integration contract returned by `generate_chart` names exactly which ones *your* chart
