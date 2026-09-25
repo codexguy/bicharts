@@ -233,3 +233,7 @@ export {
 export type {
     ViewportFields, CredentialFields, FetchRequest, FetchFields, CapabilityFields, RetryFields,
 } from "./wireBuild";
+// ARE THESE THE SAME FIELDS? (2026-09-25): the schema identity a host compares column sets by in
+// memory - name, role and type family per column. Never a persisted fingerprint; see schemaIdentity.ts.
+export { schemaIdentity, schemaIdentityKey, schemaTypeFamily } from "./schemaIdentity";
+export type { SchemaIdentityColumn } from "./schemaIdentity";
