@@ -7,8 +7,30 @@
 // other host (createChartHost, tests) resolve clicks identically.
 //
 // Each function carries the prod lesson that created it — do not simplify.
+//
+// The selection GLYPHS (2026-09-25) joined it: where a selected mark's glyph goes
+// (collectD3GlyphCenters) and the painting of the glyphs into an overlay
+// (paintSelectionGlyphs), moved verbatim from the visual. What a host paints, and
+// whether at all, stays the host's: the glyph setting, the flow-chart suppression,
+// the theme colours and any other renderer's centres.
 
-import { CONTROL_CLASS } from "./contract";
+import { CONTROL_CLASS, MARK_CLASS, MARK_SELECTED_CLASS } from "./contract";
+
+/**
+ * The rows a mark names: its data-row-idx read as a comma list of non-negative whole
+ * numbers. A token that is not one names no row and is skipped; no attribute, no rows.
+ */
+export function rowIdxsFromMark(el: Element | null): number[] {
+    if (!el) return [];
+    const raw = el.getAttribute("data-row-idx");
+    if (!raw) return [];
+    const out: number[] = [];
+    for (const tok of raw.split(",")) {
+        const n = parseInt(tok.trim(), 10);
+        if (!isNaN(n) && n >= 0) out.push(n);
+    }
+    return out;
+}
 
 /**
  * True when a click's target sits inside a reader-operated control the chart drew (CONTROL_CLASS
@@ -151,18 +173,6 @@ export function createMarkResolver(env: MarkResolverEnv): MarkResolver {
         return m as HTMLElement | null;
     };
 
-    const rowIdxsFromMark = (el: Element | null): number[] => {
-        if (!el) return [];
-        const raw = el.getAttribute("data-row-idx");
-        if (!raw) return [];
-        const out: number[] = [];
-        for (const tok of raw.split(",")) {
-            const n = parseInt(tok.trim(), 10);
-            if (!isNaN(n) && n >= 0) out.push(n);
-        }
-        return out;
-    };
-
     // Overlay penetration (2026-06-23): a full-canvas background / spacer rect
     // with a PAINTABLE fill (fill:'transparent' is NOT fill:'none') and default
     // pointer-events, appended ON TOP of the marks, swallows the click — e.target is
@@ -253,4 +263,191 @@ export function createMarkResolver(env: MarkResolverEnv): MarkResolver {
     };
 
     return { isInvisibleStrokePath, distToPathCenterline, refineHitCorridor, findMark, rowIdxsFromMark, penetrateOverlayAt, resolveByGeometry };
+}
+
+/** A glyph's centre, in pixels from the overlay's own top-left corner. */
+export interface GlyphCenter { x: number; y: number }
+
+/**
+ * Where each SELECTED mark in `container` gets its glyph (every `.d3-mark` that also carries the
+ * selected class), pushed onto `out` in document order, relative to `baseRect` (the overlay's own
+ * client rect). Throws what the platform throws; a host that must not fail its paint catches it.
+ */
+export function collectD3GlyphCenters(container: Element, baseRect: { left: number; top: number }, out: GlyphCenter[]): void {
+        const Point: any = (container.ownerDocument?.defaultView as any)?.DOMPoint ?? (globalThis as any).DOMPoint;
+        const marks = container.querySelectorAll<SVGElement | HTMLElement>(`.${MARK_CLASS}.${MARK_SELECTED_CLASS}`);
+        // CONTAINER SUPPRESSION (a production D3 treemap, 2026-06-02):
+        // hierarchical charts draw a parent backdrop rect (e.g. a channel
+        // container with data-row-idx = ALL its children's rows) AND per-leaf
+        // rects, both `.d3-mark`. Because a mark counts as selected when ANY of
+        // its rows is selected, selecting ONE leaf also marks the enclosing
+        // backdrop selected → a stray glyph drops at the backdrop's upper-right
+        // corner, landing on a sibling tile (a glyph that reads as a store's but is
+        // really its channel container's). A backdrop's children already carry the real
+        // glyphs, so skip any selected mark whose bbox strictly ENCLOSES another
+        // selected mark. Geometric (not row-count) test: only nested charts
+        // (treemap/icicle) nest — flat charts (bars/cells/points) never do, so
+        // this is a no-op there. O(n²); bounded to keep it cheap on big
+        // selections (above the cap we accept the rare redundant container glyph).
+        const rects: DOMRect[] = [];
+        for (let i = 0; i < marks.length; i++) {
+            const r = (marks[i] as Element).getBoundingClientRect();
+            rects.push(r);
+        }
+        const CONTAINMENT_CAP = 300;
+        const EPS = 1; // px tolerance for "inside"
+        const filterContainers = marks.length <= CONTAINMENT_CAP;
+        const enclosesAnother = (ci: number): boolean => {
+            const c = rects[ci];
+            const cArea = c.width * c.height;
+            if (cArea <= 0) return false;
+            for (let mj = 0; mj < rects.length; mj++) {
+                if (mj === ci) continue;
+                const m = rects[mj];
+                const mArea = m.width * m.height;
+                if (mArea <= 0 || mArea >= cArea) continue; // must be strictly smaller
+                if (m.left >= c.left - EPS && m.right <= c.right + EPS &&
+                    m.top >= c.top - EPS && m.bottom <= c.bottom + EPS) return true;
+            }
+            return false;
+        };
+        for (let i = 0; i < marks.length; i++) {
+            const el = marks[i] as Element;
+            const r = rects[i];
+            if (r.width === 0 && r.height === 0) continue;
+            if (filterContainers && enclosesAnother(i)) continue; // backdrop/container — skip
+            const tag = el.tagName.toLowerCase();
+            let sx: number | undefined;
+            let sy: number | undefined;
+            // EXPLICIT GLYPH ANCHOR (a geo choropleth, 2026-07-22): a mark may
+            // declare data-cx/data-cy — its own glyph position in the element's local
+            // (SVG user) coords — when its natural centre is a poor anchor. An AREA mark
+            // like a country <path> has no point centre and its path-length midpoint
+            // lands on the coastline; the choropleth archetype stamps the projected
+            // centroid here so a selected pale country still gets a dot in its middle.
+            // General (any mark can opt in); transformed to screen through the CTM.
+            const cxA = el.getAttribute("data-cx"), cyA = el.getAttribute("data-cy");
+            if (cxA != null && cyA != null && typeof (el as SVGGraphicsElement).getScreenCTM === "function") {
+                const ctm = (el as SVGGraphicsElement).getScreenCTM();
+                const cxN = parseFloat(cxA), cyN = parseFloat(cyA);
+                if (ctm && isFinite(cxN) && isFinite(cyN)) {
+                    const p = new Point(cxN, cyN).matrixTransform(ctm);
+                    sx = p.x; sy = p.y;
+                }
+            }
+            // PATH marks (chord ribbons, pie/donut arcs, sankey ribbons, lines):
+            // the bounding-box CENTER is often NOT on the mark — a curved chord
+            // ribbon's bbox center drifts toward the circle center, dropping a
+            // dot in empty space (2026-05-31: a Shanghai→Tacoma ribbon's
+            // dot "hovered in Hong Kong"). Place the glyph at the path's
+            // geometric MIDPOINT instead (a point guaranteed ON the path),
+            // transformed to screen space through the element's CTM.
+            if (sx === undefined && tag === "path" && typeof (el as any).getPointAtLength === "function") {
+                try {
+                    const len = (el as any).getTotalLength();
+                    const ctm = (el as SVGGraphicsElement).getScreenCTM();
+                    if (len > 0 && ctm) {
+                        // ARC-SECTOR paths (pie / donut / sunburst — emitted by
+                        // d3.arc as `M A L A Z`: arc commands, NO Bézier) need the
+                        // wedge CENTROID, not the path-length midpoint. For a typical
+                        // narrow wedge len/2 lands on the straight RADIAL EDGE (the
+                        // angular boundary), so the glyph reads as belonging to the
+                        // neighbouring segment (a sunburst, 2026-06-06). Detect the
+                        // sector by its command alphabet — has an arc (A/a) and NO
+                        // Bézier (C/S/Q/T) — and place the glyph at the average of
+                        // perimeter samples (the angular bisector at mid-radius,
+                        // provably inside an annular sector). Ribbons (chord `Q`),
+                        // links (sankey `C`) and lines/areas (`C`) FAIL this test and
+                        // keep the len/2 midpoint that already works for them — so
+                        // this cannot regress the chord/sankey placement (the
+                        // "ribbon dot hovered in Hong Kong" fix stays).
+                        const dAttr = el.getAttribute("d") || "";
+                        const isArcSector = /[Aa]/.test(dAttr) && !/[CcSsQqTt]/.test(dAttr);
+                        let local: DOMPoint | undefined;
+                        if (isArcSector) {
+                            const N = 24;
+                            let ax = 0, ay = 0;
+                            for (let k = 0; k < N; k++) {
+                                const sp = (el as any).getPointAtLength((len * k) / N) as DOMPoint;
+                                ax += sp.x; ay += sp.y;
+                            }
+                            const cand = new Point(ax / N, ay / N);
+                            // Guard: only use the centroid if it actually lands inside
+                            // the wedge fill. A FULL-ring donut slice (360°) centroids
+                            // on the hole → isPointInFill false → fall back to midpoint.
+                            let inside = true;
+                            try {
+                                if (typeof (el as any).isPointInFill === "function") {
+                                    inside = (el as any).isPointInFill(cand);
+                                }
+                            } catch { inside = true; }
+                            if (inside) local = cand;
+                        }
+                        if (!local) local = (el as any).getPointAtLength(len / 2) as DOMPoint;
+                        const p = local.matrixTransform(ctm);
+                        sx = p.x; sy = p.y;
+                    }
+                } catch { /* fall back to bbox below */ }
+            }
+            if (sx === undefined || sy === undefined) {
+                // RECTANGULAR marks (bars, heatmap cells) carry a CENTER data
+                // label, so put the glyph in the upper-right (inset) to clear it
+                // — top-right of a rect is always INSIDE the mark. Other marks
+                // (scatter <circle>) use the bbox center.
+                const isRect = tag === "rect";
+                sx = isRect ? r.left + r.width * 0.80 : r.left + r.width / 2;
+                sy = isRect ? r.top + r.height * 0.20 : r.top + r.height / 2;
+            }
+            out.push({ x: sx - baseRect.left, y: sy - baseRect.top });
+        }
+}
+
+/** The class every painted selection glyph carries. */
+export const SELECTION_GLYPH_CLASS = "lch-sel-glyph";
+
+/** Removes every glyph (every child) from the overlay. */
+export function clearSelectionGlyphs(overlay: Element | null | undefined): void {
+    if (overlay) {
+        while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    }
+}
+
+export interface SelectionGlyphStyle {
+    /** The character drawn at each centre. */
+    symbol: string;
+    /** The glyph's colour. */
+    color: string;
+    /** The halo drawn on every side of it, so it reads on a dark and a light mark alike. */
+    halo: string;
+    /** At most this many are drawn. Default 600, which keeps the DOM light on a huge selection. */
+    max?: number;
+}
+
+/**
+ * Draws one glyph per centre (up to `max`) into `overlay`, positioned from the overlay's own
+ * top-left corner and never hit-tested. Returns how many it drew. It does not clear the overlay
+ * first: a host clears it (clearSelectionGlyphs) before deciding whether to paint at all.
+ */
+export function paintSelectionGlyphs(overlay: Element, centers: readonly GlyphCenter[], style: SelectionGlyphStyle): number {
+    const doc = overlay.ownerDocument;
+    const frag = doc.createDocumentFragment();
+    const count = Math.min(centers.length, style.max ?? 600);
+    for (let i = 0; i < count; i++) {
+        const c = centers[i];
+        const g = doc.createElement("span");
+        g.className = SELECTION_GLYPH_CLASS;
+        g.textContent = style.symbol;
+        g.style.position = "absolute";
+        g.style.left = c.x + "px";
+        g.style.top = c.y + "px";
+        g.style.transform = "translate(-50%, -50%)";
+        g.style.font = "700 11px/1 system-ui, -apple-system, Segoe UI, sans-serif";
+        g.style.color = style.color;
+        const halo = style.halo;
+        g.style.textShadow = `-1px -1px 1px ${halo}, 1px -1px 1px ${halo}, -1px 1px 1px ${halo}, 1px 1px 1px ${halo}, 0 0 2px ${halo}`;
+        g.style.pointerEvents = "none";
+        frag.appendChild(g);
+    }
+    overlay.appendChild(frag);
+    return count;
 }

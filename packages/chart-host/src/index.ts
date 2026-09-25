@@ -88,7 +88,11 @@ export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, e
 export { createChartGroup, toSourceRows, syncMemberSelection,
     type ChartGroup, type ChartGroupMember, type ChartGroupSelection, type ChartGroupChange,
     type ChartGroupMemberOptions, type ChartGroupSourceOptions, type ChartGroupPayload } from "./group";
-export { createMarkResolver, isInsideControl, type MarkResolver, type MarkResolverEnv } from "./selection";
+export {
+    createMarkResolver, isInsideControl, rowIdxsFromMark,
+    collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,
+    type MarkResolver, type MarkResolverEnv, type GlyphCenter, type SelectionGlyphStyle,
+} from "./selection";
 // Deterministic charts for shapes with exactly one defensible answer: a single value, a
 // single categorical column, a single numeric column. Returns null for everything else, so
 // a host can ask BEFORE paying for a generation and fall through the moment the answer
