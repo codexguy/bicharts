@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchTransport, readGenerateStream, type WireTransport } from "../src/index";
+import { createGenerateClient, fetchTransport, keyedSigner, readGenerateStream, type WireTransport } from "../src/index";
 import { assertWireTransportConformance, ConformanceError, type FetchLike } from "../src/testing/index";
 
 // The transport over a platform fetch, and the conformance check every host's transport runs.
@@ -99,6 +99,48 @@ describe("fetchTransport", () => {
 
     it("needs the host's fetch", () => {
         expect(() => fetchTransport(undefined as any)).toThrow(TypeError);
+    });
+
+    // A platform timer given NaN, Infinity, a negative number or more than 2^31-1 ms fires at once, so
+    // before this rule a deadline of 3,000,000,000 ms read as timed out the moment the request left.
+    it("refuses a deadline no timer can keep, with a RangeError naming it, and sends nothing", async () => {
+        const unkeepable: unknown[] = [2 ** 31, 3_000_000_000, Infinity, NaN, 0, -1, -Infinity, "900000", undefined];
+        for (const timeoutMs of unkeepable) {
+            const f = vi.fn(async () => new Response("never"));
+            const err = await fetchTransport(f).post("https://s.example/a", "b", {}, { timeoutMs: timeoutMs as number }).then(() => null, e => e);
+            expect(err, String(timeoutMs)).toBeInstanceOf(RangeError);
+            expect(err.message, String(timeoutMs)).toContain(`a deadline of ${String(timeoutMs)} ms`);
+            expect(err.message).toContain("at most 2147483647");
+            expect(f, `${String(timeoutMs)}: nothing is sent`).not.toHaveBeenCalled();
+        }
+    });
+
+    it("keeps the longest deadline a timer can hold: 2^31-1 ms does not fire at once", async () => {
+        let signal!: AbortSignal;
+        const t = fetchTransport(async (_u, init) => { signal = init.signal; return heldResponse(init.signal).response; });
+        const res = await t.post("https://s.example/a", "b", {}, { timeoutMs: 2 ** 31 - 1 });
+        await new Promise(r => setTimeout(r, 60));
+        expect(signal.aborted, "still waiting on the body").toBe(false);
+        await res.body!.cancel();
+    });
+
+    it("keeps the smallest positive deadline, which ends the request at once as a timeout", async () => {
+        const t = fetchTransport((_u, init) => new Promise((_ok, fail) => {
+            init.signal.addEventListener("abort", () => fail(abortError()), { once: true });
+        }));
+        await expect(t.post("https://s.example/a", "b", {}, { timeoutMs: Number.MIN_VALUE })).rejects.toMatchObject({ name: "TimeoutError" });
+    });
+
+    it("a refused deadline reaches the generate client as a transport failure before any headers, not a timeout", async () => {
+        const f = vi.fn(async () => new Response("{}"));
+        const client = createGenerateClient(
+            { signer: keyedSigner("k"), transport: fetchTransport(f), clock: { now: () => 1 } },
+            { baseUrl: "https://s.example" },
+        );
+        const out = await client.generate({ genNew: true }, { timeoutMs: 3_000_000_000 });
+        expect(out).toMatchObject({ kind: "transport", headersReceived: false, timedOut: false, cancelled: false });
+        expect((out as any).error).toBeInstanceOf(RangeError);
+        expect(f).not.toHaveBeenCalled();
     });
 });
 

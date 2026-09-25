@@ -12,7 +12,13 @@
 //    not the transport's;
 //  - the deadline covers the WHOLE exchange: no headers in time rejects with a TimeoutError, and a
 //    body still arriving when it passes errors with one, so a stalled stream cannot hold its caller;
-//  - a caller's signal cancels at any point.
+//  - a caller's signal cancels at any point;
+//  - a deadline no timer can keep is refused before anything is sent: the post rejects with a
+//    RangeError when `timeoutMs` is not a number above 0 and at most MAX_TIMER_MS. A platform timer
+//    given NaN, Infinity, a negative number or anything above 2^31-1 ms fires at once, so the
+//    request would read as timed out the moment it left. Refused rather than clamped: a deadline
+//    that long is almost always a units mistake, a clamp would quietly keep a different deadline
+//    from the one asked for, and NaN has no value to clamp to.
 //
 // The fetch is the host's, passed in: this package never reads a global.
 
@@ -33,13 +39,26 @@ export interface FetchTransportOptions {
     credentials?: "omit" | "same-origin" | "include";
 }
 
+/** The longest a platform timer waits: a 32-bit signed count of milliseconds, about 24.8 days. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 function timeoutError(ms: number): Error {
     return Object.assign(new Error(`The request did not finish within ${ms} ms.`), { name: "TimeoutError" });
 }
 
+/** Null when a timer can keep `ms`; otherwise the error the post rejects with. */
+function unkeepableDeadline(ms: unknown): RangeError | null {
+    if (typeof ms === "number" && ms > 0 && ms <= MAX_TIMER_MS) return null;
+    return new RangeError(
+        `fetchTransport cannot keep a deadline of ${String(ms)} ms: it must be a number of milliseconds `
+        + `above 0 and at most ${MAX_TIMER_MS} (about 24.8 days), the longest a timer can wait. Nothing was sent.`,
+    );
+}
+
 /**
  * A WireTransport over `fetchFn`. Every request is a POST; each call's `timeoutMs` covers the headers
- * and the body; the caller's `signal`, when given, cancels as well.
+ * and the body; the caller's `signal`, when given, cancels as well. A `timeoutMs` that is not above 0
+ * and at most 2^31-1 rejects with a RangeError, and the fetch is never called.
  */
 export function fetchTransport(fetchFn: FetchFunction, options: FetchTransportOptions = {}): WireTransport {
     if (typeof fetchFn !== "function") throw new TypeError("fetchTransport needs the host's fetch");
@@ -48,6 +67,8 @@ export function fetchTransport(fetchFn: FetchFunction, options: FetchTransportOp
     return {
         async post(url, encodedBody, headers, opts): Promise<WireResponse> {
             const ms = opts.timeoutMs;
+            const refused = unkeepableDeadline(ms);
+            if (refused) throw refused;
             const controller = new AbortController();
             let timedOut = false;
             const timer = setTimeout(() => { timedOut = true; controller.abort(timeoutError(ms)); }, ms);
