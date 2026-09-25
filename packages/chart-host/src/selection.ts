@@ -32,6 +32,42 @@ export function rowIdxsFromMark(el: Element | null): number[] {
     return out;
 }
 
+/** The keys held during a click. Cmd counts as Ctrl. */
+export interface SelectionModifiers {
+    ctrl?: boolean;
+    shift?: boolean;
+}
+
+/**
+ * THE SELECTION A CLICK LEAVES - the one rule every host applies to a click on a mark that names
+ * `rowIdxs`, from the selection it holds (`current`).
+ *
+ * With Ctrl/Cmd or Shift the semantics are TOGGLE-PER-ROW, not union: each clicked row that is
+ * selected is removed and each that is not is added, so Ctrl-clicking a selected mark takes it
+ * off, and a mark spanning several rows (a legend swatch) toggles each of them - a naive union
+ * would leave a mark lit after the reader Ctrl-clicked it off. Toggling the last row off is a
+ * legitimate way to reach empty.
+ *
+ * Without a modifier a click REPLACES the selection, and a click on exactly the current selection
+ * - the same rows, compared with the selection the host holds now, never with a remembered click -
+ * clears it: the other half of the gesture. So a plain click that returns [] is a toggle-off.
+ * Comparing with a remembered click instead went stale whenever the selection changed under it (a
+ * clear from elsewhere, a re-derived selection), and the next click on the mark then did nothing.
+ */
+export function nextSelection(current: Iterable<number> | null | undefined, rowIdxs: readonly number[], mods: SelectionModifiers = {}): number[] {
+    const cur = Array.from(current ?? []);
+    if (mods.ctrl || mods.shift) {
+        const next = new Set(cur);
+        for (const r of rowIdxs) {
+            if (next.has(r)) next.delete(r);
+            else next.add(r);
+        }
+        return Array.from(next);
+    }
+    const same = cur.length === rowIdxs.length && rowIdxs.every(r => cur.includes(r));
+    return same ? [] : rowIdxs.slice();
+}
+
 /**
  * True when a click's target sits inside a reader-operated control the chart drew (CONTROL_CLASS
  * on the target or an ancestor), looking no further out than `container` - a page that wraps the

@@ -89,9 +89,9 @@ export { createChartGroup, toSourceRows, syncMemberSelection,
     type ChartGroup, type ChartGroupMember, type ChartGroupSelection, type ChartGroupChange,
     type ChartGroupMemberOptions, type ChartGroupSourceOptions, type ChartGroupPayload } from "./group";
 export {
-    createMarkResolver, isInsideControl, rowIdxsFromMark,
+    createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,
-    type MarkResolver, type MarkResolverEnv, type GlyphCenter, type SelectionGlyphStyle,
+    type MarkResolver, type MarkResolverEnv, type GlyphCenter, type SelectionGlyphStyle, type SelectionModifiers,
 } from "./selection";
 // Deterministic charts for shapes with exactly one defensible answer: a single value, a
 // single categorical column, a single numeric column. Returns null for everything else, so
