@@ -48,6 +48,8 @@ const POINT_MAP_PARSED: ParsedGenerateResponse = {
     creditBalanceBefore: 120, creditCost: 3, isServiceError: false, isRateLimited: false,
     isRefusal: false, isVersionNotFound: false, isGenerationCancelled: false,
     retryAfterSeconds: null, servedCorrelationId: "",
+    // Added with the field (the body above has always sent false); nothing else in this pin moved.
+    overrideThumbnailUpload: false,
 };
 
 /** An origin-destination flow map: both ends named. */
@@ -117,6 +119,16 @@ describe("parseGenerateResponse", () => {
             expect([p.isServiceError, p.isRateLimited, p.isRefusal, p.isVersionNotFound, p.isGenerationCancelled], String(v))
                 .toEqual([false, false, false, false, false]);
         }
+    });
+
+    it("the account's thumbnail override: true or false when sent as a boolean, else absent", () => {
+        expect(parseGenerateResponse({ overrideThumbnailUpload: true }).overrideThumbnailUpload).toBe(true);
+        expect(parseGenerateResponse({ OverrideThumbnailUpload: true }).overrideThumbnailUpload).toBe(true);
+        expect(parseGenerateResponse({ overrideThumbnailUpload: false }).overrideThumbnailUpload).toBe(false);
+        for (const v of [null, undefined, "true", 1, {}]) {
+            expect("overrideThumbnailUpload" in parseGenerateResponse({ overrideThumbnailUpload: v }), String(v)).toBe(false);
+        }
+        expect("overrideThumbnailUpload" in parseGenerateResponse({})).toBe(false);
     });
 
     it("credit numbers: a number, a numeric string, else null", () => {

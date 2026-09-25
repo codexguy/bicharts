@@ -74,6 +74,13 @@ export interface ParsedGenerateResponse {
     retryAfterSeconds: number | null;
     /** Whose generation a fetch by correlation served; "" when the server did not say. */
     servedCorrelationId: string;
+    /**
+     * The account's thumbnail override - an account-level "include thumbnails" setting, which a
+     * host counts as the reader's consent to upload a new chart's first rendering. Unlike the flags
+     * above it has THREE states: true or false when the server sent a boolean, and ABSENT when it
+     * did not, so a host can keep what an earlier answer said rather than read silence as "no".
+     */
+    overrideThumbnailUpload?: boolean;
 }
 
 const POINT_ROLES: ReadonlyArray<[keyof WirePointColumns, string]> = [
@@ -98,6 +105,7 @@ function pointColumns(data: unknown, prefix: string): WirePointColumns {
 export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     const f = (name: string) => readWireField(data, name);
     const retry = f("retryAfterSeconds");
+    const thumbnailOverride = f("overrideThumbnailUpload");
     const point: WirePointBinding = pointColumns(data, "point");
     // THE ROUTE'S SECOND ENDPOINT, nested under `dest` so the two ends can never be confused.
     // Dropping it is not a degraded map but a broken one: a route with one resolved end has
@@ -132,6 +140,7 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
         isGenerationCancelled: flag(f("isGenerationCancelled")),
         retryAfterSeconds: typeof retry === "number" && Number.isFinite(retry) ? retry : null,
         servedCorrelationId: str(f("servedCorrelationId")),
+        ...(typeof thumbnailOverride === "boolean" ? { overrideThumbnailUpload: thumbnailOverride } : {}),
     };
 }
 
