@@ -23,6 +23,8 @@
 //                    retry passes straight through. Suppressing a retry would be a far worse bug
 //                    than the one being fixed.
 //   - gennew, pick - a different intent is a different request.
+//   - intent, text - optional, for a host whose request carries more than the above (an adjustment's
+//                    intent, the reader's typed request): a different one is a different request.
 //
 // And the window is 2.5 s against a generation that takes 25-300 s. A user cannot receive a chart
 // and ask for another one inside it; the only thing that fits in 2.5 s is a machine firing twice.
@@ -41,6 +43,17 @@ export interface GenerateGuardKey {
     favorStyle: string;
     /** The retry counter. Differs on every retry, so a retry is never suppressed. */
     trycnt: number;
+    /**
+     * Anything else the host's request asks for that makes it a different request - an adjustment's
+     * intent, a chosen projection. Absent and "" are the same. A host that keys only on the fields
+     * above passes none, and its guard behaves exactly as before.
+     */
+    intent?: string;
+    /**
+     * The reader's typed request text. A different text is a different request and always passes.
+     * Absent and "" are the same.
+     */
+    text?: string;
 }
 
 /** The last generate a host started, plus whether it is still running. */
@@ -58,7 +71,9 @@ function sameRequest(a: GenerateGuardKey, b: GenerateGuardKey): boolean {
     return a.schemaHash === b.schemaHash
         && a.gennew === b.gennew
         && a.trycnt === b.trycnt
-        && a.favorStyle === b.favorStyle;
+        && a.favorStyle === b.favorStyle
+        && (a.intent ?? "") === (b.intent ?? "")
+        && (a.text ?? "") === (b.text ?? "");
 }
 
 /**

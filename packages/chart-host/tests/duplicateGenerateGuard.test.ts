@@ -90,3 +90,37 @@ describe("duplicate generate guard", () => {
         expect(armed).toMatchObject({ ...KEY, startedAt: 777, inFlight: true });
     });
 });
+
+describe("duplicate generate guard - a host that also keys on intent and typed text", () => {
+    const TYPED: GenerateGuardKey = { ...KEY, intent: "generate", text: "revenue by region" };
+
+    it("suppresses the same typed request fired twice", () => {
+        const prev = armGenerateGuard(TYPED, 1000);
+        prev.inFlight = false;
+        expect(isDuplicateGenerate(prev, { ...TYPED }, 1300)).toBe(true);
+    });
+
+    it("never suppresses a different typed text - the reader asked for something else", () => {
+        const prev = armGenerateGuard(TYPED, 1000);
+        prev.inFlight = false;
+        expect(isDuplicateGenerate(prev, { ...TYPED, text: "revenue by segment" }, 1300)).toBe(false);
+    });
+
+    it("never suppresses a different intent - an adjustment is not the generate before it", () => {
+        const prev = armGenerateGuard(TYPED, 1000);
+        prev.inFlight = false;
+        expect(isDuplicateGenerate(prev, { ...TYPED, intent: "similar" }, 1300)).toBe(false);
+    });
+
+    it("reads an absent intent or text as the empty one, so a host that passes none is unchanged", () => {
+        const prev = armGenerateGuard(KEY, 1000);
+        prev.inFlight = false;
+        expect(isDuplicateGenerate(prev, { ...KEY, intent: "", text: "" }, 1300)).toBe(true);
+        expect(isDuplicateGenerate(prev, { ...KEY, text: "x" }, 1300)).toBe(false);
+    });
+
+    it("the state it records carries the intent and text it was armed with", () => {
+        const s = armGenerateGuard(TYPED, 5);
+        expect([s.intent, s.text, s.startedAt, s.inFlight]).toEqual(["generate", "revenue by region", 5, true]);
+    });
+});
