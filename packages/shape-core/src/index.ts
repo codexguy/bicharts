@@ -185,6 +185,14 @@ export {
 } from "./vocab/periodCodes";
 export type { PeriodCodeGrain, PeriodCodeForms, PeriodCodeReading, PeriodCodeSeries } from "./vocab/periodCodes";
 
+// IDENTIFIER WORDS (2026-09-25): the other languages' words that make a column an identifier
+// (`Kundennummer`, `Código Postal`, `客户编号`), each in the position its language puts it - read by
+// isIdentifierName where the English words find nothing.
+export {
+    IDENTIFIER_WORDS, IDENTIFIER_HEAD_INITIAL, IDENTIFIER_UNFOLDED, localizedIdentifierWordIn,
+} from "./vocab/identifierWords";
+export type { IdentifierWordHit } from "./vocab/identifierWords";
+
 // THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
 // script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,
 // and the views a vocabulary needs where whole words are blind: compound suffixes, glued prefixes

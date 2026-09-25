@@ -22,6 +22,7 @@ import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeD
 import { nameLetterRuns, foldName } from "./nameReader";
 import { localizedYearWordIn } from "./vocab/calendarWords";
 import { readPeriodCode } from "./vocab/periodCodes";
+import { localizedIdentifierWordIn } from "./vocab/identifierWords";
 import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
@@ -90,7 +91,10 @@ export function isIdentifierName(name: string): boolean {
     if (!name) return false;
     const tokens = nameWords(name);
     if (tokens.length === 0) return false;
-    return IDENTIFIER_NAME_TOKENS.has(tokens[tokens.length - 1]);
+    if (IDENTIFIER_NAME_TOKENS.has(tokens[tokens.length - 1])) return true;
+    // Another language's identifier word (vocab/identifierWords.ts), in the position its language puts
+    // it, read only where the English words find nothing: `Kundennummer`, `Código Postal`, `客户编号`.
+    return localizedIdentifierWordIn(name) !== null;
 }
 
 export type ValueNature = "Continuous" | "Ordinal" | "Categorical";
