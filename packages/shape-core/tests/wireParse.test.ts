@@ -131,6 +131,17 @@ describe("parseGenerateResponse", () => {
         expect("overrideThumbnailUpload" in parseGenerateResponse({})).toBe(false);
     });
 
+    it("the server's forced thumbnail capture: true or false when sent as a boolean, else absent", () => {
+        expect(parseGenerateResponse({ forceThumbnailUpload: true }).forceThumbnailUpload).toBe(true);
+        expect(parseGenerateResponse({ ForceThumbnailUpload: true }).forceThumbnailUpload).toBe(true);
+        expect(parseGenerateResponse({ forceThumbnailUpload: false }).forceThumbnailUpload).toBe(false);
+        for (const v of [null, undefined, "true", 1, {}]) {
+            expect("forceThumbnailUpload" in parseGenerateResponse({ forceThumbnailUpload: v }), String(v)).toBe(false);
+        }
+        // Every body shaped as a server before this field sends: nothing forced.
+        expect("forceThumbnailUpload" in parseGenerateResponse(POINT_MAP)).toBe(false);
+    });
+
     it("credit numbers: a number, a numeric string, else null", () => {
         expect(parseGenerateResponse({ creditBalanceBefore: 0, creditCost: "2.5" })).toMatchObject({ creditBalanceBefore: 0, creditCost: 2.5 });
         expect(parseGenerateResponse({ creditBalanceBefore: "x", creditCost: " " })).toMatchObject({ creditBalanceBefore: null, creditCost: null });

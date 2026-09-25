@@ -81,6 +81,13 @@ export interface ParsedGenerateResponse {
      * did not, so a host can keep what an earlier answer said rather than read silence as "no".
      */
     overrideThumbnailUpload?: boolean;
+    /**
+     * The server's forced thumbnail capture for this account - a diagnostic rule that captures a
+     * new chart's first rendering whatever the reader chose, and is never the reader's consent.
+     * Three states, as the override: true or false when the server sent a boolean, absent when it
+     * did not (an older server), so silence never forces anything.
+     */
+    forceThumbnailUpload?: boolean;
 }
 
 const POINT_ROLES: ReadonlyArray<[keyof WirePointColumns, string]> = [
@@ -106,6 +113,7 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     const f = (name: string) => readWireField(data, name);
     const retry = f("retryAfterSeconds");
     const thumbnailOverride = f("overrideThumbnailUpload");
+    const thumbnailForced = f("forceThumbnailUpload");
     const point: WirePointBinding = pointColumns(data, "point");
     // THE ROUTE'S SECOND ENDPOINT, nested under `dest` so the two ends can never be confused.
     // Dropping it is not a degraded map but a broken one: a route with one resolved end has
@@ -141,6 +149,7 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
         retryAfterSeconds: typeof retry === "number" && Number.isFinite(retry) ? retry : null,
         servedCorrelationId: str(f("servedCorrelationId")),
         ...(typeof thumbnailOverride === "boolean" ? { overrideThumbnailUpload: thumbnailOverride } : {}),
+        ...(typeof thumbnailForced === "boolean" ? { forceThumbnailUpload: thumbnailForced } : {}),
     };
 }
 
