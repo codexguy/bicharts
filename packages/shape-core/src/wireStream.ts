@@ -2,7 +2,8 @@
 // the single JSON body an older server or a buffering proxy answers with instead.
 //
 // The stream is one JSON object per line, each with a `type`: `progress` (a heartbeat carrying a
-// stage label) or `result` (the result object, wrapped). Every host read it with its own copy,
+// stage label, and from servers of 2026-09-25 a `stageId` beside it) or `result` (the result object,
+// wrapped). Every host read it with its own copy,
 // and the copies disagreed at the edges; this is the one reader, and its rules are these.
 //
 // 1. THE CONTENT TYPE DECIDES FIRST. A response labelled NDJSON is read as a stream, line by
@@ -55,8 +56,12 @@ export function wireResponseFromFetch(res: {
 
 type Line = { result: Record<string, any> | null; typed: boolean; parsed: boolean };
 
+/** A progress line: the stage's display text (never empty) and its code, undefined from an older
+ *  server. */
+export type OnStage = (stage: string, stageId?: string) => void;
+
 /** One line of text: the result it carries (typed or legacy), whether it was typed, whether it parsed. */
-function readLine(text: string, onStage: ((stage: string) => void) | undefined, legacyNeedsFields: boolean): Line {
+function readLine(text: string, onStage: OnStage | undefined, legacyNeedsFields: boolean): Line {
     const t = text.trim();
     if (!t) return { result: null, typed: false, parsed: false };
     let obj: any;
@@ -65,13 +70,14 @@ function readLine(text: string, onStage: ((stage: string) => void) | undefined, 
 }
 
 /** One parsed value, by rules 3 and 5. */
-function classify(obj: any, onStage: ((stage: string) => void) | undefined, legacyNeedsFields: boolean): Line {
+function classify(obj: any, onStage: OnStage | undefined, legacyNeedsFields: boolean): Line {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { result: null, typed: false, parsed: true };
     const type = readWireField(obj, "type");
     if (type !== undefined && type !== null) {
         if (type === "progress") {
             const stage = String(readWireField(obj, "stage") ?? "").trim();
-            if (stage) onStage?.(stage);
+            const stageId = String(readWireField(obj, "stageId") ?? "").trim();
+            if (stage) onStage?.(stage, stageId || undefined);
             return { result: null, typed: true, parsed: true };
         }
         if (type === "result") {
@@ -89,7 +95,7 @@ function classify(obj: any, onStage: ((stage: string) => void) | undefined, lega
 class LineReader {
     result: Record<string, any> | null = null;
     anyParsed = false;
-    constructor(private readonly onStage?: (stage: string) => void) {}
+    constructor(private readonly onStage?: OnStage) {}
     take(text: string): void {
         const l = readLine(text, this.onStage, true);
         if (l.parsed) this.anyParsed = true;
@@ -102,7 +108,7 @@ function noResult(): Error {
     return new Error("the generate response ended without a result");
 }
 
-async function readStream(res: WireResponse, onStage?: (stage: string) => void): Promise<Record<string, any>> {
+async function readStream(res: WireResponse, onStage?: OnStage): Promise<Record<string, any>> {
     const body: any = res.body;
     if (!body || typeof body.getReader !== "function") return readLines(await res.text(), onStage, null);
     const reader = body.getReader();
@@ -133,7 +139,7 @@ async function readStream(res: WireResponse, onStage?: (stage: string) => void):
     return lines.result;
 }
 
-function readLines(text: string, onStage: ((stage: string) => void) | undefined, parseError: unknown): Record<string, any> {
+function readLines(text: string, onStage: OnStage | undefined, parseError: unknown): Record<string, any> {
     const lines = new LineReader(onStage);
     for (const line of text.split("\n")) lines.take(line);
     if (lines.result) return lines.result;
@@ -141,7 +147,7 @@ function readLines(text: string, onStage: ((stage: string) => void) | undefined,
     throw noResult();
 }
 
-async function readBuffered(res: WireResponse, onStage?: (stage: string) => void): Promise<Record<string, any>> {
+async function readBuffered(res: WireResponse, onStage?: OnStage): Promise<Record<string, any>> {
     const text = await res.text();
     let whole: any;
     try {
@@ -163,12 +169,14 @@ async function readBuffered(res: WireResponse, onStage?: (stage: string) => void
 
 /**
  * The generate result a response carries, whether it streamed or not. `onStage` receives each
- * non-empty progress stage label as it arrives. Throws when there is no result (see the rules at
- * the top of this file for which error means what).
+ * progress line as it arrives: the stage label (display text) and, from a server that sends one,
+ * its `stageId` - the code a host picks its own waiting lines by (see `progressStageOf`), never the
+ * label. A line with no label is skipped, as it always was. Throws when there is no result (see the rules at the top
+ * of this file for which error means what).
  */
 export async function readGenerateStream(
     res: WireResponse,
-    onStage?: (stage: string) => void,
+    onStage?: OnStage,
 ): Promise<Record<string, any>> {
     return isNdjsonContentType(res.contentType) ? readStream(res, onStage) : readBuffered(res, onStage);
 }

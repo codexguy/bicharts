@@ -37,10 +37,32 @@ export interface WirePointBinding extends WirePointColumns {
     dest?: WirePointColumns;
 }
 
+/** One sentence of the composed warning, with the code that names it. */
+export interface ParsedNotice {
+    /** Stable, kebab-case ("summed-rate", "pick-substituted", ...); "" when the server sent none. */
+    code: string;
+    /** "blocked" | "substituted" | "data" | "advisory", or "" when absent. */
+    severity: string;
+    text: string;
+}
+
 /** A generate result's fields, typed. */
 export interface ParsedGenerateResponse {
     /** The server's own words when it declined. "" on a success. */
     errorMessage: string;
+    /** WHICH message errorMessage is, as a stable code; "" on a success and from an older server.
+     *  Decide by this, never by the sentence (messageCodes.ts). */
+    errorCode: string;
+    /** Which refusal, when the server declined before any model ran; "" otherwise. */
+    refusalCode: string;
+    /** Whether the same request sent again can answer differently: true or false when the server
+     *  said, null when it did not (a success, or an older server - decide as before). */
+    retryable: boolean | null;
+    /** The composed warning, sentence by sentence; [] when there is none or the server is older.
+     *  Joining the texts in order gives warningMessage. */
+    notices: ParsedNotice[];
+    /** Which freemium state freemiumStatusMessage states; "" when absent. */
+    freemiumStatusCode: string;
     code: string;
     language: string;
     /** 0 when absent. */
@@ -105,6 +127,16 @@ function pointColumns(data: unknown, prefix: string): WirePointColumns {
     return out;
 }
 
+/** The notices array, each entry read in either casing; entries with no text are dropped. */
+function parseNotices(raw: unknown): ParsedNotice[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((n: unknown): ParsedNotice => ({
+        code: str(readWireField(n, "code")),
+        severity: str(readWireField(n, "severity")),
+        text: str(readWireField(n, "text")),
+    })).filter(n => n.text !== "");
+}
+
 /**
  * A generate result body -> its fields, typed. Also reads a fetch by correlation and the fix a
  * vision review returns, which are the same shape. A null or non-object body reads as empty.
@@ -120,8 +152,14 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     // nothing to draw an arc between.
     const dest = pointColumns(data, "destPoint");
     if (Object.keys(dest).length) point.dest = dest;
+    const retryable = f("retryable");
     return {
         errorMessage: str(f("errorMessage")),
+        errorCode: str(f("errorCode")),
+        refusalCode: str(f("refusalCode")),
+        retryable: typeof retryable === "boolean" ? retryable : null,
+        notices: parseNotices(f("notices")),
+        freemiumStatusCode: str(f("freemiumStatusCode")),
         code: str(f("code")),
         language: str(f("language")),
         version: Number(f("version") ?? 0),
@@ -181,6 +219,9 @@ export interface ParsedQualifyRefusal {
     name: string;
     /** A sentence naming one requirement the data fails; "" when the server could not name it. */
     reason: string;
+    /** Which gate wrote the reason, as a stable code; "" when there is no reason or the server is
+     *  older. A host may word a code it knows itself; the sentence is the fallback. */
+    reasonCode: string;
     /**
      * True only when the server said so: a required channel is absent and no rebinding supplies
      * it. Absent, null or anything but true reads as a preference an explicit pick may override -
@@ -192,6 +233,8 @@ export interface ParsedQualifyRefusal {
 /** A qualify answer's fields, typed. */
 export interface ParsedQualifyResponse {
     errorMessage: string;
+    /** Which message errorMessage is; "" on success and from an older server. */
+    errorCode: string;
     /** In the server's order - it IS the ranking. null when the body carried no list at all. */
     charts: ParsedQualifyChart[] | null;
     refused: ParsedQualifyRefusal[];
@@ -229,11 +272,13 @@ export function parseQualifyResponse(data: unknown): ParsedQualifyResponse {
         ? rawRefused.map((r: unknown): ParsedQualifyRefusal => ({
             name: str(readWireField(r, "chartTypeName") ?? readWireField(r, "name")),
             reason: str(readWireField(r, "reason")),
+            reasonCode: str(readWireField(r, "reasonCode")),
             isVeto: flag(readWireField(r, "isVeto")),
         })).filter(r => r.name)
         : [];
     return {
         errorMessage: str(readWireField(data, "errorMessage")),
+        errorCode: str(readWireField(data, "errorCode")),
         charts,
         refused,
         noFitSummary: str(readWireField(data, "noFitSummary")),
@@ -253,6 +298,9 @@ export interface ParsedReviewVerdict {
      */
     fix: unknown;
     errorMessage: string | null;
+    /** Which message errorMessage is (a REVIEW_* or licence code); null when absent. A fix's own
+     *  code is on the fix. */
+    errorCode: string | null;
 }
 
 /** A vision-review body -> its verdict. null for a null or non-object body. */
@@ -264,5 +312,6 @@ export function parseReviewVerdict(data: unknown): ParsedReviewVerdict | null {
         instruction: readWireField(data, "instruction") ?? null,
         fix: readWireField(data, "fix") ?? null,
         errorMessage: readWireField(data, "errorMessage") ?? null,
+        errorCode: readWireField(data, "errorCode") ?? null,
     };
 }

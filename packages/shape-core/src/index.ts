@@ -88,6 +88,7 @@ export type {
     LLMRequestCode,
     LLMQualifyResult,
     LLMRequestCodeResult,
+    LLMResultNotice,
     GetLicenseStatusResult,
 } from "./models";
 
@@ -229,13 +230,23 @@ export type { GzipText } from "./wire";
 // READING A GENERATE RESPONSE (2026-09-24): the NDJSON stream or the buffered JSON body, by one set
 // of rules - the content type decides first, an unknown line is skipped, no result is a loud throw.
 export { readGenerateStream, isNdjsonContentType, wireResponseFromFetch } from "./wireStream";
+export type { OnStage } from "./wireStream";
 // WHAT A RESPONSE SAYS (2026-09-24): one field list each for a generate result, a qualify answer
 // and a review verdict, every field in either casing, typed - fields only, the policy stays in the host.
 export { parseGenerateResponse, parseQualifyResponse, parseReviewVerdict } from "./wireParse";
 export type {
     ParsedGenerateResponse, ParsedQualifyResponse, ParsedQualifyChart, ParsedQualifyRefusal,
-    ParsedReviewVerdict, WirePointBinding, WirePointColumns,
+    ParsedReviewVerdict, ParsedNotice, WirePointBinding, WirePointColumns,
 } from "./wireParse";
+// THE SERVER'S MESSAGE CODES A HOST DECIDES BY (2026-09-25): every server message carries a stable
+// code beside its text, and a host branches on the code - never the text, which is due to be
+// translated. The progress stage, the freemium state a painted chart contradicts, the stale-secret
+// licence answer, the retry flag.
+export {
+    PROGRESS_STAGE_IDS, progressStageOf, FREEMIUM_ATTEMPT_SPENT, CLIENT_SECRET_MISMATCH, FREEMIUM_COLUMN_CAP,
+    answerIsRetryable,
+} from "./messageCodes";
+export type { ProgressStageId } from "./messageCodes";
 // BUILDING A GENERATE REQUEST (2026-09-25): the concerns every host applies by the same rule, each a
 // function returning the fields it owns - the host places them where it always did.
 export {

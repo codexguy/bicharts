@@ -762,6 +762,8 @@ export type LLMOfferedShortlist =
 export type LLMQualifyResult =
     {
         errorMessage?: string,
+        // WHICH MESSAGE errorMessage carries (servers from 2026-09-25); absent on success.
+        errorCode?: string,
         charts?: {
             name?: string,
             description?: string,
@@ -833,6 +835,9 @@ export type LLMQualifyResult =
             // the membership to know the greying is an ANSWER rather than a decoration
             // that failed to load.
             reason?: string,
+            // WHICH GATE wrote `reason`, as a stable code - one per sentence template, so a host can word
+            // it for itself (servers from 2026-09-25). Absent exactly when `reason` is.
+            reasonCode?: string,
             // IS THIS AN IMPOSSIBILITY OR A PREFERENCE? Added 2026-09-01.
             //
             // True means a required CHANNEL IS ABSENT and no rebinding of these columns
@@ -903,6 +908,21 @@ export type LLMRequestCodeResult =
         // edited (it gained a date-hierarchy clause the same day); the code is what they read first, the
         // wording only for an older server. Absent on success and on every other answer.
         refusalCode?: string,
+        // WHICH MESSAGE errorMessage carries, as a stable code (servers from 2026-09-25): set on every
+        // errorMessage, absent on success. A host decides by this and never by the sentence - the sentence
+        // is display text and is due to be translated, which would silently blind any host that matched
+        // it. See messageCodes.ts for the codes hosts branch on. Absent from an older server.
+        errorCode?: string,
+        // Whether sending the SAME request again can get a different answer (servers from 2026-09-25):
+        // true only for the transient classes (a provider timeout, an unreachable or overloaded provider,
+        // a preparation step that failed before anything ran); false for every verdict, throttle and
+        // undiagnosed failure; absent on success and from an older server, which a host reads as "not
+        // said" and decides as it did before.
+        retryable?: boolean,
+        // The composed warningMessage, sentence by sentence, each with the code that names it (servers
+        // from 2026-09-25). Joining the texts in order gives warningMessage exactly. A host that knows a
+        // code may word it itself; one that does not shows the text. Absent when warningMessage is empty.
+        notices?: LLMResultNotice[],
         // Blocked by the per-DEVICE/IP rate limit (not per-key credit exhaustion).
         // The client shows a coherent "daily device limit" message instead of the
         // contradictory "Freemium: 0% used" banner. 2026-06-21.
@@ -966,6 +986,10 @@ export type LLMRequestCodeResult =
         freemiumPercentUsedRaw?: number,
         freemiumExhausted?: boolean,
         freemiumStatusMessage?: string,
+        // WHICH freemium state freemiumStatusMessage states (servers from 2026-09-25). FREEMIUM_ATTEMPT_SPENT
+        // is the one message that claims no chart was produced - the one a chart already on screen
+        // contradicts. Absent when there is no message, and from an older server.
+        freemiumStatusCode?: string,
         // Author-facing reply from the codegen LLM (modify requests only).
         // Surfaces in the visual's hover panel during edit mode so the report
         // author knows whether their change request was honored, partially
@@ -1020,9 +1044,25 @@ export type LLMRequestCodeResult =
         destPointLonColumn?: string,
         destPointCountryColumn?: string
     };
+// One sentence of a generate result's composed warningMessage, with its code (servers from 2026-09-25).
+export type LLMResultNotice =
+    {
+        // Stable, kebab-case: "summed-rate", "projection-disclosure", "pick-substituted", ...
+        code?: string,
+        // "blocked" | "substituted" | "data" | "advisory" - the reader's priority.
+        severity?: string,
+        text?: string,
+    };
+
 export type GetLicenseStatusResult =
     {
         errorMessage: string,
+        // WHICH MESSAGE errorMessage carries (servers from 2026-09-25): CLIENT_SECRET_MISMATCH,
+        // LICENSE_EXPIRED, TRIAL_EXPIRED, ... A host decides by this, never by the sentence. Absent on an
+        // answer with no message and from an older server.
+        errorCode?: string,
+        // WHICH freemium state freemiumStatusMessage states (servers from 2026-09-25).
+        freemiumStatusCode?: string,
         canContinue: boolean,
         creditsLeft?: number,
         warnCredits: boolean,

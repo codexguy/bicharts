@@ -50,6 +50,9 @@ const POINT_MAP_PARSED: ParsedGenerateResponse = {
     retryAfterSeconds: null, servedCorrelationId: "",
     // Added with the field (the body above has always sent false); nothing else in this pin moved.
     overrideThumbnailUpload: false,
+    // The message codes, added with the fields: a body without them (this one, an older server's
+    // shape) reads as "not said" - "" for a code, null for the retry flag, no notices.
+    errorCode: "", refusalCode: "", retryable: null, notices: [], freemiumStatusCode: "",
 };
 
 /** An origin-destination flow map: both ends named. */
@@ -196,8 +199,8 @@ describe("parseQualifyResponse", () => {
               detailNote: "shows every observation" },
         ]);
         expect(p.refused).toEqual([
-            { name: "Arc diagram", reason: "needs 2 category fields, and this data has 1 (Region)", isVeto: true },
-            { name: "Heatmap", reason: "", isVeto: false },
+            { name: "Arc diagram", reason: "needs 2 category fields, and this data has 1 (Region)", reasonCode: "", isVeto: true },
+            { name: "Heatmap", reason: "", reasonCode: "", isVeto: false },
         ]);
     });
 
@@ -219,14 +222,14 @@ describe("parseQualifyResponse", () => {
     it("an older server's names: chartTypeName and chartDesc", () => {
         const p = parseQualifyResponse({ charts: [{ chartTypeName: "Pie", chartDesc: "Slices." }], refused: [{ chartTypeName: "Map", reason: "no geo" }] });
         expect(p.charts![0]).toMatchObject({ name: "Pie", description: "Slices." });
-        expect(p.refused[0]).toEqual({ name: "Map", reason: "no geo", isVeto: false });
+        expect(p.refused[0]).toEqual({ name: "Map", reason: "no geo", reasonCode: "", isVeto: false });
     });
 
     it("no list at all is null, not an empty list; a missing refusal list is empty", () => {
         expect(parseQualifyResponse({ errorMessage: "No licence." })).toEqual(
-            { errorMessage: "No licence.", charts: null, refused: [], noFitSummary: "" });
+            { errorMessage: "No licence.", errorCode: "", charts: null, refused: [], noFitSummary: "" });
         expect(parseQualifyResponse({ charts: "nope" }).charts).toBeNull();
-        expect(parseQualifyResponse(null)).toEqual({ errorMessage: "", charts: null, refused: [], noFitSummary: "" });
+        expect(parseQualifyResponse(null)).toEqual({ errorMessage: "", errorCode: "", charts: null, refused: [], noFitSummary: "" });
     });
 });
 
@@ -234,15 +237,15 @@ describe("parseReviewVerdict", () => {
     it("reads either casing and keeps the fix as the raw generate body", () => {
         const fix = { code: "function render(){}", version: 9 };
         expect(parseReviewVerdict({ status: "OK", verdictReason: "tidied", instruction: null, fix, errorMessage: null }))
-            .toEqual({ status: "OK", verdictReason: "tidied", instruction: null, fix, errorMessage: null });
+            .toEqual({ status: "OK", verdictReason: "tidied", instruction: null, fix, errorMessage: null, errorCode: null });
         expect(parseReviewVerdict({ Status: "PROPOSED", VerdictReason: "labels overlap", Instruction: "rotate the labels" }))
-            .toEqual({ status: "PROPOSED", verdictReason: "labels overlap", instruction: "rotate the labels", fix: null, errorMessage: null });
+            .toEqual({ status: "PROPOSED", verdictReason: "labels overlap", instruction: "rotate the labels", fix: null, errorMessage: null, errorCode: null });
     });
 
     it("a null or non-object body is no verdict", () => {
         expect(parseReviewVerdict(null)).toBeNull();
         expect(parseReviewVerdict(undefined)).toBeNull();
         expect(parseReviewVerdict("OK")).toBeNull();
-        expect(parseReviewVerdict({})).toEqual({ status: "", verdictReason: null, instruction: null, fix: null, errorMessage: null });
+        expect(parseReviewVerdict({})).toEqual({ status: "", verdictReason: null, instruction: null, fix: null, errorMessage: null, errorCode: null });
     });
 });
