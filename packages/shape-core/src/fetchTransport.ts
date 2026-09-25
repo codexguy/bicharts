@@ -7,8 +7,9 @@
 //  - a POST with the body and headers as given, and credentials "omit" unless the host asks
 //    otherwise: the service needs no cookie, and a page served from the service's own origin must
 //    not send one;
-//  - an HTTP status outside 2xx RESOLVES, with its body readable - a 4xx body carries the server's
-//    own explanation, and deciding what a status means is the caller's job, not the transport's;
+//  - an HTTP status outside 2xx RESOLVES, with its body and its reason phrase readable - a 4xx body
+//    carries the server's own explanation, and deciding what a status means is the caller's job,
+//    not the transport's;
 //  - the deadline covers the WHOLE exchange: no headers in time rejects with a TimeoutError, and a
 //    body still arriving when it passes errors with one, so a stalled stream cannot hold its caller;
 //  - a caller's signal cancels at any point.
@@ -21,6 +22,7 @@ import { wireResponseFromFetch } from "./wireStream";
 /** A platform fetch, or anything shaped like one. Called as a plain function. */
 export type FetchFunction = (input: string, init?: any) => Promise<{
     status?: number;
+    statusText?: string;
     headers?: { get(name: string): string | null } | null;
     body?: ReadableStream<Uint8Array> | null;
     text(): Promise<string>;
@@ -71,10 +73,11 @@ export function fetchTransport(fetchFn: FetchFunction, options: FetchTransportOp
                 throw failure(e);
             }
             const wire = wireResponseFromFetch(res);
+            const phrase = wire.statusText !== undefined ? { statusText: wire.statusText } : {};
             if (!wire.body) {
                 // Nothing to stream: text() is the only read, and it ends the deadline.
                 return {
-                    status: wire.status, contentType: wire.contentType, body: null,
+                    status: wire.status, ...phrase, contentType: wire.contentType, body: null,
                     text: async () => {
                         try { return await wire.text(); } catch (e) { throw failure(e); } finally { done(); }
                     },
@@ -100,7 +103,7 @@ export function fetchTransport(fetchFn: FetchFunction, options: FetchTransportOp
                 },
             });
             return {
-                status: wire.status, contentType: wire.contentType, body,
+                status: wire.status, ...phrase, contentType: wire.contentType, body,
                 text: () => new Response(body).text(),
             };
         },

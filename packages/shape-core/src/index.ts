@@ -275,3 +275,11 @@ export type { TelemetryClient, TelemetryServices, TelemetryEnv, TelemetryFailure
 // the deadline covers the whole exchange - for any host that has a fetch. See fetchTransport.ts.
 export { fetchTransport } from "./fetchTransport";
 export type { FetchFunction, FetchTransportOptions } from "./fetchTransport";
+// THE GENERATE CLIENT (2026-09-25): the post and the read of a generation, a what-fits list, an image
+// review and an example chart, over the host's transport - each resolving as an answer, an HTTP status
+// or a transport failure that the host words and acts on. See generateClient.ts.
+export { createGenerateClient, HTTP_BODY_START_CHARS } from "./generateClient";
+export type {
+    GenerateClient, GenerateClientServices, GenerateClientEnv, GenerateCall, WireOutcome, AnswerOutcome,
+    HttpOutcome, TransportOutcome, WireCallOptions, GenerateCallOptions, QualifyCallOptions,
+} from "./generateClient";

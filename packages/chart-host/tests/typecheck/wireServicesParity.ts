@@ -11,6 +11,8 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 export const wireServicesParity: {
     signer: Same<Ours.WireSigner, Theirs.WireSigner>;
     response: Same<Ours.WireResponse, Theirs.WireResponse>;
+    // Mutual assignability cannot see an OPTIONAL member restated on one side only; the key sets can.
+    responseKeys: Same<keyof Ours.WireResponse, keyof Theirs.WireResponse>;
     transport: Same<Ours.WireTransport, Theirs.WireTransport>;
     triple: Same<Ours.CredentialTriple, Theirs.CredentialTriple>;
     credentials: Same<Ours.CredentialSource, Theirs.CredentialSource>;
@@ -22,6 +24,6 @@ export const wireServicesParity: {
     // HostServices carries every WireServices member with the same optionality.
     wireHalf: Same<Pick<Ours.HostServices, keyof Theirs.WireServices>, Theirs.WireServices>;
 } = {
-    signer: true, response: true, transport: true, triple: true, credentials: true,
+    signer: true, response: true, responseKeys: true, transport: true, triple: true, credentials: true,
     viewport: true, clock: true, entry: true, sink: true, renderer: true, wireHalf: true,
 };

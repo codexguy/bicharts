@@ -40,6 +40,12 @@ export interface WireSigner {
  */
 export interface WireResponse {
     status: number;
+    /**
+     * The status line's reason phrase ("Gateway Timeout"), as the platform reports it. Empty over
+     * HTTP/2, which has none, and absent from a transport that cannot see it. A host that words a
+     * failure from the phrase reads it here; nothing else should.
+     */
+    statusText?: string;
     /** The Content-Type header as sent, or null when the server sent none. */
     contentType: string | null;
     body: ReadableStream<Uint8Array> | null;
@@ -53,6 +59,8 @@ export interface WireResponse {
  * `timeoutMs` is the host's deadline for the whole exchange; `signal` lets a caller cancel
  * earlier. A timeout or an abort rejects the promise; an HTTP error status does NOT reject -
  * it resolves with that status, because a 4xx body carries the server's own explanation.
+ * A rejection (or a body error) caused by the deadline is an error named "TimeoutError", so a
+ * caller can tell the deadline from a dropped connection without knowing which transport ran.
  */
 export interface WireTransport {
     post(

@@ -29,6 +29,7 @@ export interface WireSigner {
 /** The response half of a transport. See @bicharts/shape-core's host/services.ts. */
 export interface WireResponse {
     status: number;
+    statusText?: string;
     contentType: string | null;
     body: ReadableStream<Uint8Array> | null;
     text(): Promise<string>;

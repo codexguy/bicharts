@@ -40,6 +40,7 @@ export function isNdjsonContentType(contentType: string | null | undefined): boo
  */
 export function wireResponseFromFetch(res: {
     status?: number;
+    statusText?: string;
     headers?: { get(name: string): string | null } | null;
     body?: ReadableStream<Uint8Array> | null;
     text(): Promise<string>;
@@ -48,6 +49,8 @@ export function wireResponseFromFetch(res: {
     try { contentType = res.headers?.get?.("content-type") ?? null; } catch { contentType = null; }
     return {
         status: typeof res.status === "number" ? res.status : 0,
+        // The reason phrase only when the response has one to give; a double without it stays without.
+        ...(typeof res.statusText === "string" ? { statusText: res.statusText } : {}),
         contentType,
         body: res.body ?? null,
         text: () => res.text(),

@@ -49,6 +49,11 @@ function describeThrow(e: unknown): string {
     return e instanceof Error ? `${e.name}: ${e.message}` : String(e);
 }
 
+/** The `name` of a thrown value, whatever its class; "" when it has none. */
+function errorName(e: unknown): string {
+    return e && typeof e === "object" && typeof (e as { name?: unknown }).name === "string" ? (e as { name: string }).name : "";
+}
+
 /**
  * A WireSigner signs deterministically, returns a non-blank string, and gives two different
  * bodies two different signatures. It does not check the KEY - only the server can say
@@ -187,9 +192,10 @@ async function within<T>(p: Promise<T>, ms: number): Promise<{ settled: true; ok
  * that wires that client to the given fetch. Driven through what every transport meets: an ordinary
  * post (url, method, body and headers reach the network as given), an HTTP error (RESOLVES with its
  * status, and its body is still readable - a 4xx body carries the server's own explanation), a 204,
- * a network failure (rejects), no answer inside the deadline (rejects, and the request is aborted so
- * the socket drops), a body that stalls after headers that came in time (the deadline covers the
- * whole exchange, so the read ends in an error), and a caller's signal (rejects when it aborts). Uses
+ * a network failure (rejects), no answer inside the deadline (rejects with an error named
+ * TimeoutError, and the request is aborted so the socket drops), a body that stalls after headers
+ * that came in time (the deadline covers the whole exchange, so the read ends in a TimeoutError),
+ * and a caller's signal (rejects when it aborts). Uses
  * real timers and a deadline of a few tens of milliseconds.
  */
 export async function assertWireTransportConformance(make: (fetch: FetchLike) => WireTransport): Promise<void> {
@@ -277,6 +283,10 @@ export async function assertWireTransportConformance(make: (fetch: FetchLike) =>
         }));
         const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: DEADLINE }), PATIENCE);
         r.check(out.settled && !out.ok, `no answer inside a ${DEADLINE} ms deadline did not reject within ${PATIENCE} ms`);
+        if (out.settled && out.ok === false) {
+            r.check(errorName(out.error) === "TimeoutError",
+                `the deadline's rejection was named ${JSON.stringify(errorName(out.error))}, not "TimeoutError" - a caller would read it as a dropped connection`);
+        }
         const sig = signal as AbortSignal | null;
         r.check(!!sig && sig.aborted, "the deadline passed but the request was not aborted - the socket would stay open");
     } catch (e) {
@@ -304,6 +314,10 @@ export async function assertWireTransportConformance(make: (fetch: FetchLike) =>
             const read = await within(readGenerateStream(out.value), PATIENCE);
             r.check(read.settled && read.ok === false,
                 `a body that stalled after its headers was still being read ${PATIENCE} ms after a ${DEADLINE} ms deadline`);
+            if (read.settled && read.ok === false) {
+                r.check(errorName(read.error) === "TimeoutError",
+                    `the deadline's body error was named ${JSON.stringify(errorName(read.error))}, not "TimeoutError" - a caller would read it as a dropped connection`);
+            }
             const sig = signal as AbortSignal | null;
             r.check(!!sig && sig.aborted, "the deadline passed mid-body but the request was not aborted - the socket would stay open");
         }

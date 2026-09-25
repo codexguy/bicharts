@@ -163,4 +163,21 @@ describe("assertWireTransportConformance catches what it claims to", { timeout: 
         });
         expect(f).toContain("a header the caller set did not reach the network");
     });
+
+    it("a transport whose deadline surfaces as a plain abort, so a caller would read it as a dropped connection", async () => {
+        const f = await failuresOf(fetch => ({
+            post: async (url, body, headers, opts) => {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+                const res = await fetch(url, { method: "POST", body, headers, signal: controller.signal }).catch(e => {
+                    clearTimeout(timer);
+                    throw e;
+                });
+                // The deadline runs on through the body (it covers the whole exchange), but ends as an AbortError.
+                return { status: res.status, contentType: res.headers.get("content-type"), body: res.body, text: () => res.text() };
+            },
+        }));
+        expect(f.some(m => /deadline's rejection was named "AbortError"/.test(m))).toBe(true);
+        expect(f.some(m => /deadline's body error was named "AbortError"/.test(m))).toBe(true);
+    });
 });
