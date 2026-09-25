@@ -362,6 +362,12 @@ export {
 // are cached, whatever the current version is; restore it by itself after a licence is saved only when
 // the reader was parked on version 0. Pure; the host passes its persisted cache.
 export { canShowLastChart, shouldRestoreVersionAfterLicenseSave } from "./lastChart";
+// Filter narrowing (2026-09-25): a per-schema high-water row count tells "a filter took the rows away"
+// (fewer rows, or none, than this schema has delivered) from "the fields changed" (the schema moved).
+// Pure; the host keeps the high water.
+export {
+    isNarrowedByFilter, isEmptiedByFilter, updateRowHighWater, type NarrowingState,
+} from "./filterNarrowing";
 // Client identity (2026-09-24): the one ThumbmarkJS recipe every browser host fingerprints with - the user agent and
 // browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
 // per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
