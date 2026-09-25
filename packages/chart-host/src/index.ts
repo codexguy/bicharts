@@ -372,6 +372,12 @@ export {
 // host's terms capture by default) on the first render of a generation; the consent flag beside the
 // image is the opt-in alone. Pure; the host resolves each input.
 export { shouldCaptureThumbnail, type ThumbnailGate, type ThumbnailDecision } from "./thumbnailPolicy";
+// The model picker (2026-09-25): the rules every host's model list shares - no bring-your-own-key code in
+// the open list, the default marked " — default" and sorted first, a stale pick back to the default.
+// Labels, cost text and any row of the host's own stay the host's.
+export {
+    isPickableModelCode, markDefaultModel, defaultModelFirst, reconcileModelPick, DEFAULT_MODEL_SUFFIX,
+} from "./modelPicker";
 // Client identity (2026-09-24): the one ThumbmarkJS recipe every browser host fingerprints with - the user agent and
 // browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
 // per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
