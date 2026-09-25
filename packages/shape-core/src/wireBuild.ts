@@ -8,9 +8,49 @@
 //
 // A concern moves here only when every host already applies the same rule. Where hosts send
 // different values for one field, that difference is a decision, not a refactor, and it stays in
-// the hosts until it is made.
+// the hosts until it is made. Where the rule is shared and the values are each host's own policy,
+// only the rule is here: the host passes its values in.
 
-import type { ViewportSource } from "./host/services";
+import type { CredentialSource, ViewportSource } from "./host/services";
+
+/** A generate request's credential fields. */
+export interface CredentialFields {
+    /** The licence triple and the free-tier key: the first four fields of every host's request, in this order. */
+    request: { licenseKey: string; licensee: string; secretKey: string; freemiumKey: string };
+    /**
+     * The linked session's nonce as the wire carries it: trimmed, "" when the host has no live link
+     * right now. Null when the source has no `linkNonce` member - a host that never signs in by a
+     * linked session sends no such field. The host places it; it sits at a different key in each.
+     */
+    linkNonce: string | null;
+}
+
+/**
+ * THE CREDENTIALS A REQUEST CARRIES: ONE CREDENTIAL, AND A LINKED SESSION'S NONCE WINS.
+ *
+ * The server takes the linked-session path only when a nonce is present AND the licence triple is
+ * empty. So a request carrying both is not "either will do": the nonce is silently ignored and the
+ * triple authenticates, which is the hole a linked session exists to close (a triple lifted out of a
+ * saved file buys generation anywhere). A live nonce therefore travels INSTEAD of the triple, never
+ * beside it - and there is no fallback to the triple when the nonce is refused.
+ *
+ * What each value holds is the source's own: a host that resolves a mode (licensed or free tier) or
+ * trims what a reader typed does that in its source. The free-tier key rides beside either, "" when
+ * the source has none.
+ */
+export function credentialFields(source: CredentialSource): CredentialFields {
+    const linkNonce = source.linkNonce ? (source.linkNonce() ?? "").trim() : null;
+    const t = linkNonce ? { licensee: "", licenseKey: "", secretKey: "" } : source.triple();
+    return {
+        request: {
+            licenseKey: t.licenseKey,
+            licensee: t.licensee,
+            secretKey: t.secretKey,
+            freemiumKey: source.freemiumKey?.() ?? "",
+        },
+        linkNonce,
+    };
+}
 
 /** The two places a generate request states its drawing area, in the order they travel. */
 export interface ViewportFields {
