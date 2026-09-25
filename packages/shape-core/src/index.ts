@@ -226,5 +226,5 @@ export type {
 } from "./wireParse";
 // BUILDING A GENERATE REQUEST (2026-09-25): the concerns every host applies by the same rule, each a
 // function returning the fields it owns - the host places them where it always did.
-export { viewportFields } from "./wireBuild";
+export { viewportFields, maxNonMeasureCardinality } from "./wireBuild";
 export type { ViewportFields } from "./wireBuild";

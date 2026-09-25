@@ -39,3 +39,23 @@ export function viewportFields(source: ViewportSource): ViewportFields {
         hints: { viewportWidth: width, viewportHeight: height },
     };
 }
+
+/**
+ * THE LARGEST CATEGORY COUNT AMONG THE DIMENSIONS - the client hints' `maxNonMeasureCardinality`.
+ *
+ * The server reads it for its label-density and many-series advice: how many distinct values a chart
+ * may have to lay out along one axis or in one legend. Every host sends it by one rule: the largest `distinctCount`
+ * among the columns that are not measures, 0 when there is none. A count that is not a number is not
+ * a count and is skipped.
+ */
+export function maxNonMeasureCardinality(
+    columns: readonly { isMeasure?: boolean | null; distinctCount?: number | null }[],
+): number {
+    let max = 0;
+    for (const col of columns) {
+        if (col.isMeasure) continue;
+        const dc = col.distinctCount;
+        if (typeof dc === "number" && dc > max) max = dc;
+    }
+    return max;
+}
