@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { viewportFields, maxNonMeasureCardinality, credentialFields, type ViewportSource, type CredentialSource } from "../src/index";
+import {
+    viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields,
+    type ViewportSource, type CredentialSource,
+} from "../src/index";
 
 /** A source that counts how often it is measured and answers from a list, one per call. */
 function countingSource(...answers: { width: number; height: number }[]): ViewportSource & { calls: number } {
@@ -120,5 +123,125 @@ describe("credentialFields - one credential, and a linked session's nonce wins",
         const withNonce = credentialFields({ triple: () => TRIPLE, linkNonce: () => "n", freemiumKey: () => "1abc" });
         expect(withNonce.request.freemiumKey).toBe("1abc");
         expect(withNonce.request.licenseKey).toBe("");
+    });
+});
+
+// Moved from the Power BI visual with every expected value unchanged; the visual's own copy of these
+// cases now runs against this function through its re-export.
+describe("resolveFetchVersion - a fetch asks for a real version and can never bill", () => {
+    it("a refetch with an unset setting asks for the version in hand", () => {
+        const r = resolveFetchVersion({ genNew: false, settingVersion: null, codeVersion: 4 });
+        expect(r.version).toBe(4);
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("an explicit version the reader typed still wins over the one in hand", () => {
+        const r = resolveFetchVersion({ genNew: false, settingVersion: 2, codeVersion: 4 });
+        expect(r.version).toBe(2);
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("the recovery poll keeps absolute priority", () => {
+        const r = resolveFetchVersion({ genNew: false, recoveryFetchVersion: 7, settingVersion: 2, codeVersion: 4 });
+        expect(r.version).toBe(7);
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("recovery wins even on a genNew request - that path only ever fetches", () => {
+        const r = resolveFetchVersion({ genNew: true, recoveryFetchVersion: 7, settingVersion: null, codeVersion: 4 });
+        expect(r.version).toBe(7);
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("an explicit version is honored and is never turned into a correlation fetch", () => {
+        for (const v of [1, 2, 5, 37]) {
+            const r = resolveFetchVersion({ genNew: false, settingVersion: v, codeVersion: 9 });
+            expect(r.version, `version ${v}`).toBe(v);
+            expect(r.fetchOnly, `version ${v}`).toBe(true);
+        }
+        const r = resolveFetchVersion({ genNew: false, recoveryFetchByCorrelation: undefined, settingVersion: 3, codeVersion: 9 });
+        expect(r.version).toBe(3);
+    });
+
+    it("navigating backwards works", () => {
+        const r = resolveFetchVersion({ genNew: false, settingVersion: 2, codeVersion: 12 });
+        expect(r.version).toBe(2);
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("a correlation-keyed recovery sends NO version, and still cannot bill", () => {
+        const r = resolveFetchVersion({ genNew: false, recoveryFetchByCorrelation: true, settingVersion: 2, codeVersion: 4 });
+        expect(r.version).toBeNull();
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("correlation beats the version the poll used to guess, and beats genNew", () => {
+        const r = resolveFetchVersion({ genNew: true, recoveryFetchByCorrelation: true, recoveryFetchVersion: 7, settingVersion: 2, codeVersion: 4 });
+        expect(r.version).toBeNull();
+        expect(r.fetchOnly).toBe(true);
+    });
+
+    it("a generate is untouched, and is never marked fetch-only", () => {
+        const r = resolveFetchVersion({ genNew: true, settingVersion: null, codeVersion: 4 });
+        expect(r.version).toBeNull();
+        expect(r.fetchOnly).toBeUndefined();
+        expect(resolveFetchVersion({ genNew: true, settingVersion: 3, codeVersion: 4 }).version).toBe(3);
+    });
+
+    it("version 0 is 'no preference', not 'version zero'", () => {
+        expect(resolveFetchVersion({ genNew: false, settingVersion: 0, codeVersion: 4 }).version).toBe(4);
+    });
+
+    it("with nothing in hand and nothing asked for, it does not invent a version", () => {
+        const r = resolveFetchVersion({ genNew: false, settingVersion: null, codeVersion: null });
+        expect(r.version).toBeNull();
+        expect(r.fetchOnly).toBeUndefined();
+    });
+
+    it("undefined and null are treated alike on every input", () => {
+        expect(resolveFetchVersion({ genNew: false, codeVersion: 4 }).version).toBe(4);
+        expect(resolveFetchVersion({ genNew: false, settingVersion: undefined, codeVersion: 4 }).version).toBe(4);
+    });
+
+    it("never returns a fetchOnly flag without a version to fetch", () => {
+        for (const s of [null, 0, 2, undefined]) {
+            for (const c of [null, 0, 4, undefined]) {
+                const r = resolveFetchVersion({ genNew: false, settingVersion: s, codeVersion: c });
+                if (r.fetchOnly) expect(r.version).toBeGreaterThan(0);
+            }
+        }
+    });
+});
+
+describe("fetchFields - the four fetch fields decided together", () => {
+    it("an ordinary generate: a new generation, the stated version, nothing fetch-only - and nothing extra on the wire", () => {
+        const f = fetchFields({ genNew: true, settingVersion: 0 });
+        expect(f).toEqual({ genNew: true, version: 0, fetchOnly: undefined, fetchCorrelationId: undefined });
+        expect(JSON.stringify(f)).toBe('{"genNew":true,"version":0}');
+    });
+
+    it("a recovery poll by correlation: never a generation, no version, fetch-only, the correlation - in that order", () => {
+        const f = fetchFields({ genNew: true, fetchCorrelationId: "c-1", settingVersion: 0, codeVersion: 4 });
+        expect(JSON.stringify(f)).toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c-1"}');
+    });
+
+    it("an empty correlation is still a correlation: the host decides what counts as none", () => {
+        expect(fetchFields({ genNew: true, fetchCorrelationId: "" }).genNew).toBe(false);
+        expect(fetchFields({ genNew: true, fetchCorrelationId: null }).genNew).toBe(true);
+    });
+
+    it("a recovery poll by version: never a generation, that version, fetch-only", () => {
+        expect(fetchFields({ genNew: true, recoveryFetchVersion: 7 }))
+            .toEqual({ genNew: false, version: 7, fetchOnly: true, fetchCorrelationId: undefined });
+    });
+
+    it("a fetch of a stated version is fetch-only", () => {
+        expect(fetchFields({ genNew: false, settingVersion: 3 }))
+            .toEqual({ genNew: false, version: 3, fetchOnly: true, fetchCorrelationId: undefined });
+    });
+
+    it("a refetch of the version in hand is fetch-only", () => {
+        expect(fetchFields({ genNew: false, settingVersion: null, codeVersion: 4 }))
+            .toEqual({ genNew: false, version: 4, fetchOnly: true, fetchCorrelationId: undefined });
     });
 });

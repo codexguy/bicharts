@@ -99,3 +99,96 @@ export function maxNonMeasureCardinality(
     }
     return max;
 }
+
+/** What a request asks the server to fetch, if anything, as the host knows it. */
+export interface FetchRequest {
+    /** The caller asks for a new generation. A recovery poll overrides it: a poll only ever fetches. */
+    genNew: boolean;
+    /** A recovery poll keyed by the correlation of the generation it is looking for. null/absent = not one. */
+    fetchCorrelationId?: string | null;
+    /** A recovery poll keyed by version. null/absent = not one. */
+    recoveryFetchVersion?: number | null;
+    /** A version the reader stated - asked for by number. null or 0 mean "no preference", never "version zero". */
+    settingVersion?: number | null;
+    /** The version whose code the host is holding now. */
+    codeVersion?: number | null;
+}
+
+/** The request's fetch fields, in the order every host sends them. An undefined member is not sent. */
+export interface FetchFields {
+    genNew: boolean;
+    version: number | null;
+    fetchOnly: boolean | undefined;
+    fetchCorrelationId: string | undefined;
+}
+
+/**
+ * WHICH VERSION A REQUEST ASKS FOR, AND WHETHER THE SERVER MAY FALL THROUGH TO MAKING A NEW ONE.
+ *
+ * Seen in production: a refetch sent an unset version setting while the client held version 4. The
+ * server read "don't generate, version <nothing>", had nothing to fetch, and generated a fresh chart
+ * instead - a full model call, a different renderer, and a charge. Hence the rules:
+ *
+ *  1. A recovery poll keyed by correlation asks by correlation and sends NO version. That is the
+ *     safety property, not an omission: a server too old to read the correlation refuses a fetch-only
+ *     request with no version, where a version would have had it serve whichever chart the data shape
+ *     numbered that - versions are numbered per data shape, not per client.
+ *  2. A recovery poll keyed by version asks for that version.
+ *  3. A generation carries the stated version exactly as before and is never marked fetch-only.
+ *  4. Otherwise a version the reader stated wins, then the version in hand - never an unset setting.
+ *  5. A fetch is a FETCH: whenever a real version was resolved, `fetchOnly` tells the server a miss
+ *     comes back as "not found", never as a fresh, billed generation. With no version at all there is
+ *     nothing to protect, and the request keeps its behaviour rather than silently becoming a no-op.
+ */
+export function resolveFetchVersion(i: {
+    genNew: boolean;
+    /** A recovery poll's explicit target, when that path owns the request. */
+    recoveryFetchVersion?: number | null;
+    /** The request is a recovery poll keyed by correlation - send no version. */
+    recoveryFetchByCorrelation?: boolean;
+    /** A version the reader stated. null/0 mean "no preference", NOT "version zero". */
+    settingVersion?: number | null;
+    /** The version whose code the client is currently holding. */
+    codeVersion?: number | null;
+}): { version: number | null; fetchOnly: boolean | undefined } {
+    if (i.recoveryFetchByCorrelation) {
+        return { version: null, fetchOnly: true };
+    }
+    if (i.recoveryFetchVersion != null) {
+        return { version: i.recoveryFetchVersion, fetchOnly: true };
+    }
+    const setting = i.settingVersion ?? null;
+    // A GENERATE is unaffected - it carries the setting exactly as before, and must never be
+    // marked fetch-only or it could not do its job.
+    if (i.genNew) return { version: setting, fetchOnly: undefined };
+
+    const explicit = (setting ?? 0) > 0 ? setting : null;
+    const inHand = (i.codeVersion ?? 0) > 0 ? i.codeVersion! : null;
+    const version = explicit ?? inHand ?? setting;
+    // Fetch-only whenever we resolved a REAL version to ask for. With no version at all there is
+    // nothing to protect and the request keeps its old behaviour rather than silently becoming a
+    // no-op the caller cannot diagnose.
+    return { version, fetchOnly: version != null && version > 0 ? true : undefined };
+}
+
+/**
+ * THE FETCH FIELDS OF A REQUEST - `genNew`, `version`, `fetchOnly`, `fetchCorrelationId` - decided
+ * together, so the two that must agree cannot drift apart as two independent expressions did.
+ *
+ * A recovery poll (by correlation or by version) is never a generation, whatever the caller asked;
+ * the version and the fetch-only flag are `resolveFetchVersion`'s. A member that is undefined is not
+ * sent, so an ordinary generation serialises exactly as it did before any of these existed.
+ */
+export function fetchFields(r: FetchRequest): FetchFields {
+    const byCorrelation = r.fetchCorrelationId != null;
+    const recovery = byCorrelation || r.recoveryFetchVersion != null;
+    const genNew = recovery ? false : r.genNew;
+    const v = resolveFetchVersion({
+        genNew,
+        recoveryFetchVersion: r.recoveryFetchVersion,
+        recoveryFetchByCorrelation: byCorrelation,
+        settingVersion: r.settingVersion,
+        codeVersion: r.codeVersion,
+    });
+    return { genNew, version: v.version, fetchOnly: v.fetchOnly, fetchCorrelationId: r.fetchCorrelationId ?? undefined };
+}
