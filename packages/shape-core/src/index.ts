@@ -168,6 +168,14 @@ export {
 } from "./vocab/dateLevels";
 export type { DateLevelPart, DateLevelEntry } from "./vocab/dateLevels";
 
+// CALENDAR WORDS IN A COLUMN NAME (2026-09-25): the year and the cycles (hour, weekday, month,
+// quarter, week, season) in the other languages, read where the English words find nothing - the
+// canonical copy the server's cycle and year tests are generated from.
+export {
+    YEAR_WORDS, CYCLE_WORDS, CYCLE_MEMBERS, calendarWordIn, localizedYearWordIn, localizedCycleIn,
+} from "./vocab/calendarWords";
+export type { CycleConcept, CalendarWordHit } from "./vocab/calendarWords";
+
 // THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
 // script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,
 // and the views a vocabulary needs where whole words are blind: compound suffixes, glued prefixes

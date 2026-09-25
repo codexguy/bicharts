@@ -34,6 +34,7 @@
 // shipped column).
 
 import { nameWords } from "./util";
+import { localizedCycleIn, localizedYearWordIn } from "./vocab/calendarWords";
 
 type OrdinalPattern = {
     name: string;
@@ -250,7 +251,10 @@ export function isOrdinalFriendlyName(name: string): boolean {
     for (const tok of nameWords(name)) {
         if (ORDINAL_NAME_TOKENS.has(tok)) return true;
     }
-    return false;
+    // Another language's calendar words (vocab/calendarWords.ts), read only where the English
+    // tokens found nothing: an integer `Monat` 1-12 or `Stunde` 0-23 is the same ordered axis as
+    // `Month` or `Hour`, and `Jahr` the same as `Year`.
+    return localizedCycleIn(name) !== null || localizedYearWordIn(name) !== null;
 }
 
 // Normalize one value string for matching: lowercase, replace -/_ with

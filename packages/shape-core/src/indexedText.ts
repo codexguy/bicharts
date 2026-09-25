@@ -20,6 +20,7 @@ import { monthLookupFor, normalizeMonthKey } from "./monthNames";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
 import { nameLetterRuns } from "./nameReader";
+import { localizedYearWordIn } from "./vocab/calendarWords";
 import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
@@ -103,8 +104,11 @@ export type ValueNature = "Continuous" | "Ordinal" | "Categorical";
 // Tested against nameWords(), not the raw name (2026-09-04) — "OlympicYear" and "fiscal_year" are
 // year columns and `\b` could see neither. Whole WORDS only, so "yearly" and "Yearbook" stay out,
 // and no letter-to-digit split, so "FY2024" is still not a year name.
+// Another language's word for year (vocab/calendarWords.ts) is read only where these find nothing:
+// `Jahr`, `Año`, `Geschäftsjahr`, `회계연도`, `السنة`.
 const TEMPORAL_YEAR_WORDS: Set<string> = new Set(["year", "yr", "fy"]);
-const hasYearName = (name: string): boolean => nameWords(name).some(w => TEMPORAL_YEAR_WORDS.has(w));
+const hasYearName = (name: string): boolean =>
+    nameWords(name).some(w => TEMPORAL_YEAR_WORDS.has(w)) || localizedYearWordIn(name) !== null;
 // 2024 | 2024-Q1 | 2024Q1 | Q1-2024 | 2024-01 | 2024-1 | 202401 | 2024-W12 |
 // Jan 2024 | January-2024  (case-insensitive)
 const TEMPORAL_PERIOD_RE =
