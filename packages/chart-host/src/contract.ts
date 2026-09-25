@@ -345,8 +345,9 @@ export interface RenderOptions {
     // `precision` is the COARSEST tier any row needed — "latlon" (real coordinates),
     // "city", "zip3" (a whole 3-digit ZIP prefix) or "state" (a whole state/province) —
     // so the chart can say what it actually plotted rather than implying exact positions.
-    // `unplaced` feeds the off-map annotation; `ambiguousRows` counts rows placed by the
-    // largest-match tie-break on a colliding bare city name. Null on every other chart.
+    // `unplaced` feeds the off-map annotation; `ambiguousRows` counts rows whose name matched
+    // several places and were therefore NOT plotted (null coordinates) - refused since the
+    // v2 gazetteer (contract 1.2.0), never placed by a tie-break. Null on every other chart.
     // `rolesBackfilled` / `rolesRefused` report what the ROLE resolution did to the
     // binding it was handed. The codegen response names which column is the city, the
     // state and the ZIP, and that answer is verified rather than trusted: a role it omits
