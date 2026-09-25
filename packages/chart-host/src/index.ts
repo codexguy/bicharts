@@ -42,6 +42,12 @@ export {
     type ColorScaleScope, type RenderOptions, type ViewStateProvider, type ChartControlChange,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
+// THE OPTIONS VOCABULARY (2026-09-25): the reader-facing options every host shares, one row each - the
+// default, the bounds, when a change takes effect and where it travels. See optionsVocabulary.ts.
+export {
+    OPTIONS_VOCABULARY, LIVE_OPTION_KEYS, MAX_MAP_POINTS_MIN, MAX_MAP_POINTS_MAX, LIMIT_COUNT_MAX, wireLimitCount,
+    type OptionVocabularyEntry, type OptionTiming, type OptionWire, type OptionKey,
+} from "./optionsVocabulary";
 // GEOMETRY IS NOT RE-EXPORTED HERE ON PURPOSE. "./geo" statically imports ~1.3 MB of
 // generated FeatureCollections, so re-exporting it from the package entry made every
 // consumer pay for a basemap to draw a bar chart. The lazy API below costs nothing until
