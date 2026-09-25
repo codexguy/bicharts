@@ -351,6 +351,13 @@ export { stripJsComments } from "./codeComments";
 // A standing chart-type pick checked against a fresh qualify list - the one place a pick may be dropped
 // for the reader, and always with a sentence saying so.
 export { reconcileChartPick, type ChartPickReconciliation } from "./chartPick";
+// Duplicate-generate suppression (2026-09-25): one user action never sends the same generate twice - an
+// identical request is held while the previous one runs and for a short window after it started; a
+// retry, a field change or a different pick always passes. Pure; the host keeps the state and the clock.
+export {
+    isDuplicateGenerate, armGenerateGuard, DUPLICATE_GENERATE_WINDOW_MS,
+    type GenerateGuardKey, type GenerateGuardState,
+} from "./duplicateGenerateGuard";
 // Client identity (2026-09-24): the one ThumbmarkJS recipe every browser host fingerprints with - the user agent and
 // browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
 // per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
