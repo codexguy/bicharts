@@ -131,17 +131,22 @@ describe("a group member draws the source table and filters to a sibling's selec
         expect(names("cb")).toEqual(["r0", "r1", "r2", "r3", "r4"]);
     });
 
-    it("KNOWN DEFECT, pinned so a move cannot change it silently: a filtered member that becomes the origin paints the wrong mark", async () => {
-        // b was filtered to [r1, r3], and its click on r3 was payload row 1. Becoming the origin
-        // it re-derives the WHOLE table, and its host still holds payload row 1 as selected - which
-        // in the whole table is r1. The group's selection is r3 (asserted above); the paint says
-        // r1. Measured before the move; a fix is its own change, never part of one.
+    it("a filtered member that becomes the origin paints the record it clicked", async () => {
+        // b was filtered to [r1, r3], and its click on r3 was payload row 1. Becoming the origin it
+        // re-derives the WHOLE table, where payload row 1 is r1 - so the selection it holds is
+        // repainted through the new row map. (It used to paint r1: pinned as a known defect by the
+        // move into the core, fixed on its own.)
         await mountGroup([{ id: "a", cls: "ca" }, { id: "b", cls: "cb" }]);
         await click(markNamed("ca", "r1"));
         await click(markNamed("ca", "r3"), "ctrlKey");
         await click(markNamed("cb", "r3"));
         expect(lastSel!.rows).toEqual([3]);
-        expect(selectedNames("cb")).toEqual(["r1"]);
+        expect(selectedNames("cb")).toEqual(["r3"]);
+        // And the selection it holds is in the new payload's rows: growing it adds the right record.
+        await click(markNamed("cb", "r4"), "ctrlKey");
+        expect(lastSel!.rows.slice().sort()).toEqual([3, 4]);
+        expect(selectedNames("cb")).toEqual(["r3", "r4"]);
+        expect(names("ca")).toEqual(["r3", "r4"]);
     });
 
     it("clearing the selection in the originating member unfilters every sibling", async () => {

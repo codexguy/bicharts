@@ -276,7 +276,7 @@ export function BicChart(props: BicChartProps) {
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !ctx) return;
-        syncMemberSelection(host, ctx.selection, id, highlightMode, incoming);
+        syncMemberSelection(host, ctx.selection, id, highlightMode, incoming, rowMapRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ctx?.selection, id, ctx, highlightMode, incoming && incoming.join(",")]);
 

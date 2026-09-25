@@ -121,6 +121,12 @@ describe("attach: live chart hosts coordinated by the group", () => {
         expect(seenB).toEqual([[3]]);
         expect(group.selection).toEqual({ sourceId: "b", rows: [3] });
         expect(names(a.el)).toEqual(["r3"]);
+        // Becoming the origin re-derived b's payload; the record it clicked is still the one painted,
+        // and growing the selection adds the record clicked.
+        expect(selected(b.el)).toEqual(["r3"]);
+        click(b.el, "r0", "ctrlKey");
+        expect(group.selection.rows.slice().sort()).toEqual([0, 3]);
+        expect(selected(b.el)).toEqual(["r0", "r3"]);
         expect(names(b.el)).toEqual(["r0", "r1", "r2", "r3", "r4"]);
     });
 

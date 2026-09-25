@@ -107,17 +107,44 @@ export function toSourceRows(rowMap: readonly number[] | null | undefined, paylo
     return payloadRowIdxs.map(i => rowMap[i]).filter((i): i is number => i !== undefined);
 }
 
+/** Source row indices -> this payload's row indices, dropping any the payload does not carry. */
+function toPayloadRows(rowMap: readonly number[], sourceRowIdxs: readonly number[]): number[] {
+    const at = new Map<number, number>();
+    rowMap.forEach((src, k) => { if (!at.has(src)) at.set(src, k); });
+    return sourceRowIdxs.map(s => at.get(s)).filter((k): k is number => k !== undefined);
+}
+
+const sameRows = (a: readonly number[], b: readonly number[]): boolean => {
+    if (a.length !== b.length) return false;
+    const x = a.slice().sort((p, q) => p - q), y = b.slice().sort((p, q) => p - q);
+    return x.every((v, i) => v === y[i]);
+};
+
 /**
- * Make a member's painted selection agree with the group's. A member that made the selection
- * keeps what its host already painted. A highlight member with an incoming selection paints it.
- * Any other member that still shows a selection clears it - a stale highlight left on the origin
- * after the selection moved elsewhere, or after a clear. Both paths notify with source "host",
- * so nothing done here is republished.
+ * Make a member's painted selection agree with the group's. A highlight member with an incoming
+ * selection paints it. Any other member that still shows a selection clears it - a stale
+ * highlight left on the origin after the selection moved elsewhere, or after a clear.
+ *
+ * THE MEMBER THAT MADE THE SELECTION keeps it, repainted in the payload it draws NOW when
+ * `rowMap` (that payload's row map) is given. Its host holds the selection as PAYLOAD rows, and
+ * a member that was filtered when it was clicked stops filtering the moment it becomes the
+ * origin - its payload grows back to the whole table and renumbers, so the payload rows its
+ * host holds would name different records. The group's selection is in source rows, so it is
+ * translated through the new map and repainted when it differs.
+ *
+ * Every path notifies with source "host", so nothing done here is republished.
  */
 export function syncMemberSelection(host: ChartHost, selection: ChartGroupSelection, id: string | undefined,
-                                    highlight: boolean, incoming: readonly number[] | null): void {
+                                    highlight: boolean, incoming: readonly number[] | null,
+                                    rowMap?: readonly number[] | null): void {
     const mine = selection.sourceId === id && selection.rows.length > 0;
-    if (mine) return;
+    if (mine) {
+        if (rowMap) {
+            const want = toPayloadRows(rowMap, selection.rows);
+            if (!sameRows(want, host.selection.current ?? [])) host.selection.highlight(want);
+        }
+        return;
+    }
     if (highlight && incoming && incoming.length) {
         // Group members share one row space (each is handed the same source rows), so the
         // sibling's source indices ARE this member's payload indices - which holds only while a
@@ -207,7 +234,7 @@ export function createChartGroup(columns: readonly any[], rows: readonly Record<
                 const next = payloadFor(highlight ? null : incoming);
                 rowMap = next.rowMap;
                 host.setData(next.payload);
-                syncMemberSelection(host, sel, id, highlight, incoming);
+                syncMemberSelection(host, sel, id, highlight, incoming, rowMap);
             });
             const member: ChartGroupMember = {
                 get rowMap() { return rowMap; },
