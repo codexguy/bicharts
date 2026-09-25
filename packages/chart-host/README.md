@@ -67,6 +67,12 @@ payload→source row mapping — which is the part you must not hand-roll:
 > not an id in your table. Re-render a chart with filtered rows and its payload renumbers from
 > zero, so the same integer now denotes a different record. Comparing indices across two charts
 > does not throw — it quietly filters to the wrong thing.
+>
+> Rows built from `data.sample.json` already carry a `__rowIdx__` column (the sample's own
+> positions). The payload builder owns that name: it drops an incoming `__rowIdx__` and writes
+> each payload's positions itself, so the rows above need no cleaning. (Before 0.6.33 the
+> incoming column was kept beside the new one and a filtered chart's clicks read it; on an older
+> version, leave `__rowIdx__` out when you build `columns`.)
 
 ### The coordinated dashboard: one chart filters, the other highlights
 

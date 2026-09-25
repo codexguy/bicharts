@@ -140,6 +140,9 @@ interface PointChannel {
     rolesRefused: string[];
 }
 
+/** The host column carrying each row's position in the payload - what a mark's data-row-idx reports. */
+const ROW_IDX_COLUMN = "__rowIdx__";
+
 function resolvePointChannel(
     cols: Array<{ name: string } & Record<string, any>>,
     rowObjs: Array<Record<string, any>>,
@@ -261,7 +264,13 @@ export function buildRenderPayload(
     // column, so nothing already in the payload moves. Absent or empty, nothing changes.
     opts?: { utcDays?: boolean; aliases?: ReadonlyArray<{ name: string; alias: string }> | null } | null,
 ): RenderPayload {
-    const colNames = cols.map(c => c.name);
+    // THE PAYLOAD OWNS ITS HOST COLUMNS (2026-09-25). `__rowIdx__` is the row's position in THIS payload,
+    // so a caller's column of that name - rows built from a data.sample.json carry one, holding the
+    // sample's positions - is stale the moment the rows are a subset, and a second column of the name
+    // made `columns.findIndex` read the stale one: a filtered chart's clicks went to the wrong rows, or to
+    // none. It is dropped before anything reads the columns; a caller's `__geo*` column is dropped below,
+    // only where this builder appends its own.
+    cols = cols.filter(c => c.name !== ROW_IDX_COLUMN);
     let utcDayColumns: string[] | null = null;
     if (opts?.utcDays) {
         const norm = normalizeLocalMidnightDates(cols as any, rowObjs);
@@ -302,10 +311,16 @@ export function buildRenderPayload(
     // shape predictable for the LLM. DateTime cells come straight off the index;
     // coerce to ISO so the contract in PromptPreable holds. Trailing columns:
     // __rowIdx__ [+ __geoIso__].
-    const hostNames: string[] = ["__rowIdx__"];
+    const hostNames: string[] = [ROW_IDX_COLUMN];
     if (geoIso) hostNames.push("__geoIso__");
     if (pLat) hostNames.push("__geoLat__", "__geoLon__", "__geoPrecision__");
     if (dLat) hostNames.push("__geoLatD__", "__geoLonD__", "__geoPrecisionD__");
+    // A caller's column carrying the name of a host column appended below is dropped: the builder's is
+    // computed from this payload's rows and its binding, and one name must mean one column. A `__geo*`
+    // column this payload does NOT append (no binding this time) is the caller's data, and stays.
+    const owned = new Set(hostNames);
+    if (cols.some(c => owned.has(c.name))) cols = cols.filter(c => !owned.has(c.name));
+    const colNames = cols.map(c => c.name);
     // Resolved against every name the payload already carries, so an alias can never shadow a
     // bound column or a host column, and two aliases can never claim one name.
     const aliasCols: { from: number; name: string }[] = [];
@@ -342,7 +357,7 @@ export function buildRenderPayload(
         for (const ac of aliasCols) a[k++] = a[ac.from];
         out[r] = a;
     }
-    const colsOut = [...cols, { name: "__rowIdx__", dataType: "Integer", isMeasure: false, modelDesc: "" }];
+    const colsOut = [...cols, { name: ROW_IDX_COLUMN, dataType: "Integer", isMeasure: false, modelDesc: "" }];
     if (geoIso) colsOut.push({ name: "__geoIso__", dataType: "String", isMeasure: false, modelDesc: "" });
     if (pLat) colsOut.push(
         { name: "__geoLat__", dataType: "Double", isMeasure: false, modelDesc: "" },
