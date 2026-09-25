@@ -1018,6 +1018,12 @@ export class IndexedText implements IValueCollection {
         // the y axis in a legend. correlatedWithMeasures carries every pair from CORRELATED_MIN_R up
         // to the collinear cut WITH its signed r, so where "moves together" starts is decided by the
         // server's configuration, not by this release.
+        //
+        // AND THE STRONGEST PAIR AT ANY STRENGTH. Both lists start at 0.8, so a shape whose measures
+        // relate at 0.6 reads exactly like one whose measures relate at 0.1. maxAbsMeasureCorrelation
+        // is each measure's strongest |r| against any other measure, from the same loop, so the server
+        // can ask "do these measures move together at all" with its own floor. Present only on a
+        // measure with at least one measurable pair; absent means unmeasured, never zero.
         const COLLINEAR_R = 0.97;
         const CORRELATED_MIN_R = 0.8;
         const CORRELATED_PER_MEASURE = 8;
@@ -1039,6 +1045,10 @@ export class IndexedText implements IValueCollection {
                 const vx = n * sxx - sx * sx, vy = n * syy - sy * sy;
                 if (vx <= 1e-12 || vy <= 1e-12) continue;   // a constant measure — R1 (flat) handles it
                 const r = (n * sxy - sx * sy) / Math.sqrt(vx * vy);
+                const absR = Math.min(1, Math.round(Math.abs(r) * 1000) / 1000);
+                for (const m of [measureIdx[a].c, measureIdx[b].c]) {
+                    if (m.maxAbsMeasureCorrelation === undefined || absR > m.maxAbsMeasureCorrelation) m.maxAbsMeasureCorrelation = absR;
+                }
                 if (Math.abs(r) >= COLLINEAR_R) {
                     const ca = measureIdx[a].c, cb = measureIdx[b].c;
                     if (!ca.collinearWithMeasures) ca.collinearWithMeasures = [];

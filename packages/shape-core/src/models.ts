@@ -385,6 +385,12 @@ export type LLMColumnWithValue =
         // channel carrying one while the other sits on an axis repeats that axis in a legend. The
         // server decides where "moves together" begins; absent ⇒ no such pair, or an older client.
         correlatedWithMeasures?: { otherColumn: string, r: number }[]
+        // maxAbsMeasureCorrelation: for a MEASURE, its strongest |Pearson r| against any other
+        // measure, at any strength, to three places, over the rows where both are present - the one
+        // number the two lists above cannot give, since both start at 0.8. A statistic, never a
+        // value. Absent ⇒ not measured (fewer than two measures, a constant measure, under five
+        // shared rows, or an older client) - never read it as zero.
+        maxAbsMeasureCorrelation?: number
         // isFreeText (Layer C, 2026-06-20): a non-measure categorical whose values are
         // WORDS (word-like format signature + non-trivial average length), as opposed to
         // IDs / codes / dates / booleans. A word cloud needs words; the server prefers
