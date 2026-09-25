@@ -368,6 +368,10 @@ export { canShowLastChart, shouldRestoreVersionAfterLicenseSave } from "./lastCh
 export {
     isNarrowedByFilter, isEmptiedByFilter, updateRowHighWater, type NarrowingState,
 } from "./filterNarrowing";
+// Thumbnail capture (2026-09-25): capture when the service forces it, or when the reader opted in (or the
+// host's terms capture by default) on the first render of a generation; the consent flag beside the
+// image is the opt-in alone. Pure; the host resolves each input.
+export { shouldCaptureThumbnail, type ThumbnailGate, type ThumbnailDecision } from "./thumbnailPolicy";
 // Client identity (2026-09-24): the one ThumbmarkJS recipe every browser host fingerprints with - the user agent and
 // browser version excluded, so an id outlives a browser release; vendor logging off - plus where an id came from and a
 // per-component digest that names the input when a fingerprint moves. The library itself is injected by each host.
