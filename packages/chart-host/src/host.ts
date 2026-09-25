@@ -304,7 +304,11 @@ export function assembleD3(base: object, ...plugins: object[]): Record<string, a
 // chart source — a message that tells a host nothing about what to install. Name the cause
 // and the way forward instead; the package list matches what the Power BI visual loads, so
 // a chart behaves the same in both hosts.
-const D3_PLUGIN_PACKAGES: Record<string, string> = {
+//
+// EXPORTED (frozen) so a host that writes install instructions can check it covers every package
+// this map can name - the one list requiredD3Plugins reads, so the instructions and the scan
+// cannot drift. Keys are the names a chart reaches on d3; values are npm package names.
+export const D3_PLUGIN_PACKAGES: Readonly<Record<string, string>> = Object.freeze({
     sankey: "d3-sankey", sankeyLinkHorizontal: "d3-sankey", sankeyJustify: "d3-sankey",
     sankeyCenter: "d3-sankey", sankeyLeft: "d3-sankey", sankeyRight: "d3-sankey",
     hexbin: "d3-hexbin",
@@ -325,7 +329,7 @@ const D3_PLUGIN_PACKAGES: Record<string, string> = {
     // host INSTALL for this code to run" and not "which package exports this symbol". For
     // code that calls the helper, the answer is the library the helper reaches for.
     llmMermaid: "mermaid",
-};
+});
 
 // FAIL FAST, not fail deep (GAP-6, 2026-07-31). explainRenderFailure below turns a plugin
 // crash into an actionable message, but only AFTER the chart has thrown and drawn nothing.

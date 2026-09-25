@@ -74,7 +74,7 @@ export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./date
 // module-form artifact and wants to compile it itself needs the same normalization the
 // host applies, or the two paths disagree about what a valid chart artifact is.
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
-    sessionViewStateProvider, noopViewStateProvider, assembleD3,
+    sessionViewStateProvider, noopViewStateProvider, assembleD3, D3_PLUGIN_PACKAGES,
     type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
 // THE CROSS-FILTER GROUP (2026-09-24): several charts over one source table and one selection,
 // with the payload-row -> source-row translation owned here. <BicChartGroup> in "./react" is a
