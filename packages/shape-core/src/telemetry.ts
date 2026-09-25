@@ -18,6 +18,14 @@ export const SEV_ERROR = 4;
 export const SEV_USER_PRESENTED = 0x40;
 
 /**
+ * How long one telemetry post may take, on both channels, before it is abandoned: nothing waits on a
+ * telemetry post, so the deadline only bounds how long a hung one holds its connection. A host talking
+ * to a development server (a tunnel that can be slow to wake) uses the longer one.
+ */
+export const TELEMETRY_TIMEOUT_MS = 8_000;
+export const TELEMETRY_TIMEOUT_DEV_MS = 60_000;
+
+/**
  * The fields of a client message, by the service's names. Every field is optional; a host sends what
  * it knows. The service derives a failure from a non-empty StackTrace, so a failure must carry one.
  */

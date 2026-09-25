@@ -10,7 +10,7 @@
 // property, so a host calls it from whatever runner it already has (`await expect(...)
 // .resolves` or a bare call inside a test body both work).
 
-import type { WireSigner, WireResponse } from "../host/services";
+import type { WireSigner, WireResponse, WireTransport } from "../host/services";
 import { readGenerateStream, isNdjsonContentType } from "../wireStream";
 
 /** Thrown by every conformance check. `failures` names each property the adapter broke. */
@@ -143,5 +143,191 @@ export async function assertWireResponseConformance(adapt: (res: Response) => Wi
     } catch (e) {
         r.fail(`a 204 with no body threw: ${describeThrow(e)}`);
     }
+    r.throwIfFailed();
+}
+
+/** The platform fetch's signature, as a transport adapter takes it. */
+export type FetchLike = (input: any, init?: any) => Promise<Response>;
+
+/** What a stub fetch saw: the request normalised, whichever form the adapter called fetch in. */
+interface SeenRequest {
+    url: string;
+    method: string;
+    headers: Headers;
+    body: string;
+    signal: AbortSignal | null;
+}
+
+async function seeRequest(input: any, init?: any): Promise<SeenRequest> {
+    const req: Request = input instanceof Request ? input : new Request(String(input), init);
+    // A signal passed beside a Request (as some clients do) is the one that governs the call.
+    const signal: AbortSignal | null = init?.signal ?? req.signal ?? null;
+    return { url: req.url, method: req.method, headers: req.headers, body: await req.text(), signal };
+}
+
+const aborted = () => Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+
+/** Settle `p` or report that it never did inside `ms`. */
+async function within<T>(p: Promise<T>, ms: number): Promise<{ settled: true; ok: true; value: T } | { settled: true; ok: false; error: unknown } | { settled: false }> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<{ settled: false }>(res => { timer = setTimeout(() => res({ settled: false }), ms); });
+    try {
+        return await Promise.race([
+            p.then(value => ({ settled: true as const, ok: true as const, value }), error => ({ settled: true as const, ok: false as const, error })),
+            late,
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+/**
+ * A host's WireTransport, built over a fetch the check supplies: `make(fetch)` returns the host's
+ * adapter wired to that fetch, so a host whose adapter wraps some other client passes the function
+ * that wires that client to the given fetch. Driven through what every transport meets: an ordinary
+ * post (url, method, body and headers reach the network as given), an HTTP error (RESOLVES with its
+ * status, and its body is still readable - a 4xx body carries the server's own explanation), a 204,
+ * a network failure (rejects), no answer inside the deadline (rejects, and the request is aborted so
+ * the socket drops), a body that stalls after headers that came in time (the deadline covers the
+ * whole exchange, so the read ends in an error), and a caller's signal (rejects when it aborts). Uses
+ * real timers and a deadline of a few tens of milliseconds.
+ */
+export async function assertWireTransportConformance(make: (fetch: FetchLike) => WireTransport): Promise<void> {
+    const r = new ConformanceReport("WireTransport");
+    const URL_ = "https://service.example/api/route/?nocache=1";
+    const BODY = "H4sIAAAAAAAAA6tWyk0tSs5ITUxRslIqS8wpTVWqBQBL0RbkEwAAAA==";
+    const HEADERS = { "Content-Type": "text/plain", "X-Signature": "12345" };
+    const DEADLINE = 40;
+    const PATIENCE = 1000;
+
+    // An ordinary post.
+    try {
+        let seen: SeenRequest | null = null;
+        const t = make(async (input, init) => {
+            seen = await seeRequest(input, init);
+            return new Response('{"ok":true}', { status: 200, headers: { "Content-Type": "application/json" } });
+        });
+        const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: 5000 }), PATIENCE);
+        if (!out.settled) r.fail("an ordinary post never settled");
+        else if (out.ok === false) r.fail(`an ordinary post rejected: ${describeThrow(out.error)}`);
+        else {
+            const s = seen as SeenRequest | null;
+            r.check(!!s, "the adapter never called the fetch it was given");
+            if (s) {
+                r.check(s.url === URL_, `the request went to ${s.url}, not the URL it was given`);
+                r.check(s.method === "POST", `the request was a ${s.method}, not a POST`);
+                r.check(s.body === BODY, "the body did not reach the network as given");
+                r.check(s.headers.get("content-type") === "text/plain", `Content-Type reached the network as ${s.headers.get("content-type")}`);
+                r.check(s.headers.get("x-signature") === "12345", "a header the caller set did not reach the network");
+            }
+            r.check(out.value.status === 200, `a 200 reported status ${out.value.status}`);
+            r.check(isNdjsonContentType(out.value.contentType) === false && /json/.test(String(out.value.contentType)),
+                `the response's content type read as ${JSON.stringify(out.value.contentType)}`);
+            r.check((await out.value.text()) === '{"ok":true}', "text() did not return the body");
+        }
+    } catch (e) {
+        r.fail(`an ordinary post threw: ${describeThrow(e)}`);
+    }
+
+    // An HTTP error resolves, with its body.
+    for (const status of [400, 500, 503]) {
+        try {
+            const t = make(async () => new Response('{"message":"why"}', { status, headers: { "Content-Type": "application/json" } }));
+            const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: 5000 }), PATIENCE);
+            if (!out.settled) r.fail(`an HTTP ${status} never settled`);
+            else if (out.ok === false) r.fail(`an HTTP ${status} rejected (${describeThrow(out.error)}) - a status is an answer, not a transport failure`);
+            else {
+                r.check(out.value.status === status, `an HTTP ${status} reported status ${out.value.status}`);
+                r.check((await out.value.text()) === '{"message":"why"}', `an HTTP ${status}'s body could not be read`);
+            }
+        } catch (e) {
+            r.fail(`an HTTP ${status} threw: ${describeThrow(e)}`);
+        }
+    }
+
+    // A 204.
+    try {
+        const t = make(async () => new Response(null, { status: 204 }));
+        const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: 5000 }), PATIENCE);
+        if (!out.settled || !out.ok) r.fail("a 204 did not resolve");
+        else r.check(out.value.status === 204, `a 204 reported status ${out.value.status}`);
+    } catch (e) {
+        r.fail(`a 204 threw: ${describeThrow(e)}`);
+    }
+
+    // A network failure rejects.
+    try {
+        const t = make(async () => { throw new TypeError("Failed to fetch"); });
+        const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: 5000 }), PATIENCE);
+        r.check(out.settled && !out.ok, "a failed connection did not reject");
+    } catch (e) {
+        r.fail(`a failed connection threw synchronously: ${describeThrow(e)}`);
+    }
+
+    // No answer inside the deadline rejects, and the request is aborted.
+    try {
+        let signal: AbortSignal | null = null;
+        const t = make((input, init) => new Promise<Response>((_ok, fail) => {
+            void seeRequest(input, init).then(s => {
+                signal = s.signal;
+                if (!s.signal) return;
+                if (s.signal.aborted) fail(aborted());
+                else s.signal.addEventListener("abort", () => fail(aborted()), { once: true });
+            });
+        }));
+        const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: DEADLINE }), PATIENCE);
+        r.check(out.settled && !out.ok, `no answer inside a ${DEADLINE} ms deadline did not reject within ${PATIENCE} ms`);
+        const sig = signal as AbortSignal | null;
+        r.check(!!sig && sig.aborted, "the deadline passed but the request was not aborted - the socket would stay open");
+    } catch (e) {
+        r.fail(`the deadline check threw synchronously: ${describeThrow(e)}`);
+    }
+
+    // The deadline covers the BODY: headers that arrive in time and a body that then stalls end in an
+    // error when the deadline passes, never a read that waits for ever.
+    try {
+        let signal: AbortSignal | null = null;
+        const enc = new TextEncoder();
+        const t = make(async (input, init) => {
+            const s = await seeRequest(input, init);
+            signal = s.signal;
+            let ctl!: ReadableStreamDefaultController<Uint8Array>;
+            const stream = new ReadableStream<Uint8Array>({ start(c) { ctl = c; } });
+            ctl.enqueue(enc.encode('{"type":"progress","stage":"Reading your data"}\n'));
+            // Like a platform body, it errors when its request is aborted.
+            s.signal?.addEventListener("abort", () => { try { ctl.error(aborted()); } catch { /* closed */ } }, { once: true });
+            return new Response(stream, { status: 200, headers: { "Content-Type": "application/x-ndjson" } });
+        });
+        const out = await within(t.post(URL_, BODY, HEADERS, { timeoutMs: DEADLINE }), PATIENCE);
+        if (!out.settled || out.ok === false) r.fail("headers that arrived in time did not resolve the post");
+        else {
+            const read = await within(readGenerateStream(out.value), PATIENCE);
+            r.check(read.settled && read.ok === false,
+                `a body that stalled after its headers was still being read ${PATIENCE} ms after a ${DEADLINE} ms deadline`);
+            const sig = signal as AbortSignal | null;
+            r.check(!!sig && sig.aborted, "the deadline passed mid-body but the request was not aborted - the socket would stay open");
+        }
+    } catch (e) {
+        r.fail(`the body-deadline check threw synchronously: ${describeThrow(e)}`);
+    }
+
+    // A caller's signal rejects when it aborts.
+    try {
+        const caller = new AbortController();
+        const t = make((input, init) => new Promise<Response>((_ok, fail) => {
+            void seeRequest(input, init).then(s => {
+                if (!s.signal) return;
+                if (s.signal.aborted) fail(aborted());
+                else s.signal.addEventListener("abort", () => fail(aborted()), { once: true });
+            });
+        }));
+        const p = t.post(URL_, BODY, HEADERS, { timeoutMs: 5000, signal: caller.signal });
+        setTimeout(() => caller.abort(), 10);
+        const out = await within(p, PATIENCE);
+        r.check(out.settled && !out.ok, "aborting the caller's signal did not reject the post");
+    } catch (e) {
+        r.fail(`the caller-signal check threw synchronously: ${describeThrow(e)}`);
+    }
+
     r.throwIfFailed();
 }

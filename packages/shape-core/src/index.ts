@@ -253,5 +253,14 @@ export type { SchemaIdentityColumn } from "./schemaIdentity";
 // the event kinds and the event-count line - stated once for every host. See telemetry.ts.
 export {
     SEV_INFO, SEV_WARNING, SEV_ERROR, SEV_USER_PRESENTED, CLIENT_EVENT_KINDS, isEventLogCode, eventLogLine,
+    TELEMETRY_TIMEOUT_MS, TELEMETRY_TIMEOUT_DEV_MS,
 } from "./telemetry";
 export type { ClientMessage } from "./telemetry";
+// SENDING IT (2026-09-25): the encode, sign and post of both telemetry channels, over the host's
+// transport - never a throw, a failure only ever reported to the host. See telemetryClient.ts.
+export { createTelemetryClient } from "./telemetryClient";
+export type { TelemetryClient, TelemetryServices, TelemetryEnv, TelemetryFailure, TelemetryChannel } from "./telemetryClient";
+// A WIRE TRANSPORT OVER THE HOST'S FETCH (2026-09-25): the contract's semantics - a status resolves,
+// the deadline covers the whole exchange - for any host that has a fetch. See fetchTransport.ts.
+export { fetchTransport } from "./fetchTransport";
+export type { FetchFunction, FetchTransportOptions } from "./fetchTransport";
