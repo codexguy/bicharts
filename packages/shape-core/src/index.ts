@@ -228,5 +228,8 @@ export type {
 // function returning the fields it owns - the host places them where it always did.
 export {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
+    retryFields,
 } from "./wireBuild";
-export type { ViewportFields, CredentialFields, FetchRequest, FetchFields, CapabilityFields } from "./wireBuild";
+export type {
+    ViewportFields, CredentialFields, FetchRequest, FetchFields, CapabilityFields, RetryFields,
+} from "./wireBuild";

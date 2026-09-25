@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
+    retryFields,
     type ViewportSource, type CredentialSource, type RendererId,
 } from "../src/index";
 
@@ -266,5 +267,33 @@ describe("capabilityFields - the request states what the host can run, derived f
     it("Python has no flag of its own, and an empty set states every flag false", () => {
         expect(of("PYTHON")).toEqual({ supportsD3: false, supportsPlotly: false, supportsVega: false });
         expect(of()).toEqual({ supportsD3: false, supportsPlotly: false, supportsVega: false });
+    });
+});
+
+describe("retryFields - the pair a request states, formed one way; the budget is the host's", () => {
+    it("a first attempt states the whole budget both ways, triesLeft first", () => {
+        expect(JSON.stringify(retryFields({ budget: 3 }))).toBe('{"triesLeft":3,"maxTries":3}');
+        expect(retryFields({ budget: 1 })).toEqual({ triesLeft: 1, maxTries: 1 });
+    });
+
+    it("a later attempt states its own count against the same budget", () => {
+        expect(retryFields({ budget: 2, triesLeft: 1 })).toEqual({ triesLeft: 1, maxTries: 2 });
+        expect(retryFields({ budget: 2, triesLeft: 0 })).toEqual({ triesLeft: 0, maxTries: 2 });
+    });
+
+    it("a cap lower than the budget is what the request states - never a budget the loop will not spend", () => {
+        expect(retryFields({ budget: 3, cap: 1, triesLeft: 0 })).toEqual({ triesLeft: 0, maxTries: 1 });
+        expect(retryFields({ budget: 3, cap: 1 })).toEqual({ triesLeft: 1, maxTries: 1 });
+    });
+
+    it("a cap at or above the budget, or none, leaves the budget as it is", () => {
+        expect(retryFields({ budget: 1, cap: 1 }).maxTries).toBe(1);
+        expect(retryFields({ budget: 0, cap: 1 }).maxTries).toBe(0);
+        expect(retryFields({ budget: 2, cap: null }).maxTries).toBe(2);
+        expect(retryFields({ budget: 10 }).maxTries).toBe(10);
+    });
+
+    it("passes the host's count through as given - the host owns its own loop", () => {
+        expect(retryFields({ budget: 2, triesLeft: 2 })).toEqual({ triesLeft: 2, maxTries: 2 });
     });
 });

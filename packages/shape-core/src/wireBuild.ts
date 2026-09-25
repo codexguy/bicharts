@@ -216,3 +216,27 @@ export function capabilityFields(services: Pick<WireServices, "renderers">): Cap
     const has = (r: RendererId) => services.renderers.has(r);
     return { supportsD3: has("D3"), supportsPlotly: has("PLOTLY"), supportsVega: has("VEGA") };
 }
+
+/** The retry pair a generate request carries. */
+export interface RetryFields {
+    triesLeft: number;
+    maxTries: number;
+}
+
+/**
+ * THE RETRY PAIR: `maxTries`, the budget of attempts this request belongs to, and `triesLeft`, how many
+ * of them remain. The server reads the pair to size its own retry loop and to decide which of the
+ * request's modifiers to drop on a late attempt - so a pair that claims a budget the host will not
+ * spend changes what the server does on the first attempt.
+ *
+ * The budget is each host's own policy and is passed in. What is shared is how the pair is formed:
+ *  - `maxTries` is the budget, capped where the host's loop caps what it will actually spend on this
+ *    request (`cap`; absent = no cap) - the request states the budget the loop will honour, never a
+ *    larger one;
+ *  - `triesLeft` is the host's count for this attempt, and on a first attempt (none passed) the whole
+ *    of `maxTries`.
+ */
+export function retryFields(p: { budget: number; cap?: number | null; triesLeft?: number }): RetryFields {
+    const maxTries = p.cap != null && p.budget > p.cap ? p.cap : p.budget;
+    return { triesLeft: p.triesLeft ?? maxTries, maxTries };
+}
