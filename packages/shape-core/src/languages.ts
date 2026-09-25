@@ -27,9 +27,18 @@ export type SupportedLanguageCode =
     | "sv" | "da" | "nb" | "fi" | "hu" | "tr" | "ro" | "hr" | "id" | "vi"
     | "ru" | "uk" | "el" | "zh" | "ja" | "ko" | "ar" | "he" | "hi" | "th";
 
-export interface SupportedLanguage {
+/** A language whose words are matched in a reader's DATA but which has no reader-facing text of
+ *  its own (see `VOCABULARY_ONLY_LANGUAGES`). */
+export type VocabularyOnlyLanguageCode = "fa";
+
+/** Every language a vocabulary may carry words for: the thirty, plus the vocabulary-only ones. */
+export type VocabularyLanguageCode = SupportedLanguageCode | VocabularyOnlyLanguageCode;
+
+/** The word-matching properties of a language, shared by the Tier 1 list and the vocabulary-only
+ *  list. A Tier 1 entry is a `SupportedLanguage`. */
+export interface VocabularyLanguage {
     /** The one code this language is known by everywhere in the product. */
-    code: SupportedLanguageCode;
+    code: VocabularyLanguageCode;
     /** English name, for diagnostics and tests - never shown to a reader as a label. */
     name: string;
     script: LanguageScript;
@@ -53,7 +62,12 @@ export interface SupportedLanguage {
     foldSensitive: boolean;
 }
 
-const L = (code: SupportedLanguageCode, name: string, script: LanguageScript, extra: Partial<SupportedLanguage> = {}): SupportedLanguage => ({
+/** A Tier 1 language: its words are vetted for data AND its text is written for readers. */
+export interface SupportedLanguage extends VocabularyLanguage {
+    code: SupportedLanguageCode;
+}
+
+const L = <C extends VocabularyLanguageCode>(code: C, name: string, script: LanguageScript, extra: Partial<Omit<VocabularyLanguage, "code">> = {}): VocabularyLanguage & { code: C } => ({
     code, name, script,
     dir: "ltr",
     intl: code,
@@ -135,6 +149,38 @@ const TIER2_TEXT_NEIGHBOUR: Readonly<Record<string, SupportedLanguageCode>> = {
 export function supportedLanguage(code: string | null | undefined): SupportedLanguage | undefined {
     const k = String(code ?? "").trim().toLowerCase();
     return BY_CODE.get(k) ?? BY_ALIAS.get(k);
+}
+
+// ── VOCABULARY-ONLY LANGUAGES ─────────────────────────────────────────────────────────────────
+//
+// A language the product's DATA arrives in but whose readers get no text of their own. Its words
+// may sit in a vocabulary - a column named `سال` is a year column whatever the UI is in - so the
+// name reader has to know its script and word-matching properties; but it is not a Tier 1
+// language: `resolveLanguage` never answers with it (a Persian UI is Tier 2, English text and
+// Persian formatting), and no catalog owes it a translation.
+//
+// Persian is here because real models carry it: a production model named its date columns
+// `سال`, `ماه`, `روز` (year, month, day). Those columns held SOLAR HIJRI numbers (year 1405), which
+// is why the date-level lexicon admits a Persian hierarchy only beside a Gregorian year.
+
+/** The vocabulary-only languages. Kept apart from `SUPPORTED_LANGUAGES` so every list that means
+ *  "the thirty" - the UI catalogs, the country names, `resolveLanguage` - stays the thirty. */
+export const VOCABULARY_ONLY_LANGUAGES: readonly VocabularyLanguage[] = Object.freeze([
+    L("fa", "Persian", "Arab", { dir: "rtl" }),
+]);
+
+/** Every language a vocabulary may carry, Tier 1 first, in list order. */
+export const VOCABULARY_LANGUAGE_CODES: readonly VocabularyLanguageCode[] =
+    Object.freeze([...SUPPORTED_LANGUAGE_CODES, ...VOCABULARY_ONLY_LANGUAGES.map(l => l.code)]);
+
+const VOCAB_ONLY_BY_CODE: ReadonlyMap<string, VocabularyLanguage> =
+    new Map(VOCABULARY_ONLY_LANGUAGES.map(l => [l.code, l]));
+
+/** The entry a VOCABULARY reads a language by: a Tier 1 language (code or alias), or a
+ *  vocabulary-only one. Never use this to pick reader-facing text - that is `resolveLanguage`. */
+export function vocabularyLanguage(code: string | null | undefined): VocabularyLanguage | undefined {
+    const k = String(code ?? "").trim().toLowerCase();
+    return supportedLanguage(k) ?? VOCAB_ONLY_BY_CODE.get(k);
 }
 
 export interface ResolvedLanguage {

@@ -3,8 +3,10 @@
 import { describe, it, expect } from "vitest";
 import {
     SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, resolveLanguage, supportedLanguage,
+    VOCABULARY_ONLY_LANGUAGES, VOCABULARY_LANGUAGE_CODES, vocabularyLanguage,
     type SupportedLanguageCode,
 } from "../src/languages";
+import { matchNameToken } from "../src/nameReader";
 import { SUPPORTED_LANGS, countryIso3 } from "../src/geoCountryNames";
 import {
     INTENSIVE_WORD_TOKENS, LOCALIZED_DEFAULT_AGG_PREFIXES, LOCALIZED_CHOICE_AGG_PREFIXES,
@@ -76,6 +78,9 @@ describe("resolveLanguage - the one reading of a host's culture", () => {
         // Outside Tier 1: English text, the runtime's formatting when it has it.
         ["sw-KE", "en", 2, "sw-KE"],
         ["nn-NO", "nb", 2, "nn-NO"],
+        // Persian is a VOCABULARY-only language: its words are read in data, its readers get English
+        // text with Persian formatting.
+        ["fa-IR", "en", 2, "fa-IR"],
         // Nothing sent, or nothing readable: English, Tier 1.
         ["", "en", 1, "en"],
         [null, "en", 1, "en"],
@@ -101,6 +106,35 @@ describe("resolveLanguage - the one reading of a host's culture", () => {
 // Every language-bearing list in this package, against the Tier 1 list. A list keyed by language
 // is compared directly; a flat vocabulary (the intensive tokens, the aggregation prefixes) carries
 // its language claim HERE, token by token, and a token added without a claim fails the union check.
+
+describe("the vocabulary-only languages", () => {
+    it("are Persian alone, kept out of the thirty", () => {
+        expect(VOCABULARY_ONLY_LANGUAGES.map(l => l.code)).toEqual(["fa"]);
+        expect(SUPPORTED_LANGUAGE_CODES as readonly string[]).not.toContain("fa");
+        expect(supportedLanguage("fa")).toBeUndefined();
+        expect(VOCABULARY_LANGUAGE_CODES).toEqual([...SUPPORTED_LANGUAGE_CODES, "fa"]);
+    });
+
+    it("carry the word-matching properties of their script", () => {
+        const fa = vocabularyLanguage("FA")!;
+        expect(fa.script).toBe("Arab");
+        expect(fa.dir).toBe("rtl");
+        expect(fa.wordBreaks).toBe(true);
+        expect(fa.gluedPrefixes).toEqual([]);   // Persian writes no glued article
+        expect(Intl.NumberFormat.supportedLocalesOf([fa.intl])).toEqual([fa.intl]);
+    });
+
+    it("are found by the vocabulary lookup, which also finds every Tier 1 code and alias", () => {
+        expect(vocabularyLanguage("no")?.code).toBe("nb");
+        expect(vocabularyLanguage("de")?.code).toBe("de");
+        expect(vocabularyLanguage("xx")).toBeUndefined();
+    });
+
+    it("reach the name reader, so a vocabulary can hold a Persian word", () => {
+        expect(matchNameToken("سال", "سال", "fa")).toBe("word");
+        expect(matchNameToken("میانگین کیلوگرم", "میانگین", "fa")).toBe("word");
+    });
+});
 
 describe("the country-name languages ARE the Tier 1 list", () => {
     it("same set, English first", () => {

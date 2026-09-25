@@ -150,10 +150,22 @@ export { STR, SIMPLE_STRING_HASH, GET_RANDOM, isDeterministicRefusal, nameWords,
 // an English UI, so vocabulary is the union of all thirty.
 export {
     SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, supportedLanguage, resolveLanguage,
+    VOCABULARY_ONLY_LANGUAGES, VOCABULARY_LANGUAGE_CODES, vocabularyLanguage,
 } from "./languages";
 export type {
     SupportedLanguage, SupportedLanguageCode, LanguageScript, ResolvedLanguage,
+    VocabularyLanguage, VocabularyLanguageCode, VocabularyOnlyLanguageCode,
 } from "./languages";
+
+// THE DATE-LEVEL LEXICON (2026-09-25): what a date hierarchy's Year / Quarter / Month / Day levels
+// are called in every language a model is written in, with the one-language rule and a Gregorian-
+// year guard for the languages whose data counts years in another calendar. For the step that
+// BUILDS a date; never for anything that feeds a saved identity.
+export {
+    DATE_LEVEL_NAMES, DATE_LEVEL_LANGUAGES, DATE_LEVEL_NON_GREGORIAN_LANGUAGES,
+    DATE_LEVEL_GREGORIAN_YEAR_MIN, DATE_LEVEL_GREGORIAN_YEAR_MAX, dateLevelPart, dateLevelYearAdmits,
+} from "./vocab/dateLevels";
+export type { DateLevelPart, DateLevelEntry } from "./vocab/dateLevels";
 
 // THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
 // script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,

@@ -52,7 +52,7 @@
 // A C# twin reads the SAME fixture file (tests/fixtures/name-reader.json) and must tokenise it
 // identically; that file, not this comment, is the contract.
 
-import { supportedLanguage, type SupportedLanguageCode } from "./languages";
+import { vocabularyLanguage, type VocabularyLanguageCode } from "./languages";
 
 /** Letters that carry their mark inside the glyph, so no normalization form removes it. */
 const STROKE_FOLD: Readonly<Record<string, string>> = {
@@ -174,8 +174,8 @@ export const GLUED_STEM_MIN = 2;
  *  points. Empty for a language that glues nothing. `الإيرادات` (ar) -> ["إيرادات"];
  *  `והכנסות` (he) -> ["כנסות", "הכנסות"] - every candidate, because which letters are a prefix is
  *  the vocabulary's question, not the reader's. */
-export function gluedPrefixStems(word: string, lang: SupportedLanguageCode | string): string[] {
-    const l = supportedLanguage(lang);
+export function gluedPrefixStems(word: string, lang: VocabularyLanguageCode | string): string[] {
+    const l = vocabularyLanguage(lang);
     if (!word || !l || l.gluedPrefixes.length === 0) return [];
     const out: string[] = [];
     for (const p of [...l.gluedPrefixes].sort((a, b) => b.length - a.length)) {
@@ -207,9 +207,9 @@ export const SUBSTRING_MIN = 2;
  * Returns null when no view finds it. This is the reader only: a vocabulary still owns the
  * one-language rule for short tokens and the English-wins rule for collisions.
  */
-export function matchNameToken(name: string, token: string, lang: SupportedLanguageCode | string): NameTokenView | null {
+export function matchNameToken(name: string, token: string, lang: VocabularyLanguageCode | string): NameTokenView | null {
     if (!name || !token) return null;
-    const l = supportedLanguage(lang);
+    const l = vocabularyLanguage(lang);
     if (!l) return null;
     const tok = token.normalize("NFC").toLowerCase();
 
