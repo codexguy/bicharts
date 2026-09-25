@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-    viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields,
-    type ViewportSource, type CredentialSource,
+    viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
+    type ViewportSource, type CredentialSource, type RendererId,
 } from "../src/index";
 
 /** A source that counts how often it is measured and answers from a list, one per call. */
@@ -243,5 +243,28 @@ describe("fetchFields - the four fetch fields decided together", () => {
     it("a refetch of the version in hand is fetch-only", () => {
         expect(fetchFields({ genNew: false, settingVersion: null, codeVersion: 4 }))
             .toEqual({ genNew: false, version: 4, fetchOnly: true, fetchCorrelationId: undefined });
+    });
+});
+
+describe("capabilityFields - the request states what the host can run, derived from its renderers", () => {
+    const of = (...r: RendererId[]) => capabilityFields({ renderers: new Set(r) });
+
+    it("a host that runs D3, Plotly and Vega says all three", () => {
+        expect(of("D3", "PLOTLY", "VEGA", "PYTHON")).toEqual({ supportsD3: true, supportsPlotly: true, supportsVega: true });
+    });
+
+    it("a host that runs D3 alone says false for the other two - stated, never left to be inferred", () => {
+        const f = of("D3");
+        expect(f).toEqual({ supportsD3: true, supportsPlotly: false, supportsVega: false });
+        expect(JSON.stringify(f)).toBe('{"supportsD3":true,"supportsPlotly":false,"supportsVega":false}');
+    });
+
+    it("a host that asks for D3 and Plotly states exactly that", () => {
+        expect(of("D3", "PLOTLY")).toEqual({ supportsD3: true, supportsPlotly: true, supportsVega: false });
+    });
+
+    it("Python has no flag of its own, and an empty set states every flag false", () => {
+        expect(of("PYTHON")).toEqual({ supportsD3: false, supportsPlotly: false, supportsVega: false });
+        expect(of()).toEqual({ supportsD3: false, supportsPlotly: false, supportsVega: false });
     });
 });

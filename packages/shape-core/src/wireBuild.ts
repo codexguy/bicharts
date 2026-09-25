@@ -11,7 +11,7 @@
 // the hosts until it is made. Where the rule is shared and the values are each host's own policy,
 // only the rule is here: the host passes its values in.
 
-import type { CredentialSource, ViewportSource } from "./host/services";
+import type { CredentialSource, RendererId, ViewportSource, WireServices } from "./host/services";
 
 /** A generate request's credential fields. */
 export interface CredentialFields {
@@ -191,4 +191,28 @@ export function fetchFields(r: FetchRequest): FetchFields {
         codeVersion: r.codeVersion,
     });
     return { genNew, version: v.version, fetchOnly: v.fetchOnly, fetchCorrelationId: r.fetchCorrelationId ?? undefined };
+}
+
+/** The renderer capability flags a generate request carries. */
+export interface CapabilityFields {
+    supportsD3: boolean;
+    supportsPlotly: boolean;
+    supportsVega: boolean;
+}
+
+/**
+ * WHAT THE HOST CAN RUN, AS THE REQUEST STATES IT - derived from the renderers the host passes, never
+ * declared beside them, so a request can no longer ask for a chart its host cannot draw.
+ *
+ * The server reads each flag to decide which renderers it may pick; a flag that is absent is inferred
+ * from the client's version number, which says nothing about what THIS host can run. So every flag is
+ * stated, true or false, whatever the host. A host that generates without drawing (a server handing
+ * the code to someone else's page) passes the renderers it asks the server for.
+ *
+ * Python has no flag on the wire: a host that runs it says so in its renderer set and nothing here
+ * reads it. The host places each flag where it always has; they sit in a different order in each.
+ */
+export function capabilityFields(services: Pick<WireServices, "renderers">): CapabilityFields {
+    const has = (r: RendererId) => services.renderers.has(r);
+    return { supportsD3: has("D3"), supportsPlotly: has("PLOTLY"), supportsVega: has("VEGA") };
 }
