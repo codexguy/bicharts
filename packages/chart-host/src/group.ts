@@ -221,6 +221,10 @@ export function createChartGroup(columns: readonly any[], rows: readonly Record<
         attach(id, host, o = {}) {
             const highlight = o.respondsWith === "highlight";
             let rowMap = memberPayload(id, o).rowMap;
+            // The filter this member's payload was derived under: its rows change only when this,
+            // or the source table, does. Any other change is a repaint.
+            const filterKey = (incoming: number[] | null) => (highlight || !incoming ? "*" : incoming.join(","));
+            let drawnUnder = filterKey(incomingFor(id, o.filteredBy));
             const offHost = host.selection.onChange((payloadIdxs, source) => {
                 // "host" = a paint or clear the group itself issued; publishing it back would
                 // overwrite the selection a sibling just made.
@@ -229,11 +233,17 @@ export function createChartGroup(columns: readonly any[], rows: readonly Record<
                 if (id) group.publish(id, sourceIdxs);
                 o.onSelect?.(sourceIdxs);
             });
-            const offGroup = group.onChange(sel => {
+            const offGroup = group.onChange((sel, change) => {
                 const incoming = incomingFor(id, o.filteredBy);
-                const next = payloadFor(highlight ? null : incoming);
-                rowMap = next.rowMap;
-                host.setData(next.payload);
+                const key = filterKey(incoming);
+                // A member whose rows did not change is repainted, not redrawn: the origin and a
+                // highlight member keep every row, and a member wired to another partner keeps its own.
+                if (change === "source" || key !== drawnUnder) {
+                    const next = payloadFor(highlight ? null : incoming);
+                    rowMap = next.rowMap;
+                    drawnUnder = key;
+                    host.setData(next.payload);
+                }
                 syncMemberSelection(host, sel, id, highlight, incoming, rowMap);
             });
             const member: ChartGroupMember = {

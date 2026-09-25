@@ -12,6 +12,7 @@ function render(container, data, options) {
   container.innerHTML = "";
   const doc = container.ownerDocument;
   const nameAt = data.columns.findIndex(c => c.name === "name");
+  container.setAttribute("data-renders", String(Number(container.getAttribute("data-renders") || 0) + 1));
   for (let r = 0; r < data.rows.length; r++) {
     const m = doc.createElement("div");
     m.className = "d3-mark";
@@ -162,6 +163,25 @@ describe("attach: live chart hosts coordinated by the group", () => {
         click(a.el, "r0");
         expect(names(c.el)).toEqual(["r0"]);
         expect(names(b.el)).toEqual(["r0"]);
+    });
+
+    it("only a member whose rows change is redrawn; the origin and a highlight member are repainted", () => {
+        const renders = (el: HTMLElement) => Number(el.getAttribute("data-renders") || 0);
+        const a = member("a");
+        const b = member("b");
+        const m = member("m", { respondsWith: "highlight" });
+        const c = member("c", { filteredBy: "b" });
+        expect([a, b, m, c].map(x => renders(x.el))).toEqual([1, 1, 1, 1]);
+        click(a.el, "r2");
+        // b filters (redraw); a is the origin, m highlights, c listens to b only - all repainted.
+        expect([a, b, m, c].map(x => renders(x.el))).toEqual([1, 2, 1, 1]);
+        expect(selected(m.el)).toEqual(["r2"]);
+        group.clear();
+        expect([a, b, m, c].map(x => renders(x.el))).toEqual([1, 3, 1, 1]);
+        expect(selected(a.el)).toEqual([]);
+        // A new source table redraws every member.
+        group.setSource(COLUMNS, ROWS.slice(0, 3));
+        expect([a, b, m, c].map(x => renders(x.el))).toEqual([2, 4, 2, 2]);
     });
 
     it("detach unwires a member: its clicks stop publishing and the group stops redrawing it", () => {

@@ -92,10 +92,10 @@ describe("a group member draws the source table and filters to a sibling's selec
         await mountGroup([{ id: "a", cls: "ca" }, { id: "b", cls: "cb" }]);
         expect(names("ca")).toEqual(["r0", "r1", "r2", "r3", "r4"]);
         expect(names("cb")).toEqual(["r0", "r1", "r2", "r3", "r4"]);
-        // Measured before the move: a member draws twice on mount - the build, then the data
-        // effect handing the same payload to setData.
-        expect(renders("ca")).toBe(2);
-        expect(renders("cb")).toBe(2);
+        // Once each. (Until 2026-09-24 twice: the data effect handed the payload the host was just
+        // built with straight back to setData - measured and pinned by the move, fixed on its own.)
+        expect(renders("ca")).toBe(1);
+        expect(renders("cb")).toBe(1);
         expect(lastSel!.rows).toEqual([]);
         expect(lastSel!.sourceId).toBeNull();
     });
@@ -223,15 +223,37 @@ describe("member options", () => {
 });
 
 describe("what a selection change costs", () => {
-    it("every member re-renders once per selection change - the origin and a highlight member included", async () => {
-        // Measured on the React binding before the move, and kept by it: each member's payload is
-        // re-derived whenever the group's selection changes, and a re-derived payload is a setData.
+    it("only a member whose rows change re-renders; the origin and a highlight member are repainted", async () => {
+        // A filtered member's rows change, so it redraws. The origin keeps every row and a
+        // highlight member keeps every row by design - both are repainted, never redrawn, so a map
+        // keeps its projection and zoom. (Until 2026-09-24 every member redrew on every selection
+        // change: its payload was re-derived whenever the selection moved - measured and pinned by
+        // the move into the core, fixed on its own.)
         await mountGroup([{ id: "a", cls: "ca" }, { id: "b", cls: "cb" }, { id: "m", cls: "cm", respondsWith: "highlight" }]);
-        const before = [renders("ca"), renders("cb"), renders("cm")];
+        expect([renders("ca"), renders("cb"), renders("cm")]).toEqual([1, 1, 1]);
         await click(markNamed("ca", "r2"));
-        expect([renders("ca"), renders("cb"), renders("cm")]).toEqual(before.map(n => n + 1));
+        expect([renders("ca"), renders("cb"), renders("cm")]).toEqual([1, 2, 1]);
+        expect(selectedNames("ca")).toEqual(["r2"]);
+        expect(selectedNames("cm")).toEqual(["r2"]);
+        await click(markNamed("ca", "r4"), "ctrlKey");
+        expect([renders("ca"), renders("cb"), renders("cm")]).toEqual([1, 3, 1]);
         await act(async () => { lastSel!.clear(); });
-        expect([renders("ca"), renders("cb"), renders("cm")]).toEqual(before.map(n => n + 2));
+        expect([renders("ca"), renders("cb"), renders("cm")]).toEqual([1, 4, 1]);
+        expect(selectedNames("ca")).toEqual([]);
+        expect(selectedNames("cm")).toEqual([]);
+    });
+
+    it("a live restyle is one redraw, and the options the chart was built with are not handed back", async () => {
+        const opts = { width: 300, height: 200 };
+        const d3 = {};   // one d3 for the chart's life, as a page holds it: a new one is a rebuild
+        const tree = (o: object) => createElement(BicChartGroup, { rows: ROWS, columns: COLUMNS },
+            createElement(BicChart, { key: "a", id: "a", code: PROBE, d3, className: "ca", options: o, labelContrast: false }));
+        await act(async () => { root.render(tree(opts)); });
+        expect(renders("ca")).toBe(1);
+        await act(async () => { root.render(tree({ ...opts })); });   // equal options, new object
+        expect(renders("ca")).toBe(1);
+        await act(async () => { root.render(tree({ ...opts, width: 320 })); });
+        expect(renders("ca")).toBe(2);
     });
 });
 

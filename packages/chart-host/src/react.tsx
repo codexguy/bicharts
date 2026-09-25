@@ -99,12 +99,17 @@ export interface BicChartProps {
 // can see what they picked in context and click again to change it). That single rule
 // gives mutual cross-filtering for free: click a bubble and the table filters, click a
 // table row and the map filters, with no possibility of a feedback loop. The rules live in
-// the core group; the context carries it and a snapshot of its selection - a new object on
-// every publish and clear, which is what re-renders the members.
+// the core group; the context carries it, a snapshot of its selection - a new object on every
+// publish and clear, which is what re-evaluates the members - and a token that changes only
+// with the source table. A member's payload is re-derived when the token or ITS OWN filter
+// changes, never merely because the selection did: a member whose rows did not change is
+// repainted, not redrawn.
 interface GroupCtx {
     group: ChartGroup;
     /** The whole group's active selection, whoever produced it. */
     selection: ChartGroupSelection;
+    /** A new object whenever the source table (or its bindings) changes, and only then. */
+    source: object;
 }
 const Ctx = createContext<GroupCtx | null>(null);
 
@@ -150,9 +155,7 @@ export function BicChartGroup({ rows, columns, geo, point, children }: BicChartG
     }, [group, rows, columns, geo, point]);
     // A "source" change is this component's own props: the render already carries it.
     useEffect(() => group.onChange((s, change) => { if (change !== "source") setSel(s); }), [group]);
-    const value = useMemo<GroupCtx>(() => ({ group, selection: sel }),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [group, sel, source]);
+    const value = useMemo<GroupCtx>(() => ({ group, selection: sel, source }), [group, sel, source]);
     return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -178,10 +181,16 @@ export function BicChart(props: BicChartProps) {
     const built = useMemo(() => {
         if (!group) return null;
         return group.payloadFor(filterSel);
+        // Re-derived only when this member's rows can differ: a new source table, or a new filter
+        // for THIS member. A selection change that leaves its filter where it was - the origin, a
+        // highlight member, a member wired to a different partner - keeps the same payload, so the
+        // data effect below does nothing and the selection effect repaints.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ctx, filterSel && filterSel.join(",")]);
+    }, [group, ctx?.source, filterSel && filterSel.join(",")]);
     const data = built ? built.payload : props.data;
     rowMapRef.current = built ? built.rowMap : null;
+    const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
+    const builtWithRef = useRef<{ data?: unknown; optKey?: string } | null>(null);
 
     // Keep the newest callback without making it a rebuild trigger.
     const onSelectRef = useRef(onSelect);
@@ -240,6 +249,9 @@ export function BicChart(props: BicChartProps) {
             onSelectRef.current?.(sourceIdxs);
         });
         host.render();
+        // What the host was BUILT with, so the effects below do not hand the same data or options
+        // straight back: that was a second full render of every chart on mount.
+        builtWithRef.current = { data, optKey };
         return () => {
             // StrictMode double-mount and every unmount land here: stop the timer, drop the
             // listeners, clear the DOM. Skipping this is the animated-chart leak.
@@ -253,16 +265,23 @@ export function BicChart(props: BicChartProps) {
     }, [code, renderFn, d3, geoKind, labelContrast]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
-    // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions.
-    const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
+    // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the
+    // options are the ones the host was just built with.
     useEffect(() => {
-        if (hostRef.current && options) hostRef.current.setOptions(options);
+        if (!hostRef.current || !options) return;
+        if (builtWithRef.current?.optKey === optKey) return;
+        builtWithRef.current = { ...builtWithRef.current, optKey };
+        hostRef.current.setOptions(options);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optKey]);
 
-    // DATA change (including a cross-filter re-derive) — repaint, never recompile.
+    // DATA change (including a cross-filter re-derive) — a redraw, never a recompile. Skipped when
+    // it is the payload the host was just built with.
     useEffect(() => {
-        if (hostRef.current && data) hostRef.current.setData(data);
+        if (!hostRef.current || !data) return;
+        if (builtWithRef.current?.data === data) return;
+        builtWithRef.current = { ...builtWithRef.current, data };
+        hostRef.current.setData(data);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data]);
 
