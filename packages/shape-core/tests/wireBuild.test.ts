@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
-    retryFields,
+    retryFields, leafCardinalityField,
     type ViewportSource, type CredentialSource, type RendererId,
 } from "../src/index";
 
@@ -295,5 +295,24 @@ describe("retryFields - the pair a request states, formed one way; the budget is
 
     it("passes the host's count through as given - the host owns its own loop", () => {
         expect(retryFields({ budget: 2, triesLeft: 2 })).toEqual({ triesLeft: 2, maxTries: 2 });
+    });
+});
+
+describe("leafCardinalityField - a leaf count is sent only when it is one", () => {
+    it("a positive count travels as a whole number", () => {
+        expect(leafCardinalityField(17)).toEqual({ leafCardinality: 17 });
+        expect(leafCardinalityField(17.4)).toEqual({ leafCardinality: 17 });
+        expect(leafCardinalityField(0.6)).toEqual({ leafCardinality: 1 });
+    });
+
+    it("zero, a negative, NaN or nothing sends no field - the server reads absent and 0 alike", () => {
+        for (const n of [0, -3, Number.NaN, null, undefined]) {
+            expect(leafCardinalityField(n), String(n)).toEqual({});
+            expect(JSON.stringify({ a: 1, ...leafCardinalityField(n), b: 2 })).toBe('{"a":1,"b":2}');
+        }
+    });
+
+    it("spreads at the host's own position", () => {
+        expect(JSON.stringify({ rowCount: 5, ...leafCardinalityField(3), next: true })).toBe('{"rowCount":5,"leafCardinality":3,"next":true}');
     });
 });

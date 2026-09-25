@@ -240,3 +240,15 @@ export function retryFields(p: { budget: number; cap?: number | null; triesLeft?
     const maxTries = p.cap != null && p.budget > p.cap ? p.cap : p.budget;
     return { triesLeft: p.triesLeft ?? maxTries, maxTries };
 }
+
+/**
+ * THE LEAF COUNT A REQUEST STATES - the client hints' `leafCardinality`: how many distinct combinations
+ * of the dimensions the rows hold. The server reads it where it would otherwise multiply each
+ * dimension's distinct count (which overstates the cells of any nested table), and it reads an absent
+ * count and a zero one alike - every reader tests for a positive number. So a count is sent only when
+ * it is one: a positive number, rounded to the whole count the server's integer field holds; zero, a
+ * negative, NaN or nothing sends no field at all. Spread where the host has always placed it.
+ */
+export function leafCardinalityField(count: number | null | undefined): { leafCardinality?: number } {
+    return count && count > 0 ? { leafCardinality: Math.round(count) } : {};
+}
