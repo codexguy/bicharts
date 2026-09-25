@@ -150,6 +150,96 @@ describe("it cannot invent a target", () => {
     });
 });
 
+// WHAT DECIDES AN OUTLINE: WHAT THE ENGINE PAINTS (2026-09-25).
+//
+// Every browser engine maps the fill presentation attribute into computed style, so there the
+// computed fill is what is painted - also when CSS overrides the attribute (either way), and with
+// every spelling of transparent normalised. Reading the attribute first there contradicted the paint
+// in five shapes, measured in headless Chromium: fill="rgba(0,0,0,0)" and fill="#0000" outlines were
+// called filled (so they swallowed the clicks under them), a fill="red" outline whose CSS says
+// fill:none likewise, and a fill="none" shape that CSS fills was called an outline (so its painted
+// interior stopped taking clicks). jsdom maps no presentation attribute (an attribute-only fill
+// computes as black), so there the attribute is still read first - the cases above.
+describe("in an engine that maps presentation attributes, the computed fill decides", () => {
+    // A computed style the way a browser answers it: an inline style beats a class rule beats the
+    // attribute, and every colour is normalised.
+    const CLASS_FILL: Record<string, string> = { cssfill: "steelblue", cssnone: "none" };
+    const NORMAL: Record<string, string> = {
+        none: "none", transparent: "rgba(0, 0, 0, 0)", "rgba(0,0,0,0)": "rgba(0, 0, 0, 0)", "#0000": "rgba(0, 0, 0, 0)",
+        red: "rgb(255, 0, 0)", steelblue: "rgb(70, 130, 180)", "#118dff": "rgb(17, 141, 255)",
+    };
+    let probes: number;
+    const browserLike = (): { doc: Document; ctr: any } => {
+        const d = new JSDOM("<!doctype html><html><body><svg id='c'></svg></body></html>");
+        const w: any = d.window;
+        probes = 0;
+        w.getComputedStyle = (e: any) => {
+            if (e.tagName === "rect" && e.parentNode?.tagName === "svg" && e.parentNode.parentNode === w.document.documentElement) probes++;
+            const cls = String(e.getAttribute("class") || "").split(/\s+/).map((c: string) => CLASS_FILL[c]).find(Boolean);
+            const raw = String(e.style.fill || cls || e.getAttribute("fill") || "black").trim().toLowerCase();
+            return { pointerEvents: e.style.pointerEvents || "auto", fill: NORMAL[raw] ?? (raw === "black" ? "rgb(0, 0, 0)" : raw) };
+        };
+        return { doc: w.document, ctr: w.document.getElementById("c") };
+    };
+    const outline = (d: Document, attrs: Record<string, string>, style: Record<string, string> = {}) => {
+        const p = d.createElementNS("http://www.w3.org/2000/svg", "path") as any;
+        p.setAttribute("class", `${MARK_CLASS} ${attrs.class ?? ""}`.trim());
+        p.setAttribute(ROW_IDX_ATTR, "0");
+        for (const [k, v] of Object.entries(attrs)) if (k !== "class") p.setAttribute(k, v);
+        for (const [k, v] of Object.entries(style)) p.style[k] = v;
+        p.style.pointerEvents = "none";
+        return p;
+    };
+
+    // Each shape, and the answer the paint gives - the same as the Power BI visual's computed read.
+    const SHAPES: [string, Record<string, string>, Record<string, string>, "stroke" | "all"][] = [
+        ['fill="none"', { fill: "none" }, {}, "stroke"],
+        ['fill="transparent"', { fill: "transparent" }, {}, "stroke"],
+        ['fill="rgba(0,0,0,0)"', { fill: "rgba(0,0,0,0)" }, {}, "stroke"],
+        ['fill="#0000"', { fill: "#0000" }, {}, "stroke"],
+        ['fill="none" that a CSS class fills', { fill: "none", class: "cssfill" }, {}, "all"],
+        ['fill="red" with an inline fill:none', { fill: "red" }, { fill: "none" }, "stroke"],
+        ['fill="red" with a CSS class fill:none', { fill: "red", class: "cssnone" }, {}, "stroke"],
+        ["no attribute, a CSS class fill:none", { class: "cssnone" }, {}, "stroke"],
+        ["no fill anywhere (painted black)", {}, {}, "all"],
+        ['fill="#118dff"', { fill: "#118dff" }, {}, "all"],
+    ];
+    for (const [name, attrs, style, want] of SHAPES) {
+        it(`${name} -> '${want}'`, () => {
+            const { doc: d, ctr } = browserLike();
+            const p = outline(d, attrs, style);
+            ctr.appendChild(p);
+            const rep = ensureCrossfilterHitTargets(ctr, d);
+            expect(p.style.pointerEvents).toBe(want);
+            expect(rep.peStrokeOnly).toBe(want === "stroke" ? 1 : 0);
+        });
+    }
+
+    it("asks the engine once per document, leaves nothing behind, and only when something needs deciding", () => {
+        const { doc: d, ctr } = browserLike();
+        const drawn = outline(d, { fill: "#118dff" });
+        drawn.style.pointerEvents = "";
+        ctr.appendChild(drawn);
+        ensureCrossfilterHitTargets(ctr, d);
+        expect(probes, "nothing was pointer-events:none, so nothing was asked").toBe(0);
+        ctr.appendChild(outline(d, { fill: "none" }));
+        ctr.appendChild(outline(d, { fill: "red" }));
+        ensureCrossfilterHitTargets(ctr, d);
+        ensureCrossfilterHitTargets(ctr, d);
+        expect(probes).toBe(1);
+        expect(d.documentElement.children.length).toBe(2); // head and body, as before
+    });
+
+    it("jsdom maps nothing, so there the attribute is read first (an attribute-only outline is 'stroke')", () => {
+        const p = svg("path", { class: MARK_CLASS, [ROW_IDX_ATTR]: "0", fill: "none" });
+        p.style.pointerEvents = "none";
+        container.appendChild(p);
+        ensureCrossfilterHitTargets(container, doc);
+        expect(p.style.pointerEvents).toBe("stroke");
+        expect(doc.documentElement.children.length).toBe(2);
+    });
+});
+
 describe("createChartHost runs it, so a tagged-but-inert tick still filters", () => {
     it("an inert axis header becomes clickable AND marks itself as the active filter", () => {
         const dom2 = new JSDOM("<!doctype html><html><body><div id='c'></div></body></html>");
@@ -188,3 +278,4 @@ function render(container, data, options) {
         h.destroy();
     });
 });
+

@@ -30,6 +30,35 @@ const HIT_ATTR = "data-lch-hit";
 // is the expensive part.
 const ELEMENT_CAP = 5000;
 
+// DOES THIS ENGINE PAINT WHAT ITS COMPUTED STYLE SAYS? Every browser engine maps an SVG
+// presentation attribute (fill="none") into computed style, so there the computed fill IS what
+// is painted - including when CSS overrides the attribute, in either direction. jsdom maps none
+// of them, so there an attribute-only fill computes as the initial black and only the attribute
+// tells the truth. Asked once per document, with a probe added and removed at once, and cached.
+const mapsPresentationAttributes = new WeakMap<object, boolean>();
+
+function engineMapsPresentationAttributes(ownerDoc: any, view: any): boolean {
+    if (!ownerDoc || typeof ownerDoc !== "object") return false;
+    const known = mapsPresentationAttributes.get(ownerDoc);
+    if (known !== undefined) return known;
+    let maps = false;
+    try {
+        const host = ownerDoc.documentElement;
+        const probe = ownerDoc.createElementNS(SVG_NS, "svg");
+        const shape = ownerDoc.createElementNS(SVG_NS, "rect");
+        shape.setAttribute("fill", "none");
+        probe.appendChild(shape);
+        host.appendChild(probe);
+        try {
+            maps = String(view.getComputedStyle(shape).fill ?? "").trim().toLowerCase() === "none";
+        } finally {
+            host.removeChild(probe);
+        }
+    } catch { maps = false; }
+    mapsPresentationAttributes.set(ownerDoc, maps);
+    return maps;
+}
+
 export interface HitTargetReport {
     /** tagged elements examined */
     tagged: number;
@@ -122,12 +151,15 @@ export function ensureCrossfilterHitTargets(container: any, doc?: any): HitTarge
                 const cs = computed(el);
                 if (cs && cs.pointerEvents === "none") {
                     // `fill` is an SVG PRESENTATION ATTRIBUTE as well as a CSS property, and
-                    // the attribute is what codegen almost always writes. Read the attribute
-                    // first and fall back to the computed value, so the outline case is
-                    // decided the same way whether the chart wrote `fill="none"` or styled
-                    // it — and so it is still decided at all in an environment whose CSS
-                    // engine does not map SVG presentation attributes.
-                    const fill = String(el.getAttribute?.("fill") ?? cs.fill ?? "").trim().toLowerCase();
+                    // the attribute is what codegen almost always writes. The outline case is
+                    // decided by what the engine PAINTS: the computed fill in an engine that
+                    // maps presentation attributes (every browser - there it also sees a CSS
+                    // fill that overrides the attribute, and every spelling of transparent
+                    // normalised), the attribute first in one that does not (jsdom), where
+                    // the computed value would call a fill="none" outline filled.
+                    const fill = String((engineMapsPresentationAttributes(ownerDoc, view)
+                        ? cs.fill
+                        : (el.getAttribute?.("fill") ?? cs.fill)) ?? "").trim().toLowerCase();
                     const unfilled = fill === "none" || fill === "transparent" || fill === "rgba(0, 0, 0, 0)";
                     if (el.style) el.style.pointerEvents = unfilled ? "stroke" : "all";
                     report.peFlips++;
