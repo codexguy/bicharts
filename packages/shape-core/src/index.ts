@@ -237,3 +237,9 @@ export type {
 // memory - name, role and type family per column. Never a persisted fingerprint; see schemaIdentity.ts.
 export { schemaIdentity, schemaIdentityKey, schemaTypeFamily } from "./schemaIdentity";
 export type { SchemaIdentityColumn } from "./schemaIdentity";
+// THE CLIENT TELEMETRY VOCABULARY (2026-09-25): the severity levels, a client message's field names,
+// the event kinds and the event-count line - stated once for every host. See telemetry.ts.
+export {
+    SEV_INFO, SEV_WARNING, SEV_ERROR, SEV_USER_PRESENTED, CLIENT_EVENT_KINDS, isEventLogCode, eventLogLine,
+} from "./telemetry";
+export type { ClientMessage } from "./telemetry";
