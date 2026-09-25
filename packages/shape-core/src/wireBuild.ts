@@ -252,3 +252,40 @@ export function retryFields(p: { budget: number; cap?: number | null; triesLeft?
 export function leafCardinalityField(count: number | null | undefined): { leafCardinality?: number } {
     return count && count > 0 ? { leafCardinality: Math.round(count) } : {};
 }
+
+/**
+ * IS A CAPTURED "WHAT FITS" LIST STALE? True when the list was captured for one schema and the
+ * request now describes another - the reader changed the fields since they looked, so the list is not
+ * the one in front of them. The keys are the host's own schema keys, compared as given; an unknown
+ * key on either side (null or undefined) is not evidence of a change, and the list stands.
+ */
+export function shortlistIsStale(
+    capturedFor: string | number | null | undefined,
+    now: string | number | null | undefined,
+): boolean {
+    return capturedFor != null && now != null && capturedFor !== now;
+}
+
+/**
+ * THE SHORTLIST A REQUEST CARRIES - the "what fits" list the reader was looking at when they chose, and
+ * how long ago they saw it.
+ *
+ * A list captured for a different schema is DROPPED rather than sent with a misleading age
+ * (`shortlistIsStale`): it was computed for other fields, which makes it wrong rather than merely old.
+ * There is no age CAP - a reader who studied the list for ten minutes and then generated was still
+ * working from it. `ageMs` is the whole milliseconds since `atMs` (never negative), and undefined when
+ * no capture time is known; it follows the list's own fields.
+ *
+ * `stale` says why a present list was not returned, so a host can record the drop.
+ */
+export function offeredShortlistFor<T extends object>(
+    shortlist: T | null | undefined,
+    at: { capturedFor?: string | number | null; now?: string | number | null; atMs: number; nowMs: number },
+): { shortlist: (T & { ageMs?: number }) | undefined; stale: boolean } {
+    if (!shortlist) return { shortlist: undefined, stale: false };
+    if (shortlistIsStale(at.capturedFor, at.now)) return { shortlist: undefined, stale: true };
+    return {
+        shortlist: { ...shortlist, ageMs: at.atMs > 0 ? Math.max(0, Math.round(at.nowMs - at.atMs)) : undefined },
+        stale: false,
+    };
+}

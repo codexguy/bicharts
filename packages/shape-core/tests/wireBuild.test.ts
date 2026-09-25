@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
-    retryFields, leafCardinalityField,
+    retryFields, leafCardinalityField, shortlistIsStale, offeredShortlistFor,
     type ViewportSource, type CredentialSource, type RendererId,
 } from "../src/index";
 
@@ -314,5 +314,43 @@ describe("leafCardinalityField - a leaf count is sent only when it is one", () =
 
     it("spreads at the host's own position", () => {
         expect(JSON.stringify({ rowCount: 5, ...leafCardinalityField(3), next: true })).toBe('{"rowCount":5,"leafCardinality":3,"next":true}');
+    });
+});
+
+describe("offeredShortlistFor - the list the reader chose from, and how long ago they saw it", () => {
+    const LIST = { count: 3, charts: [{ name: "Bar chart", rank: 1 }], picked: "Bar chart" };
+
+    it("no list, no field", () => {
+        expect(offeredShortlistFor(undefined, { capturedFor: 1, now: 1, atMs: 100, nowMs: 200 })).toEqual({ shortlist: undefined, stale: false });
+        expect(offeredShortlistFor(null, { atMs: 0, nowMs: 0 })).toEqual({ shortlist: undefined, stale: false });
+    });
+
+    it("a list captured for another schema is dropped, and says so", () => {
+        expect(offeredShortlistFor(LIST, { capturedFor: 111, now: 222, atMs: 100, nowMs: 200 })).toEqual({ shortlist: undefined, stale: true });
+        expect(shortlistIsStale(111, 222)).toBe(true);
+        expect(shortlistIsStale("a|M", "b|M")).toBe(true);
+    });
+
+    it("an unknown key on either side is not evidence of a change", () => {
+        for (const [c, n] of [[null, 222], [111, null], [undefined, undefined], [null, null]] as const) {
+            expect(shortlistIsStale(c, n), `${c} ${n}`).toBe(false);
+            expect(offeredShortlistFor(LIST, { capturedFor: c, now: n, atMs: 100, nowMs: 350 }).shortlist).toEqual({ ...LIST, ageMs: 250 });
+        }
+    });
+
+    it("the same schema keeps the list, aged in whole milliseconds after its own fields", () => {
+        const r = offeredShortlistFor(LIST, { capturedFor: 7, now: 7, atMs: 1000.4, nowMs: 1600.9 });
+        expect(r.stale).toBe(false);
+        expect(JSON.stringify(r.shortlist)).toBe('{"count":3,"charts":[{"name":"Bar chart","rank":1}],"picked":"Bar chart","ageMs":601}');
+    });
+
+    it("no capture time means no age; a clock that went backwards reads 0", () => {
+        expect(JSON.stringify(offeredShortlistFor(LIST, { capturedFor: 7, now: 7, atMs: 0, nowMs: 5000 }).shortlist))
+            .toBe(JSON.stringify(LIST));
+        expect(offeredShortlistFor(LIST, { atMs: 5000, nowMs: 4000 }).shortlist!.ageMs).toBe(0);
+    });
+
+    it("there is no age cap - ten minutes of study still counts", () => {
+        expect(offeredShortlistFor(LIST, { capturedFor: 7, now: 7, atMs: 1, nowMs: 600_001 }).shortlist!.ageMs).toBe(600_000);
     });
 });
