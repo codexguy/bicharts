@@ -5,7 +5,10 @@
 Describe the chart you want, or just hand over the data, and RegiaBI gives you back a working, interactive chart that fits your data on the first try — as source code you own. It goes into your repo and runs in the framework you already use: React, a plain web page, or whatever your coding agent is scaffolding. At run time there's no key, no call to us and nothing to pay per render: `@bicharts/chart-host`, the open-source runtime, makes the chart behave in your page — clicks, cross-filtering, selection — so that's code you don't have to write. You start from something that already works and spend your time on the last ten percent, in plain language or in the code itself; reading the code is an advantage, never the price of entry. And because the engine knows what each chart type can honestly say, it'll sometimes show you a view of your data you hadn't thought to ask for.
 
 **[Live demo](https://codexguy.github.io/bicharts-react-demo/)** — two generated charts
-cross-filtering in a plain React app; the page makes zero calls to us.
+cross-filtering in a plain React app; the page makes zero calls to us. There's also a
+**[Blazor demo](https://codexguy.github.io/bicharts-blazor-demo/)** — the same claim, in .NET,
+[built from an empty folder through the MCP](https://github.com/codexguy/bicharts-blazor-demo)
+with a [step-by-step recipe](examples/blazor).
 · [RegiaBI for developers](https://bizintelligencechampions.com/regiabi/developers?loc=ghlib)
 
 The chart is a plain `render(container, data, options)` function you commit to your
