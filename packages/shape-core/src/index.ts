@@ -232,6 +232,12 @@ export type { PayloadPreviewOptions } from "./payloadPreview";
 // the reader removed. Both hosts share the one rule so they agree on what counts as a use. See
 // codeColumnReads.ts for why code that picks columns by role or position keeps every name.
 export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads } from "./codeColumnReads";
+// WHICH COLUMNS MUST THIS CHART'S CODE FIND? - the hard name lookups in cached chart code whose
+// column is gone, asked by a host before it draws that code against changed fields. See
+// columnRefScan.ts for the optional probes and data-value comparisons it deliberately does not count.
+export {
+    isColumnContextRef, nameProbeIsGuarded, missingHardColumnRefs, HOST_SYNTHETIC_COLUMNS, guardColumnNames,
+} from "./columnRefScan";
 
 // FREEMIUM ENTITLEMENT WALLS A HOST CAN ANTICIPATE (2026-09-17). The column cap is ENFORCED only on
 // the server; these let a host refuse in 0 ms in the SERVER'S OWN WORDS rather than pay a round
