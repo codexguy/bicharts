@@ -1,0 +1,41 @@
+@implements IAsyncDisposable
+
+<div @ref="el" class="bic-chart" data-bic-chart="@Id" style="height:@(Height)px"></div>
+
+@code {
+    [CascadingParameter] public BicChartGroup Group { get; set; } = default!;
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+    /// <summary>The generate_chart out_dir under wwwroot, e.g. "charts/map".</summary>
+    [Parameter, EditorRequired] public string Dir { get; set; } = "";
+    [Parameter] public int Height { get; set; } = 420;
+    /// <summary>"highlight" keeps every mark and dims the rest; the default filters.</summary>
+    [Parameter] public string? RespondsWith { get; set; }
+    /// <summary>A map's geo.kind from the generate_chart result (e.g. "us-state-name").</summary>
+    [Parameter] public string? GeoKind { get; set; }
+
+    ElementReference el;
+    IJSObjectReference? chart;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var group = await Group.Ready;
+        chart = await group.InvokeAsync<IJSObjectReference>("mount", el,
+            new { id = Id, dir = Dir, height = Height, respondsWith = RespondsWith, geoKind = GeoKind });
+    }
+
+    /// <summary>A live restyle: merged into the chart's options and repainted.</summary>
+    public async Task SetOptionsAsync(object patch)
+    {
+        if (chart is not null) await chart.InvokeVoidAsync("setOptions", patch);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (chart is not null) { await chart.InvokeVoidAsync("destroy"); await chart.DisposeAsync(); }
+        }
+        catch (JSDisconnectedException) { }
+    }
+}

@@ -1,0 +1,52 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    /// <summary>The data.sample.json whose rows are the one source table every chart draws from.</summary>
+    [Parameter, EditorRequired] public string Source { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>The chart that made the selection (null when cleared) and its SOURCE rows.</summary>
+    [Parameter] public EventCallback<(string? SourceId, int[] Rows)> OnSelection { get; set; }
+
+    readonly TaskCompletionSource<IJSObjectReference> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    IJSObjectReference? module, group;
+    DotNetObjectReference<BicChartGroup>? self;
+
+    public Task<IJSObjectReference> Ready => ready.Task;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/bic/bic.entry.js");
+            self = DotNetObjectReference.Create(this);
+            group = await module.InvokeAsync<IJSObjectReference>("createGroup", Source, self);
+            ready.TrySetResult(group);
+        }
+        catch (Exception e) { ready.TrySetException(e); throw; }
+    }
+
+    [JSInvokable]
+    public Task OnSelectionChanged(string? sourceId, int[] rows) => OnSelection.InvokeAsync((sourceId, rows));
+
+    public async Task ClearAsync()
+    {
+        if (group is not null) await group.InvokeVoidAsync("clear");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (group is not null) { await group.InvokeVoidAsync("dispose"); await group.DisposeAsync(); }
+            if (module is not null) await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }   // Blazor Server: the circuit is already gone
+        self?.Dispose();
+    }
+}
