@@ -13,9 +13,9 @@
 // reaches cached charts retroactively, a chart type added next month inherits it by existing,
 // and the exec gate and CQC never see it.
 //
-// PURE FUNCTION, NO DOM. The chrome is thin and per-host (the visual mounts it in its overlay
-// layer, the add-in in its chart wrap); the arithmetic is identical everywhere, so it is here
-// and it is testable without a browser.
+// PURE FUNCTION, NO DOM. The chrome is selectionCardChrome.ts, which each host mounts inside its
+// own frame; the arithmetic is identical everywhere, so it is here and it is testable without a
+// browser.
 
 import type { RenderPayload } from "./payload";
 // ONE CLASSIFIER DECIDES WHAT MAY BE AGGREGATED (2026-09-01). Until then this file

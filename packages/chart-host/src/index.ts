@@ -184,11 +184,15 @@ export {
 // dimming is also the ONLY response, so the selection has to state its own numbers. Arithmetic
 // only, and deliberately so: it runs over the payload every consumer already holds at draw
 // time, which is what makes "all chart types" true by construction and hands the capability to
-// already-cached charts retroactively. The chrome is thin and per host; this is not.
+// already-cached charts retroactively.
 export {
     computeSelectionCard, normaliseAggregation,
     type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
 } from "./selectionCard";
+// The chrome around it: where the card opens (at the click, inside the frame), pinning with an
+// oldest-out limit, dismissal (its close control, an empty selection, Esc), and the compact card a
+// small tile gets. One implementation for every host that mounts a card, so they cannot disagree.
+export { createSelectionCards, type SelectionCards, type SelectionCardsDeps } from "./selectionCardChrome";
 
 // A date, printed the way its SOURCE prints it (2026-09-09). The payload's date cells are ISO
 // instants by contract, and anything that shows one to a reader has to undo that — the selection
