@@ -63,6 +63,13 @@ jobs:
             fi
           done
 
+      # ONE NUMBER LINE: these two packages share their version line with @bicharts/chart-mcp,
+      # which can be released on its own. A tag at or below a version chart-mcp already
+      # published would reuse the line's number, so it is refused here, before anything publishes.
+      - name: the version is the next number on the line
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/lineGuard.mjs "${GITHUB_REF_NAME#v}" --self @bicharts/shape-core --other @bicharts/chart-mcp --rule above
+
       # shape-core FIRST: chart-host bundles it at build time, and a consumer who reads
       # the repo may install shape-core directly. Publishing chart-host against a version
       # of shape-core that does not exist yet is a window where the repo lies.
