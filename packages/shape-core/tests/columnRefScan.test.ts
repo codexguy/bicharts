@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-    missingHardColumnRefs, nameProbeIsGuarded, isColumnContextRef, HOST_SYNTHETIC_COLUMNS, guardColumnNames,
+    missingHardColumnRefs, nameProbeIsGuarded, nameProbeKeepsDrawing, isColumnContextRef, HOST_SYNTHETIC_COLUMNS,
+    guardColumnNames,
 } from "../src/index";
 
 // The scanner a host runs before drawing cached chart code: which columns does the code look up
@@ -163,6 +164,55 @@ describe("nameProbeIsGuarded - edges", () => {
 
     it("a name with no column-context lookup is not a guarded probe", () => {
         expect(nameProbeIsGuarded("if (leaf.name === 'Other') x();", "Other")).toBe(false);
+    });
+});
+
+// A host's drift sentence asks a narrower question than the cached-code guard: not "does the code
+// handle this column's absence" but "does the chart still DRAW without it". An early-out handles the
+// absence by drawing nothing - the reader then needs the sentence that says which column went.
+describe("nameProbeKeepsDrawing - only a use-when-present check keeps the chart drawing", () => {
+    const probe = "const ci = columns.findIndex(c => c.name === 'Date');\n";
+
+    it("a >= 0 / > -1 / !== -1 / != -1 check keeps drawing", () => {
+        for (const check of ["ci >= 0", "ci > -1", "ci !== -1", "ci != -1"]) {
+            const code = probe + `rows.forEach(r => { if (${check}) series.push(r[ci]); total += r[0]; });`;
+            expect(nameProbeKeepsDrawing(code, "Date"), check).toBe(true);
+        }
+    });
+
+    it("an early-out on === -1 does not (the prod case: the chart drew 'No data to display')", () => {
+        const code = "const ceIdx = columns.findIndex(c => c.name === 'Competency Element');\nif (ceIdx === -1) return noData();";
+        expect(nameProbeKeepsDrawing(code, "Competency Element")).toBe(false);
+        // ...while the cached-code guard still counts it as handled, which is unchanged.
+        expect(nameProbeIsGuarded(code, "Competency Element")).toBe(true);
+    });
+
+    it("== -1 is an equality check too", () => {
+        expect(nameProbeKeepsDrawing(probe + "if (ci == -1) { return; }", "Date")).toBe(false);
+    });
+
+    it("a variable checked both ways is not trusted to keep drawing", () => {
+        expect(nameProbeKeepsDrawing(probe + "if (ci === -1) return empty(); if (ci >= 0) draw(ci);", "Date")).toBe(false);
+    });
+
+    it("an unchecked lookup, or an inline one beside a checked one, is not a probe at all", () => {
+        expect(nameProbeKeepsDrawing(probe + "rows.map(r => r[ci]);", "Date")).toBe(false);
+        expect(nameProbeKeepsDrawing(probe + "if (ci >= 0) draw(ci); const f = rows[0][columns.findIndex(c => c.name === 'Date')];", "Date")).toBe(false);
+    });
+
+    it("every probe of the name must keep drawing", () => {
+        const two = probe + "const cj = columns.findIndex(c => c.name === 'Date');\nif (ci >= 0) draw(ci); if (cj === -1) return;";
+        expect(nameProbeKeepsDrawing(two, "Date")).toBe(false);
+    });
+
+    it("a data-value compare neither vouches for nor spoils a probe", () => {
+        const code = probe + "if (ci >= 0) draw(ci); const o = leaves.find(l => l.name === 'Date');";
+        expect(nameProbeKeepsDrawing(code, "Date")).toBe(true);
+        expect(nameProbeKeepsDrawing("const o = leaves.find(l => l.name === 'Date');", "Date")).toBe(false);
+    });
+
+    it("another variable's === -1 does not spoil this one", () => {
+        expect(nameProbeKeepsDrawing(probe + "const cix = 3; if (cix === -1) return; if (ci >= 0) draw(ci);", "Date")).toBe(true);
     });
 });
 

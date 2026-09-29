@@ -67,6 +67,12 @@ export function isColumnContextRef(code: string, nameIdx: number): boolean {
 // excluded from BOTH tallies so a `leaf.name === 'X'` compare can neither
 // vouch for nor poison a real probe of the same name.
 export function nameProbeIsGuarded(code: string, name: string): boolean {
+    return everyProbeCaptured(code, name, v => new RegExp(String.raw`\b${v}\s*(?:>=\s*0|>\s*-1|[!=]==?\s*-1)`).test(code));
+}
+
+// The loop both probe questions share: every column-context lookup of `name` is assigned to a
+// variable, and `checked` accepts each variable (already regex-escaped).
+function everyProbeCaptured(code: string, name: string, checked: (v: string) => boolean): boolean {
     const esc = rxEscape(name);
     // `const|let|var <v> = <same statement containing> .name === '<name>'`
     // ([^;]* keeps the match within one statement).
@@ -88,15 +94,29 @@ export function nameProbeIsGuarded(code: string, name: string): boolean {
         if (!isColumnContextRef(code, nameIdx)) continue;   // data-value assign — not a probe
         assigned++;
         const v = rxEscape(m[1]);
-        // Any -1-awareness for the captured variable: `v >= 0`, `v > -1`,
+        // nameProbeIsGuarded: any -1-awareness for the captured variable - `v >= 0`, `v > -1`,
         // `v !== -1`, `v === -1`, `v == -1`, `v != -1`.
-        const guardRe = new RegExp(String.raw`\b${v}\s*(?:>=\s*0|>\s*-1|[!=]==?\s*-1)`);
-        if (!guardRe.test(code)) return false;      // assigned but never checked → hard
+        if (!checked(v)) return false;              // assigned but never checked → hard
     }
     // Guarded only when every column-context reference was an assigned+checked
     // probe. (assigned < totalRefs means at least one inline/unassigned use →
     // hard.)
     return assigned > 0 && assigned === totalRefs;
+}
+
+// True when every column-context lookup of `name` is a probe whose check DRAWS the column when it is
+// there and carries on without it: `v >= 0`, `v > -1`, `v !== -1`, `v != -1`, and no `v === -1` /
+// `v == -1` anywhere. An equality check is as often an early-out - `if (v === -1) return noData();`
+// draws nothing at all - so it never counts, even beside a use-when-present check on the same
+// variable. This is what a host's "the fields changed" sentence asks before it leaves a gone column
+// out: the chart drew the same without it. The cached-code guard asks the wider nameProbeIsGuarded,
+// because an early-out handles the absence and needs no regeneration; the reader still needs to be
+// told which column went (a production chart that early-outed drew "No data to display" and nothing
+// said why).
+export function nameProbeKeepsDrawing(code: string, name: string): boolean {
+    return everyProbeCaptured(code, name, v =>
+        new RegExp(String.raw`\b${v}\s*(?:>=\s*0|>\s*-1|!==?\s*-1)`).test(code)
+        && !new RegExp(String.raw`\b${v}\s*===?\s*-1`).test(code));
 }
 
 // Column names the code looks up BY NAME (`.name === 'X'` in a statement that
