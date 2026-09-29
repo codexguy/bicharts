@@ -376,16 +376,17 @@ function render(container, data, options) {
 });
 
 /*
-    A LABEL OVER TWO SURFACES, AND A PILL THAT STARTS LATE.
+    A LABEL OVER TWO SURFACES, A PILL THAT STARTS LATE, AND A LABEL HALF UNDER A MARK.
 
-    Two shapes of one defect class, each from a reader's chart. A Pareto's dashed 80% line label
+    Three shapes of one defect class, each from a reader's chart. A Pareto's dashed 80% line label
     ran from the page onto the first bar: one colour per text element cannot read on both, and the
     flip to white erased the half on the page. A Bullet chart's value labels sat on backdrops sized
-    by a character count, one glyph short, so the first digit stayed on the dark bar. The
+    by a character count, one glyph short, so the first digit stayed on the dark bar. And a Pareto
+    that drew its reference label BEFORE the bars had everything after "80%" painted over. The
     geometry is stubbed the way the ring cases above stub it: a rect answers isPointInFill from its
     own box.
 */
-describe("applyLabelContrast - straddles and short pills", () => {
+describe("applyLabelContrast - straddles, short pills and covered labels", () => {
     const IDENT = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
     function solid(fill: string, x: number, y: number, w: number, h: number, extra: Record<string, string> = {}) {
         const r = svg("rect", { fill, x: String(x), y: String(y), width: String(w), height: String(h), ...extra }, box(x, y, w, h));
@@ -451,5 +452,39 @@ describe("applyLabelContrast - straddles and short pills", () => {
         expect(x).toBeLessThanOrEqual(169);                      // starts before the first glyph
         expect(x + w).toBeGreaterThanOrEqual(200);               // and never shrinks
         expect(t.getAttribute("fill")).toBe(DARK_TEXT);
+    });
+
+    it("raises a label half under a bar drawn after it in the same group, and judges it there", () => {
+        const g = svg("g", {});
+        const t = label("80% threshold", "#252423", 100, 100, 64, 14);
+        g.appendChild(t);
+        const bar = solid("#12239e", 124, 0, 200, 300, { class: "d3-mark" });
+        g.appendChild(bar);
+        root().appendChild(g);
+        const r = applyLabelContrast(container);
+        expect(r.raised).toBe(1);
+        expect(r.paintedOver).toBe(0);
+        expect(g.lastChild).toBe(t);                              // after the bar in paint order
+        expect(r.straddlePills).toBe(1);                          // and then it straddles the bar
+        expect(t.getAttribute("fill")).not.toBe(LIGHT_TEXT);
+    });
+
+    it("never raises a label covered WHOLLY, or one whose occluder is in another group", () => {
+        const g = svg("g", {});
+        const hidden = label("hidden", "#252423", 150, 100, 40, 14);
+        g.appendChild(hidden);
+        g.appendChild(solid("#12239e", 124, 0, 200, 300));
+        root().appendChild(g);
+        const grid = svg("g", {});
+        const ring = label("$2,000,000", "#333333", 330, 100, 64, 14);
+        grid.appendChild(ring);
+        root().appendChild(grid);
+        root().appendChild(solid("#4e79a7", 350, 0, 100, 300));
+        const r = applyLabelContrast(container);
+        expect(r.raised).toBe(0);
+        expect(g.firstChild).toBe(hidden);
+        expect(grid.firstChild).toBe(ring);
+        expect(ring.getAttribute("fill")).toBe("#333333");
+        expect(r.paintedOver).toBe(2);
     });
 });

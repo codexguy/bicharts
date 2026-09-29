@@ -72,12 +72,14 @@ export interface LabelContrastReport {
     straddlePills: number;
     /** Adopted pills grown to cover their label's whole box, so no glyph starts off the pill. */
     pillsExtended: number;
+    /** Labels partly covered by a shape drawn after them in their own group, moved above it. */
+    raised: number;
     /** Why the pass did nothing, when it did nothing. */
     skipped?: "no-container" | "no-shapes" | "too-many-shapes" | "too-many-texts" | "error";
 }
 
 const EMPTY: LabelContrastReport = { rects: 0, scanned: 0, fixed: 0, pillsBoosted: 0, offFill: 0, pageMajority: 0, paintedOver: 0,
-                                      straddlePills: 0, pillsExtended: 0 };
+                                      straddlePills: 0, pillsExtended: 0, raised: 0 };
 
 type HostRect = { r: DOMRect; fill: string; op: number; area: number; el: Element; ord: number; root: Element | null };
 
@@ -222,6 +224,48 @@ function extendPillOver(pill: Element, tr: DOMRect): boolean {
     }
 }
 
+/*
+    A LABEL HALF UNDER A MARK DRAWN AFTER IT IS RAISED ABOVE THAT MARK (an incident: a Pareto
+    chart drew its dashed 80% line and the line's label, then the bars - so the first bar covered
+    everything after "80%" and a reader saw a threshold with no name). Recolouring cannot make a
+    covered glyph readable, which is why a shape drawn over a label is never its background; but a
+    label that is PARTLY covered is a label the chart meant to show, and the part a reader can see
+    proves it. So such a label moves to the end of its own parent - after its occluder in paint
+    order - and is then judged against the occluder like any backing (a straddle gets a pill).
+
+    Narrow on purpose. Every occluder must sit inside the label's own parent, so the move keeps the
+    label's coordinate system, its inherited attributes and its place in any selection the chart
+    holds on that parent; an occluder in another group (a rose chart's wedges over its ring values'
+    group) leaves the label where it is. Only opaque occluders count, only a measured label moves,
+    and a label covered WHOLLY is left alone - nothing of it shows, so nothing says it was meant to.
+*/
+function raiseOverOccluders(
+    tx: SVGGraphicsElement, occluders: HostRect[], tr: DOMRect, effAlpha: (mk: HostRect) => number,
+): boolean {
+    try {
+        const parent = tx.parentNode as Element | null;
+        if (!parent || typeof parent.contains !== "function") return false;
+        if (!occluders.every(o => parent.contains(o.el))) return false;
+        const pts = straddleSampleGrid(tr);
+        if (pts.length === 0) return false;
+        const covered = pts.map(() => false);
+        let opaque = 0;
+        for (const o of occluders) {
+            if (effAlpha(o) < PILL_OPAQUE_ALPHA) continue;
+            const m = backedSamples(o.el, pts);
+            if (m === null) return false;
+            opaque++;
+            for (let i = 0; i < m.length; i++) if (m[i]) covered[i] = true;
+        }
+        const n = covered.filter(Boolean).length;
+        if (opaque === 0 || n === 0 || n === pts.length) return false;
+        parent.appendChild(tx);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /** The class a pill this pass paints carries, so a reader of the DOM (or a test) can tell it from
  *  the chart's own shapes. */
 export const LABEL_PILL_CLASS = "lch-label-pill";
@@ -342,14 +386,24 @@ export function applyLabelContrast(
             // telemetry line rather than inferred from a fix that stopped happening.
             const txRoot = paintRoot(tx, container);
             let over = 0;
+            const occluders: HostRect[] = [];
             const boxed = rects
                 .map(mk => ({ mk, ov: ovArea(mk.r) }))
                 .filter(x => {
                     if (!(x.ov > 0)) return false;
                     if (drawnBeneath(x.mk, tx, txRoot)) return true;
-                    if (effAlpha(x.mk) >= PILL_MIN_ALPHA) over++;
+                    if (effAlpha(x.mk) >= PILL_MIN_ALPHA) { over++; occluders.push(x.mk); }
                     return false;
                 });
+            // A PARTLY COVERED LABEL IS RAISED - see raiseOverOccluders. Its occluders are then
+            // beneath it, and it is judged against them like any other backing.
+            const raised = occluders.length > 0 && raiseOverOccluders(tx, occluders, tr, effAlpha);
+            if (raised) {
+                report.raised++;
+                tx.setAttribute(LABEL_CONTRAST_DONE_ATTR, "1");
+                for (const mk of occluders) boxed.push({ mk, ov: ovArea(mk.r) });
+                over = 0;
+            }
             if (over > 0) report.paintedOver++;
             // One grid per glyph, shared by every candidate, so the hits can be UNIONED.
             // `painted` accumulates the points held by shapes that actually put colour down: a
@@ -380,10 +434,17 @@ export function applyLabelContrast(
             // THE PAGE IS A SURFACE TOO - see backingHoldsGlyph. Decidable only when EVERY candidate
             // answered geometrically: one unmeasured shape and the union is an undercount, so the
             // pass keeps the behaviour it had rather than declining to fix a label it cannot see.
+            // A label this pass RAISED is not handed back on a page majority: it now sits over the
+            // shape it was hidden under, which the chart never judged, so only the straddle rule
+            // below may speak for it - and nothing else does.
+            let raisedOnPage = false;
             if (unmeasured === 0 && pts.length > 0) {
                 let held = 0;
                 for (let i = 0; i < painted.length; i++) if (painted[i]) held++;
-                if (!backingHoldsGlyph(glyphArea * (held / pts.length), glyphArea)) { report.pageMajority++; continue; }
+                if (!backingHoldsGlyph(glyphArea * (held / pts.length), glyphArea)) {
+                    if (!raised) { report.pageMajority++; continue; }
+                    raisedOnPage = true;
+                }
             }
             report.scanned++;
 
@@ -459,6 +520,7 @@ export function applyLabelContrast(
                     continue;
                 }
             }
+            if (raisedOnPage) continue;
             // normalize=true: unify EVERY in-mark label on a tile to one best-contrast colour (not
             // just the unreadable ones), so a tile cannot show mixed black/white text where both
             // happen to clear the threshold. EXCEPT when the backing cell is a deck PANEL: a
