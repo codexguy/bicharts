@@ -107,7 +107,7 @@ export { planTrivialChart, compileTrivialSource, type TrivialPlan, type TrivialS
 // affordance - anything that wants "what the user is actually looking at" goes through the
 // same serialize/rasterize/fallback path, and its traps (CSS-only sizing, non-latin1 labels,
 // hung decodes) are solved once here rather than once per host.
-export { captureSvgSnapshot, svgToDataUrl, svgNaturalSize, rasterizeSvgToPngDataUrl, type SnapshotOptions } from "./snapshot";
+export { captureSvgSnapshot, svgToDataUrl, svgNaturalSize, rasterizeSvgToPngDataUrl, tableHostOf, htmlToSvgDataUrl, htmlNaturalSize, type SnapshotOptions } from "./snapshot";
 // The AI vision review's pure decision core: when to review, what the wire looks like, and
 // how a verdict maps to an action. Hosts own the capture, the POST, and the ask-the-user
 // dialog; the DECIDING lives here so every host resolves ambiguity the same way - toward the
