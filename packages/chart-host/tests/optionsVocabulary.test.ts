@@ -41,7 +41,7 @@ describe("the options vocabulary is internally consistent", () => {
         expect([...LIVE_OPTION_KEYS]).toEqual([
             "aggregation", "colorScaleLow", "colorScaleHigh", "palette", "maxMapPoints", "pageSize", "valueAxisBaseline",
             "seasonalMarkers", "animAutoPlay", "animPlaySpeedMs", "animLoopDelaySec", "animStopAtEnd", "animMaxIdealFrames",
-            "animTimelineStyle", "filtersDuringPlay", "flipMode", "flipIntervalMs",
+            "animTimelineStyle", "filtersDuringPlay", "flipMode", "flipIntervalMs", "flipDirection",
         ]);
     });
 });
@@ -68,7 +68,7 @@ describe("the vocabulary and resolveOptions agree", () => {
     });
 
     it("every value a choice lists is accepted, and anything else falls to the default", () => {
-        for (const k of ["valueAxisBaseline", "seasonalMarkers", "flipMode"] as const) {
+        for (const k of ["valueAxisBaseline", "seasonalMarkers", "flipMode", "flipDirection"] as const) {
             for (const v of OPTIONS_VOCABULARY[k].values!) expect((resolveOptions({ [k]: v }) as any)[k], `${k}=${v}`).toBe(v);
             expect((resolveOptions({ [k]: "sideways" }) as any)[k], k).toBe(OPTIONS_VOCABULARY[k].default);
         }

@@ -22,7 +22,7 @@ import {
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     VALUE_AXIS_BASELINE_DEFAULT, SEASONAL_MARKERS_DEFAULT, MAX_MAP_POINTS_DEFAULT,
-    FLIP_MODE_DEFAULT, FLIP_INTERVAL_MAX_MS,
+    FLIP_MODE_DEFAULT, FLIP_INTERVAL_MAX_MS, FLIP_DIRECTION_DEFAULT,
 } from "./contract";
 
 /**
@@ -93,6 +93,8 @@ export const OPTIONS_VOCABULARY = Object.freeze({
      * clamped chart-side to FLIP_INTERVAL_MIN_MS..FLIP_INTERVAL_MAX_MS.
      */
     flipIntervalMs: entry({ timing: "live", default: "", min: 0, max: FLIP_INTERVAL_MAX_MS }),
+    /** Which way a face turns, for any chart that turns between faces: side to side, or top to bottom. */
+    flipDirection: entry({ timing: "live", default: FLIP_DIRECTION_DEFAULT, values: ["horizontal", "vertical"] }),
     // ---- the next generated chart ----
     levelOfDetail: entry({ timing: "next-generate", default: "", values: ["", "High", "Medium", "Low"], wire: "clientHints" }),
     favorLimitTo: entry({ timing: "next-generate", default: "", values: ["", "latest", "top / greatest", "bottom / smallest", "most common", "outliers"], wire: "clientHints" }),

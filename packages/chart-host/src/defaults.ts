@@ -16,7 +16,7 @@ import {
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
-    FLIP_MODE_DEFAULT,
+    FLIP_MODE_DEFAULT, FLIP_DIRECTION_DEFAULT,
     APPROXIMATE_POSITIONS_DEFAULT,
     VALUE_AXIS_BASELINE_DEFAULT,
     SEASONAL_MARKERS_DEFAULT,
@@ -177,6 +177,13 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
             if (p.flipSync === false) return "single";
             if (p.flipSync === true) return "all";
             return FLIP_MODE_DEFAULT;
+        })(),
+        // WHICH WAY A FACE TURNS. Anything unrecognised - including absent, which is every host
+        // that predates the option - is the default, side to side, which is what every chart that
+        // turns did before it existed.
+        flipDirection: ((): RenderOptions["flipDirection"] => {
+            const d = (p.flipDirection == null ? "" : String(p.flipDirection)).toLowerCase();
+            return d === "horizontal" || d === "vertical" ? d : FLIP_DIRECTION_DEFAULT;
         })(),
         // 0 is MEANINGFUL here (manual only), so numberOr — not `|| DEFAULT` — for the same
         // reason animLoopDelaySec uses it. UNSET STAYS UNSET (undefined), because the default is

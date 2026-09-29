@@ -290,6 +290,13 @@ export const FLIP_MODE_DEFAULT: FlipMode = "both";
 // (resolveOptions passes the value through intact), and 0 - manual only - sits outside it.
 export const FLIP_INTERVAL_MIN_MS = 500;
 export const FLIP_INTERVAL_MAX_MS = 120_000;
+// WHICH WAY A FACE TURNS, for ANY chart that turns between faces - a card deck, a carousel, whatever
+// turns next. It names the direction the face MOVES, never an axis: "horizontal" turns side to side (a
+// deck's card narrows to a line and opens again; a carousel's neighbours peek left and right),
+// "vertical" turns top to bottom (the card flattens; the neighbours peek above and below). Every chart
+// that predates the option turns side to side, which is why that is the default.
+export type FlipDirection = "horizontal" | "vertical";
+export const FLIP_DIRECTION_DEFAULT: FlipDirection = "horizontal";
 
 // What to do with rows a gazetteer could not place exactly: draw the mark at the coarse
 // position anyway (the default), roll them into the coarser area they DID resolve to, or draw
@@ -511,6 +518,9 @@ export interface RenderOptions {
     // that, and a cached chart must not change behaviour because a newer client shipped. When
     // both are present flipMode wins; when flipMode is absent it derives from flipSync.
     flipMode?: FlipMode;
+    // Which way a face turns - see FlipDirection. resolveOptions always fills it; a chart reads it
+    // for the turn it animates and nothing else.
+    flipDirection?: FlipDirection;
     // Explicit fill behind each card. Blank/undefined = the chart decides, which is what every
     // deck does today (normally the visual background, so cards read as part of the canvas).
     // A live-restyle knob like the colour-scale endpoints: changing it re-renders, never

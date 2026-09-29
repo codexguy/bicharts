@@ -188,6 +188,17 @@ describe("resolveOptions — host fields pass through by identity", () => {
         expect(resolveOptions({ flipSync: false }).flipSync).toBe(false);
     });
 
+    it("flipDirection: which way a face turns - side to side unless told otherwise", () => {
+        // Absent is every host that predates the option, and every chart that turns did so side to
+        // side before it existed, so absent and junk both resolve there.
+        expect(resolveOptions({}).flipDirection).toBe("horizontal");
+        expect(resolveOptions({ flipDirection: "" }).flipDirection).toBe("horizontal");
+        expect(resolveOptions({ flipDirection: "diagonal" }).flipDirection).toBe("horizontal");
+        expect(resolveOptions({ flipDirection: "vertical" }).flipDirection).toBe("vertical");
+        expect(resolveOptions({ flipDirection: "VERTICAL" }).flipDirection).toBe("vertical");
+        expect(resolveOptions({ flipDirection: "horizontal" }).flipDirection).toBe("horizontal");
+    });
+
     it("flipIntervalMs: absent/blank/junk stays UNSET (the chart's default), explicit 0 survives, floor 0", () => {
         // UNSET IS NOT 0 (the rotating carousel). The default belongs to the chart: the deck reads
         // `+(x || 0)` and is manual either way, a carousel reads `x == null ? 5000 : +x` - and when
