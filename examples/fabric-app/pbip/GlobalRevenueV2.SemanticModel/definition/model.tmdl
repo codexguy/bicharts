@@ -1,0 +1,27 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-US
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 0
+
+annotation PBI_QueryOrder = ["DimDate", "DimCountry", "DimCity", "DimProduct", "DimChannel", "FactSales", "FactOperations", "FactRevenueTarget", "FactShipments", "DimOriginCountry", "DimDestinationCountry", "DataRoot", "fnLoadCsv"]
+
+ref table DimDate
+ref table DimCountry
+ref table DimCity
+ref table DimProduct
+ref table DimChannel
+ref table FactSales
+ref table FactOperations
+ref table FactRevenueTarget
+ref table FactShipments
+ref table DimOriginCountry
+ref table DimDestinationCountry
+ref table _Measures
+ref table 'Growth Rate'
+
+ref cultureInfo en-US

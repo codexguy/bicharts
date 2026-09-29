@@ -1,0 +1,88 @@
+/// The destination side of FactShipments: a copy of the country list (same 40 countries and codes as DimCountry) that filters shipments by destination only. Pair it with DimOriginCountry for flow maps (lat/lon at both ends) and chord diagrams (DestinationRegion against the other side's region). It does not filter sales.
+table DimDestinationCountry
+	lineageTag: efec2cde-4291-54f5-8e81-b022fee8b59d
+
+	/// ISO 3166-1 alpha-3 code of the destination country. Primary key.
+	column DestinationCountryCode
+		dataType: string
+		lineageTag: d423ae91-8ea8-5589-a6bc-36628b29aad4
+		dataCategory: Country
+		summarizeBy: none
+		sourceColumn: DestinationCountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Name of the destination country.
+	column DestinationCountry
+		dataType: string
+		lineageTag: e5678b31-ba30-560b-a5a7-e8e3e46e6fb1
+		dataCategory: Country
+		summarizeBy: none
+		sourceColumn: DestinationCountry
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Sales region of the destination country (sorted by DestinationRegionOrder).
+	column DestinationRegion
+		dataType: string
+		lineageTag: 15874067-760f-5292-88f2-a4e2dffcd291
+		summarizeBy: none
+		sourceColumn: DestinationRegion
+		sortByColumn: DestinationRegionOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Display order of DestinationRegion, 1-5.
+	column DestinationRegionOrder
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 229a0f09-eff2-5aa3-95da-d606cdec7ee1
+		summarizeBy: none
+		sourceColumn: DestinationRegionOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Geographic subregion of the destination country.
+	column DestinationSubregion
+		dataType: string
+		lineageTag: 84716f47-b94d-538d-abf0-436862caa74b
+		summarizeBy: none
+		sourceColumn: DestinationSubregion
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Latitude of the destination country's centroid.
+	column DestinationLatitude
+		dataType: double
+		formatString: 0.00
+		lineageTag: 09c8bc72-eb57-5e59-b781-5429afd1122b
+		dataCategory: Latitude
+		summarizeBy: none
+		sourceColumn: DestinationLatitude
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Longitude of the destination country's centroid.
+	column DestinationLongitude
+		dataType: double
+		formatString: 0.00
+		lineageTag: 62f1664d-3f02-531f-a2a2-b9c772a9616c
+		dataCategory: Longitude
+		summarizeBy: none
+		sourceColumn: DestinationLongitude
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimDestinationCountry = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("DimCountry.csv"),
+				    Kept = Table.SelectColumns(Source, {"CountryCode", "Country", "Region", "RegionOrder", "Subregion", "Latitude", "Longitude"}),
+				    Renamed = Table.RenameColumns(Kept, {{"CountryCode", "DestinationCountryCode"}, {"Country", "DestinationCountry"}, {"Region", "DestinationRegion"}, {"RegionOrder", "DestinationRegionOrder"}, {"Subregion", "DestinationSubregion"}, {"Latitude", "DestinationLatitude"}, {"Longitude", "DestinationLongitude"}}),
+				    Typed = Table.TransformColumnTypes(Renamed, {{"DestinationCountryCode", type text}, {"DestinationCountry", type text}, {"DestinationRegion", type text}, {"DestinationRegionOrder", Int64.Type}, {"DestinationSubregion", type text}, {"DestinationLatitude", type number}, {"DestinationLongitude", type number}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

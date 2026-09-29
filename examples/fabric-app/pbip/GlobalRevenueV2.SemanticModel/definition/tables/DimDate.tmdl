@@ -1,0 +1,116 @@
+/// Calendar at MONTH grain: one row per month, January 2019 to December 2025 (84 rows). Every fact table joins to it on MonthStart, so one date filter moves sales, operations, targets and shipments together. Use MonthStart (a real date) or YearMonth as a monthly time axis and Year as the ordered frame for year-by-year animation. Marked as the model's date table.
+table DimDate
+	lineageTag: a78e1751-8e22-553e-8e98-b5b94bb69fb7
+	dataCategory: Time
+
+	/// First day of the month (2019-01-01 ... 2025-12-01). Primary key of the calendar and the join key of every fact table.
+	column MonthStart
+		dataType: dateTime
+		isKey
+		formatString: yyyy-mm-dd
+		lineageTag: 5ece50ba-c6f1-582c-94bf-e3975aa2a397
+		summarizeBy: none
+		sourceColumn: MonthStart
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Calendar year, 2019-2025. The ordered time frame for year-by-year charts and animation.
+	column Year
+		dataType: int64
+		formatString: 0
+		lineageTag: 222a1170-688d-5cf0-8711-494784205431
+		summarizeBy: none
+		sourceColumn: Year
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Calendar quarter number, 1-4.
+	column Quarter
+		dataType: int64
+		formatString: 0
+		lineageTag: 10819e58-da50-511c-a309-5fae451150d2
+		summarizeBy: none
+		sourceColumn: Quarter
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Quarter label Q1-Q4 (sorted by Quarter).
+	column QuarterLabel
+		dataType: string
+		lineageTag: 1d58ffeb-37c7-5bec-9b57-2e671f69549c
+		summarizeBy: none
+		sourceColumn: QuarterLabel
+		sortByColumn: Quarter
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Year and quarter as text, for example '2024 Q3'. Sorts chronologically as text.
+	column YearQuarter
+		dataType: string
+		lineageTag: c87404d2-f6e9-590e-95bb-7f5762505172
+		summarizeBy: none
+		sourceColumn: YearQuarter
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Month of the year, 1-12.
+	column MonthNumber
+		dataType: int64
+		formatString: 0
+		lineageTag: e9ac42c5-5c53-508b-b508-acba2b5dd368
+		summarizeBy: none
+		sourceColumn: MonthNumber
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Full month name, January-December (sorted by MonthNumber).
+	column MonthName
+		dataType: string
+		lineageTag: b5eec488-366e-52c5-a8c8-daa68426e248
+		summarizeBy: none
+		sourceColumn: MonthName
+		sortByColumn: MonthNumber
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Three-letter month name, Jan-Dec (sorted by MonthNumber).
+	column MonthShort
+		dataType: string
+		lineageTag: ea1ca6f7-179e-59db-b1e9-0915df59d1a8
+		summarizeBy: none
+		sourceColumn: MonthShort
+		sortByColumn: MonthNumber
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Year and month as 'YYYY-MM' text, for example '2025-03'. Sorts chronologically as text.
+	column YearMonth
+		dataType: string
+		lineageTag: 8458eb76-5364-55a7-afe9-8ad5f4186238
+		summarizeBy: none
+		sourceColumn: YearMonth
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Sequential month number: 0 = January 2019 ... 83 = December 2025. The year-over-year measures use it (a month and the same month a year earlier are 12 apart).
+	column MonthIndex
+		dataType: int64
+		formatString: 0
+		lineageTag: f88b471f-0263-55ad-8d84-824bd5e5a742
+		summarizeBy: none
+		sourceColumn: MonthIndex
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimDate = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("DimDate.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"MonthStart", type date}, {"Year", Int64.Type}, {"Quarter", Int64.Type}, {"QuarterLabel", type text}, {"YearQuarter", type text}, {"MonthNumber", Int64.Type}, {"MonthName", type text}, {"MonthShort", type text}, {"YearMonth", type text}, {"MonthIndex", Int64.Type}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,84 @@
+/// One row per city market: 71 cities in the 40 countries, with real coordinates, for point maps and per-city distributions (beeswarm by CityTier). CityKey is '<ISO-3>-<3-letter metro code>', for example 'USA-NYC', and is stable. Filters FactSales only. Its CountryCode column is descriptive: FactSales carries CountryCode itself, so a country filter reaches sales without going through this table.
+table DimCity
+	lineageTag: 677362ea-9987-57cb-8bac-4c591d6e99fa
+
+	/// City key: ISO-3 country code, a hyphen and a 3-letter metro code, for example 'GBR-LON'. Primary key; stable.
+	column CityKey
+		dataType: string
+		lineageTag: f7fa8575-1724-5d80-ac96-b2b699abefcc
+		summarizeBy: none
+		sourceColumn: CityKey
+
+		annotation SummarizationSetBy = Automatic
+
+	/// City name.
+	column City
+		dataType: string
+		lineageTag: f0b9fcb5-fdc6-5868-bb41-8c674e7e55c4
+		dataCategory: City
+		summarizeBy: none
+		sourceColumn: City
+
+		annotation SummarizationSetBy = Automatic
+
+	/// ISO-3 code of the city's country (descriptive; not a relationship).
+	column CountryCode
+		dataType: string
+		lineageTag: c9dbb359-a716-5a19-9e67-58f4d6325652
+		summarizeBy: none
+		sourceColumn: CountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Market tier: 'Tier 1' (global hubs), 'Tier 2' (major cities), 'Tier 3' (regional cities). Sorted by CityTierRank. Tier 3 cities have no Partner channel.
+	column CityTier
+		dataType: string
+		lineageTag: 84536ddc-8c53-528d-b9c9-d794fb3dae56
+		summarizeBy: none
+		sourceColumn: CityTier
+		sortByColumn: CityTierRank
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Tier as a number, 1-3 (1 = largest markets). An ordered rating usable as a numeric input.
+	column CityTierRank
+		dataType: int64
+		formatString: 0
+		lineageTag: 21547f20-578a-5b81-a824-98635544c118
+		summarizeBy: none
+		sourceColumn: CityTierRank
+
+		annotation SummarizationSetBy = Automatic
+
+	/// City latitude in decimal degrees.
+	column Latitude
+		dataType: double
+		formatString: 0.00
+		lineageTag: 96a839e7-075c-59e0-995f-ca64c75d9289
+		dataCategory: Latitude
+		summarizeBy: none
+		sourceColumn: Latitude
+
+		annotation SummarizationSetBy = Automatic
+
+	/// City longitude in decimal degrees.
+	column Longitude
+		dataType: double
+		formatString: 0.00
+		lineageTag: c9c05113-5b5e-5217-b313-ec666796ec5c
+		dataCategory: Longitude
+		summarizeBy: none
+		sourceColumn: Longitude
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimCity = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("DimCity.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"CityKey", type text}, {"City", type text}, {"CountryCode", type text}, {"CityTier", type text}, {"CityTierRank", Int64.Type}, {"Latitude", type number}, {"Longitude", type number}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

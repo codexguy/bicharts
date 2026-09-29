@@ -1,0 +1,65 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "6bc713f9ddcf53d688fb",
+  "position": {
+    "x": 80,
+    "y": 80,
+    "z": 0,
+    "height": 320,
+    "width": 900,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Global Revenue v2",
+                    "textStyle": {
+                      "fontWeight": "bold",
+                      "fontSize": "20pt"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": ""
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "A star-schema demo model (sales, operations, targets and shipments, 2019-2025, 40 countries, 71 cities) meant to be queried with DAX by an app. Every table, column and measure carries a description; run EVALUATE INFO.VIEW.MEASURES() or INFO.VIEW.COLUMNS() to read them."
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": ""
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "This page is intentionally empty of charts. The DataRoot parameter (Transform data > Edit parameters) chooses where the CSV files are read from: the public web copy or a local folder."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

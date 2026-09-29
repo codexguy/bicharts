@@ -1,0 +1,41 @@
+CountryCode,CountryISO2,Country,Region,RegionOrder,Subregion,Latitude,Longitude,Population
+USA,US,United States,North America,1,Northern America,37.09,-95.71,334914895
+CAN,CA,Canada,North America,1,Northern America,56.13,-106.35,40097761
+MEX,MX,Mexico,Latin America,2,Central America,23.63,-102.55,128455567
+BRA,BR,Brazil,Latin America,2,South America,-14.24,-51.93,216422446
+ARG,AR,Argentina,Latin America,2,South America,-38.42,-63.62,46654581
+CHL,CL,Chile,Latin America,2,South America,-35.68,-71.54,19629590
+COL,CO,Colombia,Latin America,2,South America,4.57,-74.30,52085168
+PER,PE,Peru,Latin America,2,South America,-9.19,-75.02,34352719
+GBR,GB,United Kingdom,Europe,3,Northern Europe,55.38,-3.44,68350000
+FRA,FR,France,Europe,3,Western Europe,46.23,2.21,68170228
+DEU,DE,Germany,Europe,3,Western Europe,51.17,10.45,84482267
+ITA,IT,Italy,Europe,3,Southern Europe,41.87,12.57,58993475
+ESP,ES,Spain,Europe,3,Southern Europe,40.46,-3.75,48373336
+NLD,NL,Netherlands,Europe,3,Western Europe,52.13,5.29,17879488
+SWE,SE,Sweden,Europe,3,Northern Europe,60.13,18.64,10536632
+NOR,NO,Norway,Europe,3,Northern Europe,60.47,8.47,5519594
+POL,PL,Poland,Europe,3,Eastern Europe,51.92,19.15,36685849
+CHE,CH,Switzerland,Europe,3,Western Europe,46.82,8.23,8849852
+IRL,IE,Ireland,Europe,3,Northern Europe,53.41,-8.24,5262382
+TUR,TR,Türkiye,Middle East & Africa,4,Western Asia,38.96,35.24,85326000
+ARE,AE,United Arab Emirates,Middle East & Africa,4,Western Asia,23.42,53.85,9516871
+SAU,SA,Saudi Arabia,Middle East & Africa,4,Western Asia,23.89,45.08,36947025
+ISR,IL,Israel,Middle East & Africa,4,Western Asia,31.05,34.85,9756700
+EGY,EG,Egypt,Middle East & Africa,4,Northern Africa,26.82,30.80,112716598
+MAR,MA,Morocco,Middle East & Africa,4,Northern Africa,31.79,-7.09,37840044
+ZAF,ZA,South Africa,Middle East & Africa,4,Sub-Saharan Africa,-30.56,22.94,60414495
+NGA,NG,Nigeria,Middle East & Africa,4,Sub-Saharan Africa,9.08,8.68,223804632
+KEN,KE,Kenya,Middle East & Africa,4,Sub-Saharan Africa,-0.02,37.91,55100586
+CHN,CN,China,Asia Pacific,5,Eastern Asia,35.86,104.20,1410710000
+JPN,JP,Japan,Asia Pacific,5,Eastern Asia,36.20,138.25,124516650
+KOR,KR,South Korea,Asia Pacific,5,Eastern Asia,35.91,127.77,51712619
+IND,IN,India,Asia Pacific,5,Southern Asia,20.59,78.96,1428627663
+SGP,SG,Singapore,Asia Pacific,5,South-eastern Asia,1.35,103.82,5917600
+IDN,ID,Indonesia,Asia Pacific,5,South-eastern Asia,-0.79,113.92,277534122
+THA,TH,Thailand,Asia Pacific,5,South-eastern Asia,15.87,100.99,71801279
+VNM,VN,Vietnam,Asia Pacific,5,South-eastern Asia,14.06,108.28,98858950
+PHL,PH,Philippines,Asia Pacific,5,South-eastern Asia,12.88,121.77,117337368
+MYS,MY,Malaysia,Asia Pacific,5,South-eastern Asia,4.21,101.98,34308525
+AUS,AU,Australia,Asia Pacific,5,Australia and New Zealand,-25.27,133.78,26638544
+NZL,NZ,New Zealand,Asia Pacific,5,Australia and New Zealand,-40.90,174.89,5223100

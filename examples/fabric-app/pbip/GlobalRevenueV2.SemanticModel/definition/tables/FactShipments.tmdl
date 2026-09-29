@@ -1,0 +1,101 @@
+/// Physical shipments at month x origin country x destination country x product grain (about 37,000 rows, Hardware and Accessories only). Factories (China, Vietnam, Mexico, Germany, ...) ship to markets directly and through three re-export hubs (Netherlands, United Arab Emirates, Singapore), so a few lanes are far larger than the rest. Origin and destination are two different country tables: filter the origin with DimOriginCountry and the destination with DimDestinationCountry; both relationships are active. Small lanes consolidate, so a lane can skip months.
+table FactShipments
+	lineageTag: 058189ae-dbd5-52e8-b104-b29313757f0d
+
+	/// Month shipped (first day). Joins DimDate.
+	column MonthStart
+		dataType: dateTime
+		isHidden
+		formatString: yyyy-mm-dd
+		lineageTag: 0ae73511-df60-5de8-a1f7-c07527da759b
+		summarizeBy: none
+		sourceColumn: MonthStart
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// ISO-3 code of the shipping country. Joins DimOriginCountry.
+	column OriginCountryCode
+		dataType: string
+		isHidden
+		lineageTag: 74dc5ed1-258c-5c46-b71b-9ee0e07af296
+		summarizeBy: none
+		sourceColumn: OriginCountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// ISO-3 code of the receiving country. Joins DimDestinationCountry.
+	column DestinationCountryCode
+		dataType: string
+		isHidden
+		lineageTag: ef5c8245-4dc4-5fb0-aa29-78b374b1800d
+		summarizeBy: none
+		sourceColumn: DestinationCountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Product shipped. Joins DimProduct.
+	column ProductKey
+		dataType: string
+		isHidden
+		lineageTag: f6252823-13bf-5d12-8f52-b3d332f4a390
+		summarizeBy: none
+		sourceColumn: ProductKey
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Units shipped. Use the Units Shipped measure.
+	column UnitsShipped
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: 7a10dc13-07a5-5292-aa60-0e3cc9398553
+		summarizeBy: sum
+		sourceColumn: UnitsShipped
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Freight cost in USD. Use the Freight Cost and Freight per Unit measures.
+	column FreightCostUSD
+		dataType: double
+		isHidden
+		formatString: \$#,0
+		lineageTag: e44df673-2134-50e4-90ff-3dea87c351a6
+		summarizeBy: sum
+		sourceColumn: FreightCostUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Value of the goods at standard cost, in USD. Use the Shipment Value measure.
+	column ShipmentValueUSD
+		dataType: double
+		isHidden
+		formatString: \$#,0
+		lineageTag: 8b3cd9c4-b000-5e67-9407-78fbe75f46eb
+		summarizeBy: sum
+		sourceColumn: ShipmentValueUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Great-circle distance between the origin and destination centroids, in km (constant per lane). Use Avg Shipping Distance (km).
+	column DistanceKm
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: d5c0ace8-a118-5dd9-8dcc-d39e62330d5c
+		summarizeBy: none
+		sourceColumn: DistanceKm
+
+		annotation SummarizationSetBy = Automatic
+
+	partition FactShipments = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("FactShipments.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"MonthStart", type date}, {"OriginCountryCode", type text}, {"DestinationCountryCode", type text}, {"ProductKey", type text}, {"UnitsShipped", Int64.Type}, {"FreightCostUSD", type number}, {"ShipmentValueUSD", type number}, {"DistanceKm", Int64.Type}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

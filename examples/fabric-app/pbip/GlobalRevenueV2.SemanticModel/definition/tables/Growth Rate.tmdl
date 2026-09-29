@@ -1,0 +1,29 @@
+/// What-if parameter: an assumed annual revenue growth rate from -10% to 30% in steps of 2.5% (17 values). Not related to any other table. Slice or pick one value to drive Projected Revenue through Growth Rate Value, or put the Growth Rate column on an axis or legend to lay out every scenario at once.
+table 'Growth Rate'
+	lineageTag: d4145bd2-4256-5e1f-aa9f-cbb9dbb4e97a
+
+	/// The growth rate selected on 'Growth Rate'[Growth Rate]; 5% when none or several are selected. Drives Projected Revenue.
+	measure 'Growth Rate Value' = SELECTEDVALUE ( 'Growth Rate'[Growth Rate], 0.05 )
+		formatString: 0.0%
+		displayFolder: What-if
+		lineageTag: c61eb257-e626-52ed-a52f-fa96579b959a
+
+	/// One assumed annual growth rate per row (a decimal fraction: 0.05 = 5%).
+	column 'Growth Rate'
+		formatString: 0.0%
+		lineageTag: cfbac4e3-0609-5ae9-aa3e-450506cb1cbd
+		summarizeBy: none
+		sourceColumn: [Value]
+
+		extendedProperty ParameterMetadata =
+				{
+				  "version": 0
+				}
+
+		annotation SummarizationSetBy = User
+
+	partition 'Growth Rate' = calculated
+		mode: import
+		source = GENERATESERIES ( -0.1, 0.3, 0.025 )
+
+	annotation PBI_Id = fc7972c761535d69b7a2593c68f0a336

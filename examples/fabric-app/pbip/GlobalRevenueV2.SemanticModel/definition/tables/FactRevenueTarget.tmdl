@@ -1,0 +1,48 @@
+/// Revenue plan at month x country grain (3,360 rows). Each year's plan is phased evenly across its 12 months, so the monthly target is flat within a year and steps each January. Related to DimDate and DimCountry only: it has no city, product or channel detail, so compare it with Revenue at country, region or total level. Use the Revenue Target measure.
+table FactRevenueTarget
+	lineageTag: 46078376-a48f-50c5-b50b-077280922f76
+
+	/// Month (first day). Joins DimDate.
+	column MonthStart
+		dataType: dateTime
+		isHidden
+		formatString: yyyy-mm-dd
+		lineageTag: f00a4cec-c8b1-5713-8b37-7403409fbc46
+		summarizeBy: none
+		sourceColumn: MonthStart
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// ISO-3 country code. Joins DimCountry.
+	column CountryCode
+		dataType: string
+		isHidden
+		lineageTag: 7ecbe90e-8b8b-5bd5-908f-2a768d66178c
+		summarizeBy: none
+		sourceColumn: CountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Planned revenue in USD for the country and month. Use the Revenue Target measure.
+	column TargetRevenueUSD
+		dataType: double
+		isHidden
+		formatString: \$#,0
+		lineageTag: a80a7e60-fafd-55d4-877f-a69cb94b9fd8
+		summarizeBy: sum
+		sourceColumn: TargetRevenueUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	partition FactRevenueTarget = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("FactRevenueTarget.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"MonthStart", type date}, {"CountryCode", type text}, {"TargetRevenueUSD", type number}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

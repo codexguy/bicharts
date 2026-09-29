@@ -1,0 +1,202 @@
+/// Home of every measure in the model, grouped in display folders (Sales, Time Comparison, Geography, Operations, Targets, Shipments, What-if). It holds no data of its own; its one column is a hidden placeholder.
+table _Measures
+	lineageTag: a53c383b-8544-562b-b986-4981691c45d0
+
+	/// Net sales revenue in USD. Additive over every dimension that filters FactSales.
+	measure Revenue = SUM ( FactSales[RevenueUSD] )
+		formatString: \$#,0
+		displayFolder: Sales
+		lineageTag: 39268f81-f852-5ee7-a59f-94ad07cca835
+
+	/// Number of orders.
+	measure Orders = SUM ( FactSales[OrderCount] )
+		formatString: #,0
+		displayFolder: Sales
+		lineageTag: 1cdda6b5-634f-5698-ba82-667164357ca3
+
+	/// Units sold: devices for hardware and accessories, licence seats for software, engagements or contracts for services.
+	measure 'Units Sold' = SUM ( FactSales[UnitsSold] )
+		formatString: #,0
+		displayFolder: Sales
+		lineageTag: 98778105-f738-5455-91f7-b00f842d4b7f
+
+	/// Ordering customer accounts, summed over rows: an account buying two products, or in two months, counts twice. Moves with Orders and Marketing Spend.
+	measure Customers = SUM ( FactSales[CustomerCount] )
+		formatString: #,0
+		displayFolder: Sales
+		lineageTag: 5170ee96-f575-5fb3-bb55-39879a0cbc2c
+
+	/// Orders returned.
+	measure Returns = SUM ( FactSales[ReturnCount] )
+		formatString: #,0
+		displayFolder: Sales
+		lineageTag: 6564dca0-e9fd-53ea-b6bb-f7d5b3ae7df5
+
+	/// Revenue per order in USD (Revenue / Orders).
+	measure 'Avg Order Value' = DIVIDE ( [Revenue], [Orders] )
+		formatString: \$#,0.00
+		displayFolder: Sales
+		lineageTag: 0172618f-b871-5b54-99f6-852c512f980f
+
+	/// Share of orders returned (Returns / Orders). Differs strongly by country and category - hardware and online orders return most.
+	measure 'Return Rate %' = DIVIDE ( [Returns], [Orders] )
+		formatString: 0.0%
+		displayFolder: Sales
+		lineageTag: 9cfcc0ca-e73a-5aab-b112-ec737cc46f35
+
+	/// Revenue / Customers, in USD.
+	measure 'Revenue per Customer' = DIVIDE ( [Revenue], [Customers] )
+		formatString: \$#,0.00
+		displayFolder: Sales
+		lineageTag: 7d074c9d-ffbe-5c9c-9c95-d70c2ca5dbcb
+
+	/// Revenue for the same months one year earlier. Works at month, quarter or year grain; blank for 2019, which has no prior year.
+	measure 'Revenue PY' =
+			VAR _months = VALUES ( DimDate[MonthIndex] )
+			VAR _prior = SELECTCOLUMNS ( _months, "MonthIndex", DimDate[MonthIndex] - 12 )
+			RETURN
+			    CALCULATE ( [Revenue], REMOVEFILTERS ( DimDate ), TREATAS ( _prior, DimDate[MonthIndex] ) )
+		formatString: \$#,0
+		displayFolder: Time Comparison
+		lineageTag: 0af015c1-1e54-5b7e-90eb-344d90d1bda1
+
+	/// Revenue minus Revenue PY, in USD. Blank when there is no prior year.
+	measure 'Revenue YoY Change' =
+			VAR _py = [Revenue PY]
+			RETURN IF ( NOT ISBLANK ( _py ), [Revenue] - _py )
+		formatString: \$#,0
+		displayFolder: Time Comparison
+		lineageTag: b34e4929-9ca1-543a-8abf-38b7276735ea
+
+	/// Revenue growth against the same months a year earlier. Filter to one Year for annual growth by country; blank for 2019.
+	measure 'Revenue YoY %' =
+			VAR _py = [Revenue PY]
+			RETURN IF ( NOT ISBLANK ( _py ), DIVIDE ( [Revenue] - _py, _py ) )
+		formatString: 0.0%
+		displayFolder: Time Comparison
+		lineageTag: 525e7897-dcb4-5f08-9363-0120e0496b43
+
+	/// Population of the countries in the filter context (approximate 2023 values). Country-level only: a city filter does not narrow it.
+	measure 'Total Population' = SUM ( DimCountry[Population] )
+		formatString: #,0
+		displayFolder: Geography
+		lineageTag: 19a6ec26-9f1b-5ee7-ad78-edb228afeaed
+
+	/// Revenue in USD per inhabitant of the selected countries, for the selected period. Use at country, subregion or region level (not city).
+	measure 'Revenue per Capita' = DIVIDE ( [Revenue], [Total Population] )
+		formatString: \$#,0.00
+		displayFolder: Geography
+		lineageTag: 2feda6e8-793c-54c2-a761-748b911ddeaf
+
+	/// Marketing spend in USD. Country and month only: product, channel and city filters do not narrow it.
+	measure 'Marketing Spend' = SUM ( FactOperations[MarketingSpendUSD] )
+		formatString: \$#,0
+		displayFolder: Operations
+		lineageTag: 93cca107-40cd-5d15-bdc8-bc51d5dff24f
+
+	/// Revenue dollars per marketing dollar (Revenue / Marketing Spend). Use without product, channel or city filters.
+	measure 'Marketing ROI' = DIVIDE ( [Revenue], [Marketing Spend] )
+		formatString: 0.00
+		displayFolder: Operations
+		lineageTag: 11f263a1-0157-511e-8c4e-1d1333780f98
+
+	/// Sales and support headcount in FTE, averaged over the months in the filter context (headcount is a level, not a flow, so it is never summed over time).
+	measure Headcount = AVERAGEX ( VALUES ( DimDate[MonthStart] ), CALCULATE ( SUM ( FactOperations[HeadcountFTE] ) ) )
+		formatString: #,0.0
+		displayFolder: Operations
+		lineageTag: d03ddebc-0124-560d-adbc-8fcdf4f1fece
+
+	/// Revenue per average FTE for the selected period (a full year gives annual revenue per head).
+	measure 'Revenue per Head' = DIVIDE ( [Revenue], [Headcount] )
+		formatString: \$#,0
+		displayFolder: Operations
+		lineageTag: fadf5c4c-adfd-5f82-8352-5e3b046afe66
+
+	/// Customer-satisfaction survey responses.
+	measure 'Survey Responses' = SUM ( FactOperations[SurveyResponses] )
+		formatString: #,0
+		displayFolder: Operations
+		lineageTag: 2956ef8d-898a-5fd7-9b56-4dbd3a3c2fe9
+
+	/// Customer satisfaction: share of survey responses rating 4 or 5 out of 5. Country and month only.
+	measure 'CSAT %' = DIVIDE ( SUM ( FactOperations[SatisfiedResponses] ), SUM ( FactOperations[SurveyResponses] ) )
+		formatString: 0.0%
+		displayFolder: Operations
+		lineageTag: 7c2825bd-389c-5447-be08-66ca3e378059
+
+	/// Planned revenue in USD. Flat within each year on a monthly axis. Country and month only: under a product, channel or city filter it still shows the whole country's plan.
+	measure 'Revenue Target' = SUM ( FactRevenueTarget[TargetRevenueUSD] )
+		formatString: \$#,0
+		displayFolder: Targets
+		lineageTag: 8e375d0a-9b4e-5fce-b797-be986cfb41d2
+
+	/// Revenue minus Revenue Target, in USD; negative means behind plan.
+	measure 'Revenue vs Target' = [Revenue] - [Revenue Target]
+		formatString: \$#,0
+		displayFolder: Targets
+		lineageTag: 0198f48c-bb65-5e66-bd28-0b46054d7b6b
+
+	/// Revenue as a share of Revenue Target; 100% means on plan.
+	measure 'Target Attainment %' = DIVIDE ( [Revenue], [Revenue Target] )
+		formatString: 0.0%
+		displayFolder: Targets
+		lineageTag: af9cd677-3621-535f-b663-10045696e668
+
+	/// Units shipped from origin to destination country. The flow measure for flow maps and chord diagrams.
+	measure 'Units Shipped' = SUM ( FactShipments[UnitsShipped] )
+		formatString: #,0
+		displayFolder: Shipments
+		lineageTag: 2031f392-b4cd-502d-9d99-d1e80d6c0e90
+
+	/// Freight cost in USD.
+	measure 'Freight Cost' = SUM ( FactShipments[FreightCostUSD] )
+		formatString: \$#,0
+		displayFolder: Shipments
+		lineageTag: 51b2a149-9c7f-54af-b15c-693082a1e0cf
+
+	/// Freight cost per unit shipped, in USD. Rises with distance and unit weight.
+	measure 'Freight per Unit' = DIVIDE ( [Freight Cost], [Units Shipped] )
+		formatString: \$#,0.00
+		displayFolder: Shipments
+		lineageTag: 1e38080c-e6bc-5c34-8d57-e19250fd40c2
+
+	/// Value of goods shipped at standard cost, in USD. An alternative flow measure that weights heavy, expensive products more than Units Shipped.
+	measure 'Shipment Value' = SUM ( FactShipments[ShipmentValueUSD] )
+		formatString: \$#,0
+		displayFolder: Shipments
+		lineageTag: 01249f2b-8b07-54b0-bcd7-65d01e2afea9
+
+	/// Unit-weighted average great-circle distance of the shipments in context, in km.
+	measure 'Avg Shipping Distance (km)' = DIVIDE ( SUMX ( FactShipments, FactShipments[UnitsShipped] * FactShipments[DistanceKm] ), [Units Shipped] )
+		formatString: #,0
+		displayFolder: Shipments
+		lineageTag: 6cf1d6f6-25b7-5388-8747-15f6cf2996b0
+
+	/// Number of distinct origin-destination country pairs with shipments in context.
+	measure 'Shipment Lanes' = COUNTROWS ( SUMMARIZE ( FactShipments, FactShipments[OriginCountryCode], FactShipments[DestinationCountryCode] ) )
+		formatString: #,0
+		displayFolder: Shipments
+		lineageTag: 30b7e06a-290c-5914-8447-d7a7a565fb4e
+
+	/// Revenue grown by the selected Growth Rate: what the same period would bring a year later at that rate. Put 'Growth Rate'[Growth Rate] on an axis or legend to see one line per scenario.
+	measure 'Projected Revenue' = [Revenue] * ( 1 + [Growth Rate Value] )
+		formatString: \$#,0
+		displayFolder: What-if
+		lineageTag: 0026e2ff-e203-58d4-9b0c-c11e42769031
+
+	/// Placeholder that makes this a table; never used.
+	column Measures
+		isHidden
+		formatString: 0
+		lineageTag: ab2d38c4-16d2-5fd6-a6b3-ef146dbfa1df
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Measures]
+
+		annotation SummarizationSetBy = Automatic
+
+	partition _Measures = calculated
+		mode: import
+		source = DATATABLE("Measures", INTEGER, {{}})
+
+	annotation PBI_Id = dd18bcac0c955e9f848fe8a083e42b76

@@ -1,0 +1,55 @@
+relationship b675d01a-e01d-552c-a0ec-86b711f8049c
+	joinOnDateBehavior: datePartOnly
+	fromColumn: FactSales.MonthStart
+	toColumn: DimDate.MonthStart
+
+relationship a9cb344b-670e-558c-9cc0-bcdb0b801427
+	fromColumn: FactSales.CityKey
+	toColumn: DimCity.CityKey
+
+relationship 5b3a8755-51cf-5317-a0d8-cde7fd3582b1
+	fromColumn: FactSales.CountryCode
+	toColumn: DimCountry.CountryCode
+
+relationship c35866f7-ca41-5b58-88be-09d5a1d7ae0a
+	fromColumn: FactSales.ProductKey
+	toColumn: DimProduct.ProductKey
+
+relationship e338c3b1-0a14-5d84-91c8-ec16b3c750b0
+	fromColumn: FactSales.Channel
+	toColumn: DimChannel.Channel
+
+relationship 6f116bda-c2bc-5475-93a0-72a6b86760e7
+	joinOnDateBehavior: datePartOnly
+	fromColumn: FactOperations.MonthStart
+	toColumn: DimDate.MonthStart
+
+relationship 87ea4efa-e569-555c-9b3f-7725d2eaaa9b
+	fromColumn: FactOperations.CountryCode
+	toColumn: DimCountry.CountryCode
+
+relationship ff6526f3-7c16-5cf5-bba5-a32c149f3271
+	joinOnDateBehavior: datePartOnly
+	fromColumn: FactRevenueTarget.MonthStart
+	toColumn: DimDate.MonthStart
+
+relationship 606b6b64-1f3c-5591-9703-26c7e6128eca
+	fromColumn: FactRevenueTarget.CountryCode
+	toColumn: DimCountry.CountryCode
+
+relationship d8a704d2-e986-575a-bd85-ede9adf1b706
+	joinOnDateBehavior: datePartOnly
+	fromColumn: FactShipments.MonthStart
+	toColumn: DimDate.MonthStart
+
+relationship 095217bc-7cf7-5dc3-a7e6-7a3e1b29f2ed
+	fromColumn: FactShipments.OriginCountryCode
+	toColumn: DimOriginCountry.OriginCountryCode
+
+relationship c26b751f-2377-569c-b159-4e347b52479b
+	fromColumn: FactShipments.DestinationCountryCode
+	toColumn: DimDestinationCountry.DestinationCountryCode
+
+relationship ea5c704e-9429-5718-9494-c42b237c3267
+	fromColumn: FactShipments.ProductKey
+	toColumn: DimProduct.ProductKey

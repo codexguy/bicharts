@@ -1,0 +1,44 @@
+/// One row per sales channel: Online, Retail, Partner. Filters FactSales. Not every product sells through every channel: Services sell only through Partner, Software through Online and Partner, Accessories through Online and Retail, Hardware through all three.
+table DimChannel
+	lineageTag: c8715bb4-6f44-509e-bb80-f75a5327cbd3
+
+	/// Sales channel name: Online, Retail or Partner. Primary key.
+	column Channel
+		dataType: string
+		lineageTag: 2b042a44-c31a-5ff3-b9cb-6ca882625b24
+		summarizeBy: none
+		sourceColumn: Channel
+		sortByColumn: ChannelOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	/// What the channel covers.
+	column ChannelDescription
+		dataType: string
+		lineageTag: 0b6942bb-ec65-56f7-b0af-162ff25f897e
+		summarizeBy: none
+		sourceColumn: ChannelDescription
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Display order of Channel, 1-3.
+	column ChannelOrder
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 4972947d-90a3-5919-90b5-ab71a56fd3bf
+		summarizeBy: none
+		sourceColumn: ChannelOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimChannel = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("DimChannel.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"Channel", type text}, {"ChannelDescription", type text}, {"ChannelOrder", Int64.Type}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

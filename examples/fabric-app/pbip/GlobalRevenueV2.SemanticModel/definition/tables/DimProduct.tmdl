@@ -1,0 +1,89 @@
+/// One row per product: 10 products in 4 categories (Hardware, Accessories, Software, Services) with a ProductLine level between. Hierarchy: Category > ProductLine > Product. Filters FactSales and FactShipments (only the 5 shippable Hardware and Accessories products appear in shipments).
+table DimProduct
+	lineageTag: b759f7ef-5ef0-534f-9128-92164cf03ecd
+
+	/// Product key, for example 'HW-LAP' (the prefix is the category). Primary key; stable.
+	column ProductKey
+		dataType: string
+		lineageTag: 3ebf3988-8237-5625-82cf-7eea1198e184
+		summarizeBy: none
+		sourceColumn: ProductKey
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Product name.
+	column Product
+		dataType: string
+		lineageTag: 04e1b651-5cea-5827-a777-d1f290023ab7
+		summarizeBy: none
+		sourceColumn: Product
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Product line, the level between Category and Product.
+	column ProductLine
+		dataType: string
+		lineageTag: c06daf28-ce2a-5e5d-8f1e-257015aa5418
+		summarizeBy: none
+		sourceColumn: ProductLine
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Product category: Hardware, Accessories, Software or Services.
+	column Category
+		dataType: string
+		lineageTag: bfcb8f1c-096b-5cc7-b3b4-9f23bb72d3a1
+		summarizeBy: none
+		sourceColumn: Category
+
+		annotation SummarizationSetBy = Automatic
+
+	/// TRUE for physical products (Hardware, Accessories) that move through FactShipments.
+	column IsShippable
+		dataType: boolean
+		lineageTag: 89a35f77-a36d-523e-a789-18b0d53787e3
+		summarizeBy: none
+		sourceColumn: IsShippable
+
+		annotation SummarizationSetBy = Automatic
+
+	/// List price of one unit in USD (a licence seat for software, an engagement or contract for services).
+	column ListPriceUSD
+		dataType: double
+		formatString: \$#,0.00
+		lineageTag: 4cd3c271-e280-5762-8638-9e2c51d09c13
+		summarizeBy: none
+		sourceColumn: ListPriceUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Standard cost of one physical unit in USD; 0 for software and services. Values FactShipments.
+	column StandardCostUSD
+		dataType: double
+		formatString: \$#,0.00
+		lineageTag: d9b543b8-55e0-5860-85b3-b206a9de1ef9
+		summarizeBy: none
+		sourceColumn: StandardCostUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Shipping weight of one unit in kilograms; 0 for software and services.
+	column UnitWeightKg
+		dataType: double
+		formatString: 0.00
+		lineageTag: 6109cadd-8e40-5eb6-9ccb-5cd679690575
+		summarizeBy: none
+		sourceColumn: UnitWeightKg
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimProduct = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("DimProduct.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"ProductKey", type text}, {"Product", type text}, {"ProductLine", type text}, {"Category", type text}, {"IsShippable", type logical}, {"ListPriceUSD", type number}, {"StandardCostUSD", type number}, {"UnitWeightKg", type number}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

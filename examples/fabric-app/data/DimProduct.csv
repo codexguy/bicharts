@@ -1,0 +1,11 @@
+ProductKey,Product,ProductLine,Category,IsShippable,ListPriceUSD,StandardCostUSD,UnitWeightKg
+HW-LAP,Laptop Pro 14,Computing,Hardware,true,1350.00,900.00,2.00
+HW-WKS,Workstation X,Computing,Hardware,true,2600.00,1800.00,9.00
+HW-TAB,Tablet 11,Mobile Devices,Hardware,true,620.00,380.00,0.70
+AC-DCK,USB-C Dock,Peripherals,Accessories,true,240.00,120.00,0.60
+AC-HDS,Noise-Cancelling Headset,Peripherals,Accessories,true,110.00,45.00,0.30
+SW-OFF,Office Suite,Productivity Software,Software,false,240.00,0.00,0.00
+SW-SEC,Endpoint Security,Security Software,Software,false,90.00,0.00,0.00
+SW-ANL,Analytics Cloud,Data & Analytics,Software,false,1800.00,0.00,0.00
+SV-IMP,Implementation Services,Professional Services,Services,false,16000.00,0.00,0.00
+SV-SUP,Premium Support Plan,Support,Services,false,2200.00,0.00,0.00

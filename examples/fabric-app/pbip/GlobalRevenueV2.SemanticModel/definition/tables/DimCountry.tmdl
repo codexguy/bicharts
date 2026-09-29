@@ -1,0 +1,105 @@
+/// One row per market country: 40 countries in 5 regions. CountryCode is the ISO 3166-1 alpha-3 code (USA, DEU, JPN) and is the key to use for world choropleth maps; Latitude/Longitude are the country's centroid for bubble maps. Filters FactSales, FactOperations and FactRevenueTarget. Shipments do NOT use this table - they have their own copies, DimOriginCountry and DimDestinationCountry.
+table DimCountry
+	lineageTag: 1eaa9383-9250-5dea-bbea-6bce71df3bcd
+
+	/// ISO 3166-1 alpha-3 country code, for example USA, GBR, IND. Primary key; stable across refreshes.
+	column CountryCode
+		dataType: string
+		lineageTag: bc752f19-5a4b-50b6-950f-2f6ad65c26c7
+		dataCategory: Country
+		summarizeBy: none
+		sourceColumn: CountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// ISO 3166-1 alpha-2 country code, for example US, GB, IN.
+	column CountryISO2
+		dataType: string
+		lineageTag: db8906e0-8130-596f-854f-ae18074c3e4d
+		summarizeBy: none
+		sourceColumn: CountryISO2
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Country name in English.
+	column Country
+		dataType: string
+		lineageTag: a3869cdb-139d-5a57-9a98-b63a2f51e40b
+		dataCategory: Country
+		summarizeBy: none
+		sourceColumn: Country
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Sales region: North America, Latin America, Europe, Middle East & Africa, Asia Pacific (sorted by RegionOrder).
+	column Region
+		dataType: string
+		lineageTag: 06a8e9bf-99e0-587f-8c6f-ecd9b7401444
+		summarizeBy: none
+		sourceColumn: Region
+		sortByColumn: RegionOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Display order of Region, 1-5.
+	column RegionOrder
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: a6a8195f-1933-52b0-8326-db81325a13bc
+		summarizeBy: none
+		sourceColumn: RegionOrder
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Geographic subregion (UN M49 style), for example Western Europe, South-eastern Asia.
+	column Subregion
+		dataType: string
+		lineageTag: 7613bbab-4b74-5b6c-a9d0-82de7fd93a39
+		summarizeBy: none
+		sourceColumn: Subregion
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Latitude of the country's centroid, in decimal degrees.
+	column Latitude
+		dataType: double
+		formatString: 0.00
+		lineageTag: b71b931d-bdf2-5706-8e85-8585cf93e151
+		dataCategory: Latitude
+		summarizeBy: none
+		sourceColumn: Latitude
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Longitude of the country's centroid, in decimal degrees.
+	column Longitude
+		dataType: double
+		formatString: 0.00
+		lineageTag: ac0a2990-f83e-58d9-a031-c07cbb9d69ff
+		dataCategory: Longitude
+		summarizeBy: none
+		sourceColumn: Longitude
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Approximate 2023 population. Denominator of Revenue per Capita (use the Total Population measure).
+	column Population
+		dataType: int64
+		formatString: #,0
+		lineageTag: 350220f2-00dd-5c69-be1c-90f32530702a
+		summarizeBy: sum
+		sourceColumn: Population
+
+		annotation SummarizationSetBy = Automatic
+
+	partition DimCountry = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("DimCountry.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"CountryCode", type text}, {"CountryISO2", type text}, {"Country", type text}, {"Region", type text}, {"RegionOrder", Int64.Type}, {"Subregion", type text}, {"Latitude", type number}, {"Longitude", type number}, {"Population", Int64.Type}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

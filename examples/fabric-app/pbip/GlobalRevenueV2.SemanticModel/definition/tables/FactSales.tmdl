@@ -1,0 +1,122 @@
+/// Sales at month x city x product x channel grain (about 117,000 rows): what one city sold of one product through one channel in one month. All numeric columns are additive. Use the measures in _Measures (Revenue, Orders, Customers, Return Rate %, ...) rather than these columns. Related to DimDate, DimCity, DimCountry, DimProduct and DimChannel.
+table FactSales
+	lineageTag: a8a3ccf3-382b-5f55-8a33-3e78b094e132
+
+	/// Month of the sale (first day of the month). Joins DimDate.
+	column MonthStart
+		dataType: dateTime
+		isHidden
+		formatString: yyyy-mm-dd
+		lineageTag: 25ca4fe6-93e7-5fce-b072-bc1f65fabb6d
+		summarizeBy: none
+		sourceColumn: MonthStart
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// City that made the sale. Joins DimCity.
+	column CityKey
+		dataType: string
+		isHidden
+		lineageTag: 90550479-41f0-5e38-9d00-796ee6709d7c
+		summarizeBy: none
+		sourceColumn: CityKey
+
+		annotation SummarizationSetBy = Automatic
+
+	/// ISO-3 code of the city's country. Joins DimCountry.
+	column CountryCode
+		dataType: string
+		isHidden
+		lineageTag: b476ec3b-66df-5b71-8b14-442a1c128df9
+		summarizeBy: none
+		sourceColumn: CountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Product sold. Joins DimProduct.
+	column ProductKey
+		dataType: string
+		isHidden
+		lineageTag: 98b99c91-4e78-52d3-af50-25cf403893b9
+		summarizeBy: none
+		sourceColumn: ProductKey
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Channel the sale came through. Joins DimChannel.
+	column Channel
+		dataType: string
+		isHidden
+		lineageTag: 09ab139a-8ba2-5365-8789-5961d228ebaa
+		summarizeBy: none
+		sourceColumn: Channel
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Number of orders. Use the Orders measure.
+	column OrderCount
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: 76cf4708-576b-5fff-ae44-0fe502589cf3
+		summarizeBy: sum
+		sourceColumn: OrderCount
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Units sold (devices, licence seats, service engagements). Use the Units Sold measure.
+	column UnitsSold
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: a390b582-6f2b-58e6-8307-e55a5e574f44
+		summarizeBy: sum
+		sourceColumn: UnitsSold
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Net revenue in USD. Use the Revenue measure.
+	column RevenueUSD
+		dataType: double
+		isHidden
+		formatString: \$#,0
+		lineageTag: 621058a8-fff4-5770-9fa9-5762e63b2ac7
+		summarizeBy: sum
+		sourceColumn: RevenueUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Ordering customer accounts in this row's month, city, product and channel. Summing across rows counts an account once per product and channel it bought. Use the Customers measure.
+	column CustomerCount
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: c498ee7a-ba5b-5ceb-b711-92cb69127905
+		summarizeBy: sum
+		sourceColumn: CustomerCount
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Orders returned. Use the Returns and Return Rate % measures.
+	column ReturnCount
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: 9fbe8af8-af76-5263-aaae-c217767b5f3a
+		summarizeBy: sum
+		sourceColumn: ReturnCount
+
+		annotation SummarizationSetBy = Automatic
+
+	partition FactSales = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("FactSales.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"MonthStart", type date}, {"CityKey", type text}, {"CountryCode", type text}, {"ProductKey", type text}, {"Channel", type text}, {"OrderCount", Int64.Type}, {"UnitsSold", Int64.Type}, {"RevenueUSD", type number}, {"CustomerCount", Int64.Type}, {"ReturnCount", Int64.Type}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,81 @@
+/// Country operations at month x country grain (3,360 rows): marketing spend, sales headcount and customer-satisfaction survey counts. Related to DimDate and DimCountry only (no city, product or channel detail). Use the measures Marketing Spend, Headcount and CSAT %.
+table FactOperations
+	lineageTag: dce63bc3-9383-514a-8d68-b5708c261f44
+
+	/// Month (first day). Joins DimDate.
+	column MonthStart
+		dataType: dateTime
+		isHidden
+		formatString: yyyy-mm-dd
+		lineageTag: 915a9af6-ec4a-5771-8795-865ffcb5c393
+		summarizeBy: none
+		sourceColumn: MonthStart
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// ISO-3 country code. Joins DimCountry.
+	column CountryCode
+		dataType: string
+		isHidden
+		lineageTag: 3bace98d-9e07-585a-bb83-46308e211980
+		summarizeBy: none
+		sourceColumn: CountryCode
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Marketing spend in USD for the country and month. Use the Marketing Spend measure.
+	column MarketingSpendUSD
+		dataType: double
+		isHidden
+		formatString: \$#,0
+		lineageTag: 82d2a1ac-884b-5634-a4a5-656b2806bd83
+		summarizeBy: sum
+		sourceColumn: MarketingSpendUSD
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Sales and support headcount in full-time equivalents at month end. NOT additive over time: use the Headcount measure, which averages months.
+	column HeadcountFTE
+		dataType: double
+		isHidden
+		formatString: #,0.0
+		lineageTag: 41d1c7cf-d0fe-5b45-b484-919443e0bef3
+		summarizeBy: none
+		sourceColumn: HeadcountFTE
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Customer-satisfaction survey responses received.
+	column SurveyResponses
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: ca766f33-dea3-5879-b781-78feaa87e1a0
+		summarizeBy: sum
+		sourceColumn: SurveyResponses
+
+		annotation SummarizationSetBy = Automatic
+
+	/// Responses rating 4 or 5 out of 5. CSAT % = SatisfiedResponses / SurveyResponses.
+	column SatisfiedResponses
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: 442eda4a-a124-53b5-8b2e-480c8c094645
+		summarizeBy: sum
+		sourceColumn: SatisfiedResponses
+
+		annotation SummarizationSetBy = Automatic
+
+	partition FactOperations = m
+		mode: import
+		source =
+				let
+				    Source = fnLoadCsv("FactOperations.csv"),
+				    Typed = Table.TransformColumnTypes(Source, {{"MonthStart", type date}, {"CountryCode", type text}, {"MarketingSpendUSD", type number}, {"HeadcountFTE", type number}, {"SurveyResponses", Int64.Type}, {"SatisfiedResponses", Int64.Type}}, "en-US")
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table
