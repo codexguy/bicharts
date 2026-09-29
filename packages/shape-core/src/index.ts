@@ -241,7 +241,8 @@ export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads 
 // column is gone, asked by a host before it draws that code against changed fields. See
 // columnRefScan.ts for the optional probes and data-value comparisons it deliberately does not count.
 export {
-    isColumnContextRef, nameProbeIsGuarded, missingHardColumnRefs, HOST_SYNTHETIC_COLUMNS, guardColumnNames,
+    isColumnContextRef, nameProbeIsGuarded, nameProbeKeepsDrawing, missingHardColumnRefs, HOST_SYNTHETIC_COLUMNS,
+    guardColumnNames,
 } from "./columnRefScan";
 
 // FREEMIUM ENTITLEMENT WALLS A HOST CAN ANTICIPATE (2026-09-17). The column cap is ENFORCED only on
