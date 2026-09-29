@@ -505,6 +505,18 @@ export type LLMClientHints =
          * before the loader shipped.
          */
         supportsMermaid?: boolean,
+        /**
+         * Does this host picture a chart that mounts SEVERAL svgs by the one it stamps?
+         *
+         * A chart drawn as an HTML scene - a carousel turning one face to the front, with the faces
+         * either side of it peeking in - puts one <svg> per face in the container, and the first in
+         * document order is a peek. A host that takes "the first svg" for its thumbnail, its frame
+         * grow, its legend pass or its label fit acts on a face the reader can barely see. Declare
+         * this only when every one of those reads the stamped svg first (chart-host's chartSvgOf /
+         * SNAPSHOT_SVG_ATTR). Absent or false means such a type is not offered - the safe answer, and
+         * automatically the answer for every build made before the host learned it.
+         */
+        supportsHtmlScene?: boolean,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
