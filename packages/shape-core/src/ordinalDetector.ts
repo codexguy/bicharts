@@ -353,8 +353,12 @@ function localeCalendarDicts(locale?: string): { weekday: Map<string, number>; m
         const nd = normalize(s.replace(/\./g, "")); if (nd && nd !== n) map.set(nd, pos);
     };
     try {
-        const wLong = new Intl.DateTimeFormat(key, { weekday: "long" });
-        const wShort = new Intl.DateTimeFormat(key, { weekday: "short" });
+        // FORMATTED IN UTC, because the instants below are UTC midnights: formatted in the reader's
+        // own zone, every zone west of Greenwich reads 2024-01-01T00:00Z as Sunday 31 December, so
+        // each day's name landed one position early - "domingo" filed as Monday - and a Spanish or
+        // French weekday column was ordered Sunday-first under a Monday-first pattern.
+        const wLong = new Intl.DateTimeFormat(key, { weekday: "long", timeZone: "UTC" });
+        const wShort = new Intl.DateTimeFormat(key, { weekday: "short", timeZone: "UTC" });
         for (let i = 0; i < 7; ++i) {                       // 2024-01-01 is Monday → ISO Mon..Sun = 0..6
             const d = new Date(Date.UTC(2024, 0, 1 + i));
             add(weekday, wLong.format(d), i);
