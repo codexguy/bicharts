@@ -374,3 +374,82 @@ function render(container, data, options) {
         host.destroy();
     });
 });
+
+/*
+    A LABEL OVER TWO SURFACES, AND A PILL THAT STARTS LATE.
+
+    Two shapes of one defect class, each from a reader's chart. A Pareto's dashed 80% line label
+    ran from the page onto the first bar: one colour per text element cannot read on both, and the
+    flip to white erased the half on the page. A Bullet chart's value labels sat on backdrops sized
+    by a character count, one glyph short, so the first digit stayed on the dark bar. The
+    geometry is stubbed the way the ring cases above stub it: a rect answers isPointInFill from its
+    own box.
+*/
+describe("applyLabelContrast - straddles and short pills", () => {
+    const IDENT = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
+    function solid(fill: string, x: number, y: number, w: number, h: number, extra: Record<string, string> = {}) {
+        const r = svg("rect", { fill, x: String(x), y: String(y), width: String(w), height: String(h), ...extra }, box(x, y, w, h));
+        r.isPointInFill = (pt: { x: number; y: number }) => pt.x >= x && pt.x <= x + w && pt.y >= y && pt.y <= y + h;
+        r.getScreenCTM = () => IDENT;
+        return r;
+    }
+    function label(s: string, fill: string, x: number, y: number, w: number, h: number) {
+        const t = text(s, { fill }, box(x, y, w, h));
+        t.getBBox = () => ({ x, y, width: w, height: h });
+        return t;
+    }
+    const pills = () => [...container.querySelectorAll("rect.lch-label-pill")];
+
+    it("gives a label that straddles a bar edge a pill of its own instead of flipping it", () => {
+        // The bar holds the right five eighths of "80% threshold"; the page holds the rest. The
+        // bar is dark enough that normalize would pick white - which vanishes on the page half.
+        root().appendChild(solid("#12239e", 124, 0, 200, 300));
+        const t = label("80% threshold", "#252423", 100, 100, 64, 14);
+        root().appendChild(t);
+        const r = applyLabelContrast(container);
+        expect(r.straddlePills).toBe(1);
+        expect(pills()).toHaveLength(1);
+        expect(pills()[0].nextSibling).toBe(t);                 // painted directly under the text
+        expect(pills()[0].getAttribute("fill")).toBe("rgb(255, 255, 255)");
+        expect(t.getAttribute("fill")).not.toBe(LIGHT_TEXT);    // never the flip that erased half of it
+        expect(t.getAttribute(LABEL_CONTRAST_DONE_ATTR)).toBe("1");
+    });
+
+    it("leaves a straddling label alone when its own colour already reads on both surfaces", () => {
+        // A pale bar: dark text reads on it and on the page, so there is nothing to fix - and the
+        // normalize rule that would repaint a label wholly on the bar does not get to repaint this one.
+        root().appendChild(solid("#c8d7f0", 124, 0, 200, 300));
+        const t = label("80% threshold", "#111111", 100, 100, 64, 14);
+        root().appendChild(t);
+        const r = applyLabelContrast(container);
+        expect(r.straddlePills).toBe(0);
+        expect(r.fixed).toBe(0);
+        expect(pills()).toHaveLength(0);
+        expect(t.getAttribute("fill")).toBe("#111111");
+    });
+
+    it("still flips a label wholly on one dark bar - one surface is not a straddle", () => {
+        root().appendChild(solid("#12239e", 0, 0, 300, 300));
+        const t = label("Qingdao", "#252423", 100, 100, 60, 14);
+        root().appendChild(t);
+        const r = applyLabelContrast(container);
+        expect(r.straddlePills).toBe(0);
+        expect(t.getAttribute("fill")).toBe(LIGHT_TEXT);
+    });
+
+    it("grows an adopted pill that starts one glyph late so it backs the whole label", () => {
+        // Right-aligned "50%" at the end of a navy bar; the chart's backdrop begins 8px inside the text.
+        root().appendChild(solid("#1f2d5c", 0, 90, 200, 30));
+        const pill = solid("#ffffff", 178, 96, 22, 18, { "fill-opacity": "0.75" });
+        root().appendChild(pill);
+        const t = label("50%", "#252423", 170, 98, 26, 14);
+        root().appendChild(t);
+        const r = applyLabelContrast(container);
+        expect(r.pillsBoosted).toBe(1);
+        expect(r.pillsExtended).toBe(1);
+        const x = parseFloat(pill.getAttribute("x")!), w = parseFloat(pill.getAttribute("width")!);
+        expect(x).toBeLessThanOrEqual(169);                      // starts before the first glyph
+        expect(x + w).toBeGreaterThanOrEqual(200);               // and never shrinks
+        expect(t.getAttribute("fill")).toBe(DARK_TEXT);
+    });
+});

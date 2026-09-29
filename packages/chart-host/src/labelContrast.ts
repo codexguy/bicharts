@@ -324,6 +324,86 @@ export function glyphSampleGrid(
     return out;
 }
 
+// A LABEL THAT STRADDLES A FILL EDGE HAS TWO BACKGROUNDS, AND ONE COLOUR LOSES HALF OF IT (an
+// incident: two Pareto charts, two readers). A dashed 80% line's label ran from the page onto the
+// first bar; the pass took the bar for its background and turned the whole label white, so "80% th"
+// vanished on the page and "reshold" showed on the bar. A recolour decides ONE colour per text
+// element, and a text over two surfaces with opposite needs has no such colour. The remedy is a
+// backing of its own: a page-coloured pill under the text, after which one colour reads over the
+// whole box - instead of the flip, never as well as it.
+//
+// The straddle grid is finer than the backing grid on purpose: a bar edge under the third letter
+// of a fourteen-letter label falls between the backing grid's three columns.
+export const STRADDLE_COLS = 8;
+export const STRADDLE_ROWS = 2;
+/** The share of a label's samples a second surface must hold before the label straddles it. */
+export const STRADDLE_MIN_SHARE = 0.125;
+/** What a pill-backed label is held to over its whole box - WCAG AA for body text. */
+export const STRADDLE_TARGET_CONTRAST = 4.5;
+/** The pill's opacity: the boosted-pill value, so every backdrop this pass paints reads alike. */
+export const STRADDLE_PILL_ALPHA = 0.9;
+
+/** Sample points for the straddle test: STRADDLE_COLS x STRADDLE_ROWS cell centres over the box. */
+export function straddleSampleGrid(
+    box: { left: number; top: number; width: number; height: number },
+): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    if (!box || !(box.width > 0) || !(box.height > 0)) return out;
+    for (let i = 0; i < STRADDLE_COLS; i++) {
+        for (let j = 0; j < STRADDLE_ROWS; j++) {
+            out.push({
+                x: box.left + box.width * (i + 0.5) / STRADDLE_COLS,
+                y: box.top + box.height * (j + 0.5) / STRADDLE_ROWS,
+            });
+        }
+    }
+    return out;
+}
+
+/** Distinct surfaces among per-sample backgrounds (per-channel tolerance), largest first. */
+export function backgroundGroups(bgs: [number, number, number][], tol: number = 8): { rgb: [number, number, number]; n: number }[] {
+    const groups: { rgb: [number, number, number]; n: number }[] = [];
+    for (const b of bgs || []) {
+        const g = groups.find(x => Math.abs(x.rgb[0] - b[0]) <= tol && Math.abs(x.rgb[1] - b[1]) <= tol && Math.abs(x.rgb[2] - b[2]) <= tol);
+        if (g) g.n++; else groups.push({ rgb: [b[0], b[1], b[2]], n: 1 });
+    }
+    return groups.sort((a, b) => b.n - a.n);
+}
+
+/** True when at least two surfaces each hold STRADDLE_MIN_SHARE of a label's samples. */
+export function straddles(bgs: [number, number, number][]): boolean {
+    if (!bgs || bgs.length < 2) return false;
+    const g = backgroundGroups(bgs);
+    return g.length >= 2 && g[1].n / bgs.length >= STRADDLE_MIN_SHARE;
+}
+
+/** The lowest contrast a text colour reaches over every sample background (0 when unparseable). */
+export function minContrastOver(textColor: string | null | undefined, bgs: [number, number, number][]): number {
+    const t = toRGBA(textColor);
+    if (!t || !bgs || !bgs.length) return 0;
+    let worst = Infinity;
+    for (const b of bgs) {
+        const tx = compositeOver(t, b);
+        worst = Math.min(worst, contrastRatio(relativeLuminance(tx), relativeLuminance(b)));
+    }
+    return worst;
+}
+
+/**
+ * The one colour for a label over several backgrounds: the author's own when it reaches `target`
+ * over all of them (a colour that reads is never overruled), else whichever of DARK_TEXT and
+ * LIGHT_TEXT reads best over the worst of them.
+ */
+export function pickColorOver(
+    textColor: string | null | undefined, bgs: [number, number, number][], target: number = STRADDLE_TARGET_CONTRAST,
+): { color: string; contrast: number; keep: boolean } {
+    const cur = minContrastOver(textColor, bgs);
+    if (cur >= target) return { color: String(textColor), contrast: cur, keep: true };
+    const d = minContrastOver(DARK_TEXT, bgs), l = minContrastOver(LIGHT_TEXT, bgs);
+    const best = d >= l ? { color: DARK_TEXT, contrast: d } : { color: LIGHT_TEXT, contrast: l };
+    return best.contrast > cur ? { ...best, keep: false } : { color: String(textColor), contrast: cur, keep: true };
+}
+
 function clamp01(v: number): number {
     if (typeof v !== "number" || !isFinite(v)) return 1;
     return Math.max(0, Math.min(1, v));

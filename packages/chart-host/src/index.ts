@@ -232,7 +232,7 @@ export { ensureCrossfilterHitTargets, type HitTargetReport } from "./hitTargets"
 // `applyLabelContrast` after every render; the pure decision is exported for a host that measures
 // its own DOM, and the constants so a host's telemetry reads the same as the visual's.
 export {
-    applyLabelContrast, LABEL_CONTRAST_DONE_ATTR, LABEL_CONTRAST_CAP,
+    applyLabelContrast, LABEL_CONTRAST_DONE_ATTR, LABEL_CONTRAST_CAP, LABEL_PILL_CLASS,
     type LabelContrastOptions, type LabelContrastReport,
 } from "./labelContrastDom";
 export {
@@ -241,6 +241,8 @@ export {
     DARK_TEXT, LIGHT_TEXT, MIN_CONTRAST, WHITE_TEXT_BG_LUM,
     PILL_MIN_ALPHA, PILL_OPAQUE_ALPHA, PILL_MIN_COVERAGE, PAGE_MATCH_TOLERANCE,
     BACKING_MAJORITY, GLYPH_SAMPLE_N,
+    straddles, straddleSampleGrid, minContrastOver, pickColorOver,
+    STRADDLE_COLS, STRADDLE_ROWS, STRADDLE_MIN_SHARE, STRADDLE_TARGET_CONTRAST, STRADDLE_PILL_ALPHA,
     type LabelDecision,
 } from "./labelContrast";
 

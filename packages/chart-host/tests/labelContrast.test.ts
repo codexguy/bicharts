@@ -19,6 +19,13 @@ import {
     DARK_TEXT,
     LIGHT_TEXT,
     MIN_CONTRAST,
+    straddles,
+    straddleSampleGrid,
+    minContrastOver,
+    pickColorOver,
+    STRADDLE_COLS,
+    STRADDLE_ROWS,
+    STRADDLE_TARGET_CONTRAST,
 } from "../src/labelContrast";
 
 describe("toRGBA", () => {
@@ -350,5 +357,40 @@ describe("backingHoldsGlyph - the page is a surface too", () => {
         expect(backingHoldsGlyph(GLYPH, 0)).toBe(false);
         expect(backingHoldsGlyph(Number.NaN, GLYPH)).toBe(false);
         expect(backingHoldsGlyph(Number.POSITIVE_INFINITY, GLYPH)).toBe(false);
+    });
+});
+
+describe("straddles - one colour cannot read on two surfaces with opposite needs", () => {
+    const WHITE: [number, number, number] = [255, 255, 255], NAVY: [number, number, number] = [18, 35, 158];
+    const mix = (nNavy: number, n = 16) => Array.from({ length: n }, (_, i) => (i < nNavy ? NAVY : WHITE));
+
+    it("names a label split between the page and a bar, and not one on a single surface", () => {
+        expect(straddles(mix(10))).toBe(true);
+        expect(straddles(mix(16))).toBe(false);
+        expect(straddles(mix(0))).toBe(false);
+    });
+
+    it("needs the second surface to hold a real share - a grazed edge is not a straddle", () => {
+        expect(straddles(mix(1))).toBe(false);       // 1 of 16: under the share
+        expect(straddles(mix(2))).toBe(true);        // 2 of 16: the share exactly
+    });
+
+    it("samples a finer grid than the backing test, so an edge under the third letter is seen", () => {
+        const pts = straddleSampleGrid({ left: 0, top: 0, width: 80, height: 10 });
+        expect(pts).toHaveLength(STRADDLE_COLS * STRADDLE_ROWS);
+        expect(pts[0].x).toBeCloseTo(80 / STRADDLE_COLS / 2);
+    });
+
+    it("keeps the author's colour when it reads over every surface, else picks the one that reads best", () => {
+        const both = mix(8);
+        expect(minContrastOver("#111111", [WHITE])).toBeGreaterThan(18);
+        const keep = pickColorOver("#111111", [WHITE, [200, 215, 240]]);
+        expect(keep.keep).toBe(true);
+        const mustChange = pickColorOver("#ffffff", both);
+        expect(mustChange.keep).toBe(false);
+        expect([DARK_TEXT, LIGHT_TEXT]).toContain(mustChange.color);
+        // Over a page-coloured pill at 0.9 on either surface, the pick clears the pill target.
+        const behind = both.map(b => compositeOver([255, 255, 255, 0.9], b));
+        expect(pickColorOver("#ffffff", behind).contrast).toBeGreaterThanOrEqual(STRADDLE_TARGET_CONTRAST);
     });
 });

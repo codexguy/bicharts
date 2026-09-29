@@ -28,7 +28,8 @@
 import {
     decideLabelColor, toRGBA, compositeOver, MIN_CONTRAST, isPillBackdropAlpha,
     PILL_MIN_ALPHA, PILL_OPAQUE_ALPHA, cellSuppressesNormalize, pillBacksGlyph,
-    backingHoldsGlyph, glyphSampleGrid,
+    backingHoldsGlyph, glyphSampleGrid, straddleSampleGrid, straddles, minContrastOver, pickColorOver,
+    STRADDLE_PILL_ALPHA, STRADDLE_TARGET_CONTRAST,
 } from "./labelContrast";
 
 /** The attribute a recoloured (or pill-backed) label carries, so a second pass in the same
@@ -66,11 +67,17 @@ export interface LabelContrastReport {
     /** Labels with a painting shape over their box that was set aside because it is drawn ON TOP
      *  of them - an occluder, never a background. See drawnBeneath. */
     paintedOver: number;
+    /** Labels straddling a fill edge that got a page-coloured pill of their own instead of a
+     *  recolour - one colour cannot read on two surfaces with opposite needs. */
+    straddlePills: number;
+    /** Adopted pills grown to cover their label's whole box, so no glyph starts off the pill. */
+    pillsExtended: number;
     /** Why the pass did nothing, when it did nothing. */
     skipped?: "no-container" | "no-shapes" | "too-many-shapes" | "too-many-texts" | "error";
 }
 
-const EMPTY: LabelContrastReport = { rects: 0, scanned: 0, fixed: 0, pillsBoosted: 0, offFill: 0, pageMajority: 0, paintedOver: 0 };
+const EMPTY: LabelContrastReport = { rects: 0, scanned: 0, fixed: 0, pillsBoosted: 0, offFill: 0, pageMajority: 0, paintedOver: 0,
+                                      straddlePills: 0, pillsExtended: 0 };
 
 type HostRect = { r: DOMRect; fill: string; op: number; area: number; el: Element; ord: number; root: Element | null };
 
@@ -150,10 +157,117 @@ function drawnBeneath(shape: HostRect, text: Element, textRoot: Element | null):
 }
 
 /*
+    THE BACKGROUND UNDER EACH SAMPLE POINT: every shape that paints there, composited in paint
+    order over the page. Null when any shape cannot answer the geometry (jsdom, a detached node) -
+    a straddle is only ever declared on a measured label.
+*/
+function sampleBackgrounds(
+    shapes: HostRect[], pts: { x: number; y: number }[], pageRGB: [number, number, number],
+    effAlpha: (mk: HostRect) => number,
+): [number, number, number][] | null {
+    if (pts.length === 0 || shapes.length === 0) return null;
+    const ordered = shapes.slice().sort((a, b) => a.ord - b.ord);
+    const masks: boolean[][] = [];
+    for (const mk of ordered) {
+        const m = backedSamples(mk.el, pts);
+        if (m === null) return null;
+        masks.push(m);
+    }
+    return pts.map((_, i) => {
+        let bg: [number, number, number] = [pageRGB[0], pageRGB[1], pageRGB[2]];
+        for (let k = 0; k < ordered.length; k++) {
+            if (!masks[k][i]) continue;
+            const a = effAlpha(ordered[k]);
+            if (a < PILL_MIN_ALPHA) continue;
+            const c = toRGBA(ordered[k].fill);
+            if (c) bg = compositeOver([c[0], c[1], c[2], a], bg);
+        }
+        return bg;
+    });
+}
+
+/*
+    A PILL BACKS ITS WHOLE LABEL (an incident: a Bullet chart's value labels on dark navy bars).
+    The chart drew each value right-aligned at the bar's end and sized its light backdrop by a
+    character-count estimate, so the pill started one glyph after the text did: the pass boosted
+    the pill, judged the label against it, and the first digit stayed dark on navy - "50%" read
+    "0%", "100%" read "l00%". An adopted pill therefore grows to cover the label's box (a padded
+    union, never a shrink), in the pill's own coordinates. Axis-aligned rects only: a rotated or
+    skewed frame has no box to union, and it is left as it is.
+*/
+function extendPillOver(pill: Element, tr: DOMRect): boolean {
+    try {
+        if (String(pill.tagName || "").toLowerCase() !== "rect") return false;
+        const ge = pill as SVGGraphicsElement;
+        if (typeof ge.getScreenCTM !== "function") return false;
+        const m = ge.getScreenCTM();
+        if (!m || Math.abs(m.b) > 1e-6 || Math.abs(m.c) > 1e-6 || !(m.a > 0) || !(m.d > 0)) return false;
+        const inv = m.inverse();
+        const toUser = (x: number, y: number) => ({ x: inv.a * x + inv.c * y + inv.e, y: inv.b * x + inv.d * y + inv.f });
+        const a = toUser(tr.left, tr.top), b = toUser(tr.right, tr.bottom);
+        const num = (k: string) => { const v = parseFloat(pill.getAttribute(k) || ""); return isFinite(v) ? v : NaN; };
+        const x = num("x"), y = num("y"), w = num("width"), h = num("height");
+        if (![x, y, w, h].every(v => isFinite(v)) || !(w > 0) || !(h > 0)) return false;
+        const pad = 1 / m.a;
+        const x0 = Math.min(x, Math.min(a.x, b.x) - pad), x1 = Math.max(x + w, Math.max(a.x, b.x) + pad);
+        const y0 = Math.min(y, Math.min(a.y, b.y) - pad), y1 = Math.max(y + h, Math.max(a.y, b.y) + pad);
+        if (x0 >= x - 0.01 && x1 <= x + w + 0.01 && y0 >= y - 0.01 && y1 <= y + h + 0.01) return false;
+        pill.setAttribute("x", String(+x0.toFixed(2)));
+        pill.setAttribute("y", String(+y0.toFixed(2)));
+        pill.setAttribute("width", String(+(x1 - x0).toFixed(2)));
+        pill.setAttribute("height", String(+(y1 - y0).toFixed(2)));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** The class a pill this pass paints carries, so a reader of the DOM (or a test) can tell it from
+ *  the chart's own shapes. */
+export const LABEL_PILL_CLASS = "lch-label-pill";
+
+/*
+    A PILL OF THE LABEL'S OWN, drawn immediately BEFORE the text in its own parent - so it paints
+    under the text and over everything the text was drawn over - with the text's own transform, so
+    a rotated label gets a rotated pill. Sized from getBBox, the text's box in its own user space.
+    Null when the engine cannot answer (no getBBox, an empty box): the caller keeps the best single
+    colour instead.
+*/
+function addPill(tx: SVGGraphicsElement, fill: string): Element | null {
+    try {
+        const parent = tx.parentNode as Element | null;
+        if (!parent || typeof (tx as any).getBBox !== "function") return null;
+        const bb = (tx as any).getBBox();
+        if (!bb || !(bb.width > 0) || !(bb.height > 0)) return null;
+        const doc = tx.ownerDocument;
+        if (!doc) return null;
+        const r = doc.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const px = Math.max(2, bb.height * 0.2), py = 1;
+        r.setAttribute("x", String(+(bb.x - px).toFixed(2)));
+        r.setAttribute("y", String(+(bb.y - py).toFixed(2)));
+        r.setAttribute("width", String(+(bb.width + 2 * px).toFixed(2)));
+        r.setAttribute("height", String(+(bb.height + 2 * py).toFixed(2)));
+        r.setAttribute("rx", "2");
+        r.setAttribute("fill", fill);
+        r.setAttribute("fill-opacity", String(STRADDLE_PILL_ALPHA));
+        r.setAttribute("pointer-events", "none");
+        r.setAttribute("class", LABEL_PILL_CLASS);
+        r.setAttribute(LABEL_CONTRAST_DONE_ATTR, "1");
+        const tf = tx.getAttribute("transform");
+        if (tf) r.setAttribute("transform", tf);
+        parent.insertBefore(r, tx);
+        return r;
+    } catch {
+        return null;
+    }
+}
+
+/*
     THE ONE CALL A HOST MAKES AFTER A RENDER.
 
     Idempotent within a render (LABEL_CONTRAST_DONE_ATTR), additive (it only ever sets a text's
-    fill and, for a pill, a rect's fill/opacity), and bounded. Returns what it did so a host can
+    fill and, for a pill, a rect's fill/opacity and box - or paints a pill of its own under a
+    label that straddles two surfaces), and bounded. Returns what it did so a host can
     log it; the numbers are the ones the visual has logged since this pass existed, so a line
     from any host reads the same way.
 */
@@ -316,11 +430,35 @@ export function applyLabelContrast(
                     pill.el.setAttribute("fill", `rgb(${pr[0]}, ${pr[1]}, ${pr[2]})`);
                     pill.el.setAttribute("fill-opacity", "0.9");
                     report.pillsBoosted++;
+                    // ...and it backs the WHOLE label - see extendPillOver.
+                    if (extendPillOver(pill.el, tr)) report.pillsExtended++;
                 }
             }
 
             const cur = tx.getAttribute("fill")
                 || (win && typeof win.getComputedStyle === "function" ? win.getComputedStyle(tx).fill : "");
+
+            // A LABEL OVER TWO SURFACES GETS A PILL, NOT A FLIP - see straddles(). Only on a
+            // measured label with no backdrop of its own: every shape beneath it answered the
+            // geometry on the finer straddle grid, and at least two surfaces each hold a real share
+            // of it. The author's colour stands when it already reads (STRADDLE_TARGET_CONTRAST) on
+            // every one of them; otherwise the label gets a page-coloured pill and the one colour
+            // that reads on it.
+            if (!pill && unmeasured === 0) {
+                const bgs = sampleBackgrounds(boxed.map(x => x.mk), straddleSampleGrid(tr), pageRGB, effAlpha);
+                if (bgs && straddles(bgs)) {
+                    if (minContrastOver(cur, bgs) >= STRADDLE_TARGET_CONTRAST) continue;   // reads everywhere: leave it
+                    const pillEl = addPill(tx, `rgb(${pageRGB[0]}, ${pageRGB[1]}, ${pageRGB[2]})`);
+                    const behind = pillEl
+                        ? bgs.map(b => compositeOver([pageRGB[0], pageRGB[1], pageRGB[2], STRADDLE_PILL_ALPHA], b))
+                        : bgs;
+                    if (pillEl) report.straddlePills++;
+                    const pick = pickColorOver(cur, behind);
+                    if (!pick.keep) { tx.setAttribute("fill", pick.color); report.fixed++; }
+                    tx.setAttribute(LABEL_CONTRAST_DONE_ATTR, "1");
+                    continue;
+                }
+            }
             // normalize=true: unify EVERY in-mark label on a tile to one best-contrast colour (not
             // just the unreadable ones), so a tile cannot show mixed black/white text where both
             // happen to clear the threshold. EXCEPT when the backing cell is a deck PANEL: a
