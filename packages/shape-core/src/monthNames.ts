@@ -5,13 +5,24 @@
 // reassembles it. dateUnshred.ts now imports these from here (single source).
 // Pure + host-agnostic (Intl only), so it lives in shape-core.
 
+import { foldLatin } from "./knownNameKey";
+
 // Cached per locale: building one asks Intl for the 12 long + 12 short names.
 const monthLookupCache: Record<string, Record<string, number>> = {};
 
-/** Lower-case and strip spaces / dots / bidi marks so "Sept.", "sept" and the
- *  RTL-wrapped forms some locales emit all compare equal. */
+/** Fold accents and case, and strip spaces / dots / bidi marks, so "Sept.", "sept" and the
+ *  RTL-wrapped forms some locales emit all compare equal - and so do "février" and "fevrier",
+ *  "août" and "aout": a month column exported without its accents is still that month.
+ *
+ *  FOLDING IS SAFE HERE BECAUSE IT WAS MEASURED to merge no two months: across the long and short
+ *  month names of every supported language, no two months share a folded key, and no folded foreign
+ *  name lands on an English key of another month (a test holds both). It is applied to BOTH sides -
+ *  the lookup tables are keyed by this function - so every pair that compared equal before still
+ *  does. (Weekdays are a different story: Slovak "st" and "št" are Wednesday and Thursday, which is
+ *  why the ordinal detector folds only on a miss of its exact key.) */
 export function normalizeMonthKey(s: string): string {
-    return s.toLowerCase().replace(/[.‎‏\s]/g, "");
+    return foldLatin(s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase())
+        .replace(/[.‎‏\s]/g, "");
 }
 
 /** Build (and cache) a normalized month-name → index map for a locale tag using

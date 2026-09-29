@@ -19,8 +19,37 @@
 // of drift nobody notices from inside any one of them. There is no host or renderer specificity
 // in string matching, so there is no reason for it to live anywhere else.
 
+import { looseNameKey } from "@bicharts/shape-core";
+
 /**
- * The comparison form of a term or a field.
+ * HOW A TERM MATCHES A NAME - a reader's setting on every host, and "loose" unless they choose
+ * otherwise.
+ *
+ * "loose" - the rule for every match against names we know: diacritic-neutral and case-,
+ *           whitespace- and punctuation-insensitive. "barchart", "bar-chart" and "Bar Chart" all
+ *           find `Bar chart`. The exact form is still asked first, so a row the exact form found at
+ *           a word start is found there still; the loose form only adds candidates. One consequence
+ *           to know: an added word-start hit takes the answer to the name tier, which hides
+ *           mid-word hits exactly as any word-start hit always has.
+ * "exact" - accents and case folded and runs of whitespace collapsed, and nothing else: "bar chart"
+ *           and "bar  chart" are the same query, but "barchart" and "bar-chart" are not. For a reader
+ *           who wants that: one who omits the space is asking for something we do not have a name
+ *           for, and a filter that succeeds there anyway can make its failures harder to explain.
+ */
+export type FilterMatchStyle = "loose" | "exact";
+
+/** The style a host uses when the reader has not chosen one. */
+export const DEFAULT_FILTER_MATCH_STYLE: FilterMatchStyle = "loose";
+
+/** Read a host's stored setting: "exact" only when it says exactly that, "loose" otherwise - so a
+ *  missing, empty or unrecognised value is the default, never an error. */
+export function filterMatchStyleOf(raw: unknown): FilterMatchStyle {
+    return typeof raw === "string" && raw.trim().toLowerCase() === "exact" ? "exact" : DEFAULT_FILTER_MATCH_STYLE;
+}
+
+/**
+ * The comparison form of a term or a field - the EXACT form, which every style asks first and
+ * which hosts show back to the reader (the `term` of a result).
  *
  * Accent folding is not decoration. The catalogue is English, but the reader's keyboard need not
  * be, and a "Sankey" typed through a dead key has to match the same row a plain one does. NFD
@@ -29,8 +58,8 @@
  * different chart names collide.
  *
  * Whitespace is collapsed rather than stripped: "bar chart" and "bar  chart" are the same query,
- * but "barchart" is deliberately NOT one. A reader who omits the space is asking for something we
- * do not have a name for, and silently succeeding there would make the failures inexplicable.
+ * and "barchart" is not the same FORM. Whether "barchart" still FINDS `Bar chart` is the match
+ * style's business (see FilterMatchStyle): under "loose" it does, through the loose form.
  */
 export function normalizeFilterTerm(raw: string | null | undefined): string {
     if (typeof raw !== "string" || raw === "") return "";
@@ -99,6 +128,37 @@ function startsAWord(name: string, t: string): boolean {
 }
 
 /**
+ * The LOOSE form of an already-normalized name - shape-core's known-name key, letters and digits
+ * only - with the offsets in it where a WORD of the name starts, so the word-start tier can be
+ * judged on the loose form too: "barchart" starts a word in `Stacked bar chart` (at "bar"), and
+ * "archart" does not. A word starts where it starts in the exact form, by the same rule
+ * startsAWord applies there.
+ */
+function looseFormWithWordStarts(name: string): { form: string; starts: Set<number> } {
+    let form = "";
+    const starts = new Set<number>();
+    let prevAlnum = false;
+    for (const ch of name) {
+        const piece = looseNameKey(ch);
+        const code = ch.charCodeAt(0);
+        const alnum = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+        if (piece) {
+            if (!prevAlnum) starts.add(form.length);
+            form += piece;
+        }
+        prevAlnum = alnum;
+    }
+    return { form, starts };
+}
+
+function startsALooseWord(loose: { form: string; starts: Set<number> }, t: string): boolean {
+    for (let i = loose.form.indexOf(t); i >= 0; i = loose.form.indexOf(t, i + 1)) {
+        if (loose.starts.has(i)) return true;
+    }
+    return false;
+}
+
+/**
  * Filter `rows` by `term`, PRESERVING INPUT ORDER EXACTLY in every branch.
  *
  * THREE TIERS, AND THE FIRST NON-EMPTY ONE WINS OUTRIGHT. That single rule is what makes this
@@ -120,15 +180,25 @@ function startsAWord(name: string, t: string): boolean {
  *
  * A row with no name is dropped from every tier. It cannot be labelled, so it cannot be chosen,
  * and the hosts already drop it at render time.
+ *
+ * UNDER THE LOOSE STYLE (the default) each field is asked in its exact form first and its loose
+ * form only when the exact form does not contain the term, and a loose hit counts only where it
+ * starts a word: "barchart" starts a word in `Bar chart` and `Stacked bar chart`, so it answers in
+ * the name tier, while "terna" is not found inside "patTERN Across". The `term` returned is always
+ * the exact form - it is what a host shows back to the reader.
  */
 export function filterQualifyRows<T>(
     rows: readonly T[] | null | undefined,
     term: string | null | undefined,
     read: QualifyFilterRead<T>,
+    style: FilterMatchStyle = DEFAULT_FILTER_MATCH_STYLE,
 ): QualifyFilterResult<T> {
     const all = Array.isArray(rows) ? rows.slice() : [];
     const t = normalizeFilterTerm(term);
     if (t.length < FILTER_MIN_TERM_CHARS) return { rows: all, tier: "all", term: "" };
+    // The term's loose form, when the style asks for one and it is still long enough to filter.
+    const lt = style === "loose" ? looseNameKey(t) : "";
+    const loose = lt.length >= FILTER_MIN_TERM_CHARS ? lt : "";
 
     const atWordStart: T[] = [];
     const midWord: T[] = [];
@@ -141,7 +211,17 @@ export function filterQualifyRows<T>(
             (startsAWord(name, t) ? atWordStart : midWord).push(row);
             continue;
         }
-        if (normalizeFilterTerm(f.description).indexOf(t) >= 0) byDesc.push(row);
+        // A LOOSE hit counts only where it STARTS A WORD. Squeezing the spaces out of a whole name or
+        // sentence manufactures matches across word boundaries - "terna" is inside "patTERN Across" -
+        // and the loose form exists to forgive the spaces and hyphens a reader leaves out of the name
+        // they are typing, which starts where one of its words starts. Mid-word matches stay the
+        // exact form's business, as they always were.
+        if (loose && startsALooseWord(looseFormWithWordStarts(name), loose)) {
+            atWordStart.push(row);
+            continue;
+        }
+        const desc = normalizeFilterTerm(f.description);
+        if (desc.indexOf(t) >= 0 || (loose && startsALooseWord(looseFormWithWordStarts(desc), loose))) byDesc.push(row);
     }
     if (atWordStart.length > 0) return { rows: atWordStart, tier: "name", term: t };
     if (midWord.length > 0) return { rows: midWord, tier: "namePart", term: t };
@@ -396,6 +476,7 @@ export interface QualifyFilterView<E> {
 export function computeQualifyFilterView<E>(
     groups: readonly QualifyFilterGroup<E>[],
     term: string | null | undefined,
+    style: FilterMatchStyle = DEFAULT_FILTER_MATCH_STYLE,
 ): QualifyFilterView<E> {
     const g = Array.isArray(groups) ? groups : [];
     const read = (r: QualifyFilterRow<E>) => ({ name: r.name, description: r.description });
@@ -405,8 +486,8 @@ export function computeQualifyFilterView<E>(
         return out;
     };
     const fitRows = collect("fits");
-    const fit = filterQualifyRows(fitRows, term, read);
-    const ref = filterQualifyRows(collect("refused"), term, read);
+    const fit = filterQualifyRows(fitRows, term, read, style);
+    const ref = filterQualifyRows(collect("refused"), term, read, style);
 
     const visible = new Set<E>();
     for (const r of fit.rows) visible.add(r.el);

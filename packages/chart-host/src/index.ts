@@ -166,6 +166,9 @@ export {
 // to each other so the difference reads as a decision.
 export {
     normalizeFilterTerm, filterQualifyRows, readQualifyChartRow, readQualifyRefusalRow,
+    // The reader's match style - loose (the default) or exact - which every host exposes as a
+    // setting and passes to filterQualifyRows / computeQualifyFilterView.
+    DEFAULT_FILTER_MATCH_STYLE, filterMatchStyleOf, type FilterMatchStyle,
     filterFitsChooser, listNeedsFilter, qualifyFilterGate, inlineFilterGate,
     FILTER_MIN_TERM_CHARS, FILTER_ROW_PX, FILTER_MIN_WIDTH_PX, FILTER_MIN_HEIGHT_PX,
     INLINE_FILTER_MIN_ROWS,

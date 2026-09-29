@@ -38,8 +38,9 @@ describe("normalizeFilterTerm", () => {
     });
 
     it("does NOT strip the space, so 'barchart' is not 'bar chart'", () => {
-        // Deliberate: a reader who omits the space is asking for a name we do not carry, and
-        // silently succeeding there makes the failures inexplicable.
+        // The EXACT form keeps the space. Whether "barchart" still FINDS Bar chart is the match
+        // style's call - it does under the default loose style, and not under "exact", whose
+        // reason this was (filterMatchStyle.test.ts holds both).
         expect(normalizeFilterTerm("barchart")).not.toBe(normalizeFilterTerm("bar chart"));
     });
 

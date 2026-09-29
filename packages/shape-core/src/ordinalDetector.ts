@@ -36,6 +36,7 @@
 import { nameWords } from "./util";
 import { localizedCycleIn, localizedYearWordIn } from "./vocab/calendarWords";
 import { periodCodeSeries } from "./vocab/periodCodes";
+import { foldLatin } from "./knownNameKey";
 
 type OrdinalPattern = {
     name: string;
@@ -267,6 +268,30 @@ function normalize(s: string): string {
         .trim();
 }
 
+// The ACCENT-FOLDED form of a normalize()d key: marks stripped, fused Latin letters folded. Asked
+// only on a MISS of the exact key, never instead of it - folding can merge two names a language keeps
+// apart (Slovak short weekdays "st" and "št" are Wednesday and Thursday), and a folded key that names
+// two positions is ambiguous and matches nothing. What it adds is the column exported without its
+// accents: "Fevrier", "Aout", "Miercoles", "Sabado".
+//
+// NOT used by safeDistinctValuesToShip: which raw values may ship unobfuscated is a privacy decision
+// taken on the exact form, and folding must not widen it.
+function foldedKey(normalized: string): string {
+    return foldLatin(normalized.normalize("NFD").replace(/\p{Diacritic}/gu, ""));
+}
+
+// A dictionary under its folded keys: key -> position, or -1 where two positions share one.
+function foldedDict(dict: Map<string, number>): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const [k, pos] of dict) {
+        const f = foldedKey(k);
+        if (!f) continue;
+        const cur = m.get(f);
+        m.set(f, cur === undefined || cur === pos ? pos : -1);
+    }
+    return m;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Calendar / cyclic ordinals (2026-05-31)
 // ──────────────────────────────────────────────────────────────────────────
@@ -399,9 +424,16 @@ function detectCalendarOrdinal(normIndex: Map<string, string>, locale?: string):
             fam.name === "month_jan_dec"   ? mergeDicts(fam.dict, loc.month)   :
             fam.dict;                                        // quarter: English here, other languages below
         let allInDict = true;
+        let folded: Map<string, number> | null = null;   // built only when an exact key misses
         const byPos = new Map<number, string>();   // position → first original at that position
         for (const [norm, original] of normIndex) {
-            const pos = dict.get(norm);
+            let pos = dict.get(norm);
+            if (pos === undefined) {
+                // Exact first; the accent-folded key only on a miss, and never where it is ambiguous.
+                folded = folded ?? foldedDict(dict);
+                const f = folded.get(foldedKey(norm));
+                pos = f === undefined || f < 0 ? undefined : f;
+            }
             if (pos === undefined) { allInDict = false; break; }
             if (!byPos.has(pos)) byPos.set(pos, original);
         }
