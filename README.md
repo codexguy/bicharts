@@ -13,8 +13,8 @@ with a [step-by-step recipe](examples/blazor).
 
 The chart is a plain `render(container, data, options)` function you commit to your
 repository; these packages are the host side, the code that runs it correctly. The same
-contract is implemented by the LLM AI Charts visual in Power BI, so a chart looks and behaves
-the same wherever it runs.
+contract is implemented by LLM AI Charts and Maps for Power BI and for Excel, so a chart looks
+and behaves the same wherever it runs.
 
 | Package | What it is |
 | --- | --- |
