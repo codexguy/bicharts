@@ -257,6 +257,26 @@ describe("applyLabelContrast - a shape painted OVER a label is not its backgroun
         expect(r.paintedOver).toBe(1);   // the occluder is counted, so the rule is visible in telemetry
     });
 
+    it("and when the geometry CAN be measured, the same half-covered label is raised above the wedge, never recoloured against it", () => {
+        // The twin of the case above with a layout engine: the wedge answers isPointInFill from its box, the label
+        // is half under it in the same group, so the label moves after the wedge in paint order - the part a reader
+        // could see proves the chart meant to show it. It is then judged over the wedge and the page (a straddle).
+        const IDENT = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
+        const t = text("$2,000,000", { fill: "#252423" }, box(100, 90, 80, 14));
+        t.getBBox = () => ({ x: 100, y: 90, width: 80, height: 14 });
+        root().appendChild(t);
+        const wedge = svg("path", { class: "d3-mark", fill: "#12239e" }, box(60, 20, 90, 160));
+        wedge.isPointInFill = (pt: { x: number; y: number }) => pt.x >= 60 && pt.x <= 150 && pt.y >= 20 && pt.y <= 180;
+        wedge.getScreenCTM = () => IDENT;
+        root().appendChild(wedge);
+        const r = applyLabelContrast(container);
+        expect(r.raised).toBe(1);
+        expect(r.paintedOver).toBe(0);
+        expect(root().lastChild).toBe(t);                          // after the wedge in paint order
+        expect(r.straddlePills).toBe(1);                            // over the wedge and the page: its own pill
+        expect(t.getAttribute("fill")).not.toBe(LIGHT_TEXT);        // never the flip that erased the half on the page
+    });
+
     it("keeps a rose chart's ring values on their plate when the wedges cover half of each", () => {
         // The incident reduced: <g class=grid> holds each ring's plate and its value, and the
         // wedges follow. The wedge box covers the left of both labels; what a reader sees is the
