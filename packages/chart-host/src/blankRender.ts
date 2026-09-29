@@ -21,7 +21,7 @@
 // generated code against the same contract, so every host can be wrong the same way; a copy per
 // host is one more chance to disagree about what "blank" means.
 
-import { MARK_CLASS, LEGEND_MARK_CLASS, ROW_IDX_ATTR } from "./contract";
+import { MARK_CLASS, LEGEND_MARK_CLASS, ROW_IDX_ATTR, NO_ROW_MARKS_ATTR } from "./contract";
 
 export interface MarkCensus {
     /** Data marks found anywhere in the container. */
@@ -30,9 +30,11 @@ export interface MarkCensus {
     legendMarkCount: number;
     /** What the chart built. `html` is a first-class answer, not a failure — see below. */
     containerKind: "svg" | "html" | "empty";
+    /** The chart declared (NO_ROW_MARKS_ATTR) that it draws no per-row marks by design. */
+    declaresNoRowMarks: boolean;
 }
 
-const EMPTY: MarkCensus = { markCount: 0, legendMarkCount: 0, containerKind: "empty" };
+const EMPTY: MarkCensus = { markCount: 0, legendMarkCount: 0, containerKind: "empty", declaresNoRowMarks: false };
 
 /**
  * Count what the render actually left behind.
@@ -68,6 +70,7 @@ export function censusMarks(container: Element | null | undefined): MarkCensus {
             markCount: marks.size,
             legendMarkCount: legend.size,
             containerKind: hasSvg ? "svg" : (hasAnything ? "html" : "empty"),
+            declaresNoRowMarks: !!container.querySelector(`[${NO_ROW_MARKS_ATTR}]`),
         };
     } catch {
         return EMPTY;
@@ -97,6 +100,13 @@ export interface BlankVerdictInput {
      * evidence-free and must not return a verdict.
      */
     contractUntagged?: boolean;
+    /**
+     * The chart declared that it draws no per-row marks by design (censusMarks reports it from
+     * NO_ROW_MARKS_ATTR). A what-if predictor draws one model, not a mark per row, so "no marks"
+     * is its correct picture. The declaration sits in the chart's working path, so a chart that
+     * bailed to its no-data branch never carries it and is still judged.
+     */
+    declaresNoRowMarks?: boolean;
 }
 
 /**
@@ -108,6 +118,7 @@ export interface BlankVerdictInput {
  */
 export function isBlankRender(i: BlankVerdictInput): boolean {
     if (i.contractUntagged) return false;   // no contract, no evidence
+    if (i.declaresNoRowMarks) return false; // draws no row marks by design, and got past its guards
     if (i.animated) return false;           // frame one may legitimately be empty
     if (i.authoredNoDataText) return false; // the author asked for this rectangle
     if (!(i.rows > 0)) return false;        // zero rows is the never-silent banner's job

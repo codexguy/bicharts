@@ -881,6 +881,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 rows: data.rows ? data.rows.length : 0,
                 animated: config.animated,
                 contractUntagged: config.contractUntagged,
+                declaresNoRowMarks: census.declaresNoRowMarks,
             })) {
                 if (!warnedBlank) {
                     warnedBlank = true;

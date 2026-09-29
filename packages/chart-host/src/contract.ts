@@ -21,7 +21,12 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.12.0";
+export const HOST_CONTRACT_VERSION = "1.13.0";
+// 1.13.0 (2026-09-29): NO ROW MARKS, DECLARED. NO_ROW_MARKS_ATTR on an element the chart draws says
+// the chart, by design, draws no per-row data marks (a what-if predictor draws one model, not one mark
+// per row), so a render with rows and no `.d3-mark` is not blank. Placed in the chart's WORKING path,
+// never its no-data branch, so a chart that bails still reads as blank. Additive: a chart without the
+// attribute is judged exactly as before.
 // 1.12.0 (2026-09-24): CONTROLS. CONTROL_CLASS names an element a chart draws for the reader to
 // WORK - a number box in the knob strip, a slider's hit area - rather than a mark. It carries no mark
 // class and no row index, and a click inside one is neither a selection nor a click on empty
@@ -125,6 +130,14 @@ export const CONTROL_CLASS = "lch-control";
 // The attribute each filterable mark carries: comma-joined __rowIdx__ values,
 // frame-scoped for animated charts.
 export const ROW_IDX_ATTR = "data-row-idx";
+
+// A DECLARATION, not a mark: present on any element the chart drew, it says this chart draws no
+// per-row data marks by design, so zero marks against a full table is its normal picture rather than
+// a blank render. The chart stamps it in its working path (after its has-rows check), never in its
+// no-data branch - so the declaration itself is evidence the chart got past its own guards. It lives
+// on an element the chart CREATES, not on the host's container, so it can never outlive the render
+// that drew it.
+export const NO_ROW_MARKS_ATTR = "data-lch-no-row-marks";
 
 // Bubbling CustomEvent a chart dispatches on its container when its own selection
 // changes (e.g. a scrubber period). detail = { clear:true, source } | { mark, source }.
