@@ -60,22 +60,28 @@ learns what each one means. Fact columns are hidden; query the measures.
 
 ## Using it
 
-**Power BI Desktop.** Open `pbip/GlobalRevenueV2.pbip`. The `DataRoot` parameter
-(Transform data > Edit parameters) says where the CSV files are read from. By default it's
-the public copy of the `data/` folder in this repository:
+**Power BI Desktop.** Open `pbip/GlobalRevenueV2.pbip` and refresh. Every table reads its CSV
+from `https://raw.githubusercontent.com/<DataPath><file>.csv`, and the `DataPath` parameter
+(Transform data > Edit parameters) says which copy: by default the `data/` folder on this
+repository's `main` branch,
 
 ```
-https://raw.githubusercontent.com/codexguy/bicharts/main/examples/fabric-app/data/
+codexguy/bicharts/main/examples/fabric-app/data/
 ```
 
-To work offline, set it to a local folder that holds the same files, ending in a backslash
-(for example `C:\data\global-revenue-v2\`). Then refresh.
+A fork can point `DataPath` at its own copy.
 
 **The Power BI service.** After publishing, open the semantic model's settings > Data source
-credentials. For the web source, use **Anonymous** authentication and privacy level
-**Public**. No gateway is needed. If the connection test fails on the folder address, tick
-"Skip test connection". The public files are cached by GitHub for a few minutes after any
-change.
+credentials. For `https://raw.githubusercontent.com/`, choose **Anonymous** authentication and
+privacy level **Public**, then refresh. No gateway is needed. GitHub caches the files for a few
+minutes after any change.
+
+**Why the host isn't a parameter.** The Power BI service refuses to refresh a web source whose
+base address is computed (`DynamicDataSourcesIsNotSupportedForRefresh`). So the host is a
+literal in the `fnLoadCsv` function, and only the path under it comes from the parameter.
+
+**Shipment measures** follow `DimOriginCountry` and `DimDestinationCountry`, not `DimCountry`.
+Grouped by `DimCountry`, they repeat the same total on every row.
 
 **Regenerating.** `python generator/generate_data.py` rewrites `data/`, and
 `python generator/build_pbip.py` rewrites the project. Run `python generator/check_shapes.py`

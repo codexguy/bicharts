@@ -8,7 +8,7 @@ model Model
 
 annotation __PBI_TimeIntelligenceEnabled = 0
 
-annotation PBI_QueryOrder = ["DimDate", "DimCountry", "DimCity", "DimProduct", "DimChannel", "FactSales", "FactOperations", "FactRevenueTarget", "FactShipments", "DimOriginCountry", "DimDestinationCountry", "DataRoot", "fnLoadCsv"]
+annotation PBI_QueryOrder = ["DimDate", "DimCountry", "DimCity", "DimProduct", "DimChannel", "FactSales", "FactOperations", "FactRevenueTarget", "FactShipments", "DimOriginCountry", "DimDestinationCountry", "DataPath", "fnLoadCsv"]
 
 ref table DimDate
 ref table DimCountry

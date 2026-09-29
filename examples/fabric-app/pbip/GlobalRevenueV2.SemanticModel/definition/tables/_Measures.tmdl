@@ -142,7 +142,7 @@ table _Measures
 		displayFolder: Targets
 		lineageTag: af9cd677-3621-535f-b663-10045696e668
 
-	/// Units shipped from origin to destination country. The flow measure for flow maps and chord diagrams.
+	/// Units shipped from origin to destination country. The flow measure for flow maps and chord diagrams. Shipment measures follow DimOriginCountry and DimDestinationCountry (and DimDate, DimProduct), not DimCountry: grouped by DimCountry they repeat the same total on every row.
 	measure 'Units Shipped' = SUM ( FactShipments[UnitsShipped] )
 		formatString: #,0
 		displayFolder: Shipments

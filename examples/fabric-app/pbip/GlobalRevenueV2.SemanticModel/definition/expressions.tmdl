@@ -1,25 +1,16 @@
-/// Where the CSV files live: an https base URL ending in '/' (the default, the public GitHub copy) or a local folder such as C:\data\global-revenue-v2\. Every table reads <DataRoot><file>.csv.
-expression DataRoot = "https://raw.githubusercontent.com/codexguy/bicharts/main/examples/fabric-app/data/" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
-	lineageTag: a29f5c62-34c8-5679-86dc-0e0642aeb31e
+/// The folder the CSV files are read from, as a path under https://raw.githubusercontent.com ending in '/' (owner/repository/branch/folder/). Every table reads https://raw.githubusercontent.com/<DataPath><file>.csv.
+expression DataPath = "codexguy/bicharts/main/examples/fabric-app/data/" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 3d16c70d-12a3-5df3-99bc-a38db3b45a22
 
 	annotation PBI_ResultType = Text
 
-/// Loads one CSV file from DataRoot (web or local folder) and promotes its header row.
+/// Loads one CSV file from the DataPath folder on raw.githubusercontent.com and promotes its header row.
 expression fnLoadCsv =
 		(fileName as text) as table =>
 		let
-		    Root = DataRoot,
-		    IsWeb = Text.StartsWith(Text.Lower(Root), "http://") or Text.StartsWith(Text.Lower(Root), "https://"),
-		    // Web: the credential scope is the bare host (https://raw.githubusercontent.com), which answers
-		    // anonymously; the folder path travels as RelativePath so the service sees one static source.
-		    Parts = if IsWeb then Uri.Parts(Root) else null,
-		    Host = if IsWeb then Parts[Scheme] & "://" & Parts[Host] else null,
-		    Folder = if IsWeb then Text.TrimStart(Parts[Path], "/") else null,
-		    WebFolder = if IsWeb and Folder <> "" and not Text.EndsWith(Folder, "/") then Folder & "/" else Folder,
-		    LocalFolder = if IsWeb then null else if Text.EndsWith(Root, "\") or Text.EndsWith(Root, "/") then Root else Root & "\",
-		    Bytes = if IsWeb
-		        then Web.Contents(Host, [RelativePath = WebFolder & fileName])
-		        else File.Contents(LocalFolder & fileName),
+		    // The host is a literal on purpose: the Power BI service refuses to refresh a web source whose base URL is
+		    // computed (DynamicDataSourcesIsNotSupportedForRefresh). Only the path under it comes from the DataPath parameter.
+		    Bytes = Web.Contents("https://raw.githubusercontent.com", [RelativePath = DataPath & fileName]),
 		    Csv = Csv.Document(Bytes, [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
 		    Promoted = Table.PromoteHeaders(Csv, [PromoteAllScalars = true])
 		in

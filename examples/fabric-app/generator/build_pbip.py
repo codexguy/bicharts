@@ -24,7 +24,7 @@ import uuid
 
 PROJECT = "GlobalRevenueV2"
 NS = uuid.UUID("6f1c2d4e-8a3b-4c5d-9e7f-0a1b2c3d4e5f")
-DEFAULT_DATA_ROOT = "https://raw.githubusercontent.com/codexguy/bicharts/main/examples/fabric-app/data/"
+DEFAULT_DATA_PATH = "codexguy/bicharts/main/examples/fabric-app/data/"
 
 
 def gid(*parts: str) -> str:
@@ -268,7 +268,9 @@ MEASURES = [
     ("Target Attainment %", "Targets", "0.0%", "DIVIDE ( [Revenue], [Revenue Target] )",
      "Revenue as a share of Revenue Target; 100% means on plan."),
     ("Units Shipped", "Shipments", "#,0", "SUM ( FactShipments[UnitsShipped] )",
-     "Units shipped from origin to destination country. The flow measure for flow maps and chord diagrams."),
+     "Units shipped from origin to destination country. The flow measure for flow maps and chord diagrams. "
+     "Shipment measures follow DimOriginCountry and DimDestinationCountry (and DimDate, DimProduct), not DimCountry: "
+     "grouped by DimCountry they repeat the same total on every row."),
     ("Freight Cost", "Shipments", "\\$#,0", "SUM ( FactShipments[FreightCostUSD] )", "Freight cost in USD."),
     ("Freight per Unit", "Shipments", "\\$#,0.00", "DIVIDE ( [Freight Cost], [Units Shipped] )",
      "Freight cost per unit shipped, in USD. Rises with distance and unit weight."),
@@ -425,18 +427,9 @@ def render_growth_table() -> str:
 
 FN_LOAD_CSV = r'''(fileName as text) as table =>
 let
-    Root = DataRoot,
-    IsWeb = Text.StartsWith(Text.Lower(Root), "http://") or Text.StartsWith(Text.Lower(Root), "https://"),
-    // Web: the credential scope is the bare host (https://raw.githubusercontent.com), which answers
-    // anonymously; the folder path travels as RelativePath so the service sees one static source.
-    Parts = if IsWeb then Uri.Parts(Root) else null,
-    Host = if IsWeb then Parts[Scheme] & "://" & Parts[Host] else null,
-    Folder = if IsWeb then Text.TrimStart(Parts[Path], "/") else null,
-    WebFolder = if IsWeb and Folder <> "" and not Text.EndsWith(Folder, "/") then Folder & "/" else Folder,
-    LocalFolder = if IsWeb then null else if Text.EndsWith(Root, "\") or Text.EndsWith(Root, "/") then Root else Root & "\",
-    Bytes = if IsWeb
-        then Web.Contents(Host, [RelativePath = WebFolder & fileName])
-        else File.Contents(LocalFolder & fileName),
+    // The host is a literal on purpose: the Power BI service refuses to refresh a web source whose base URL is
+    // computed (DynamicDataSourcesIsNotSupportedForRefresh). Only the path under it comes from the DataPath parameter.
+    Bytes = Web.Contents("https://raw.githubusercontent.com", [RelativePath = DataPath & fileName]),
     Csv = Csv.Document(Bytes, [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
     Promoted = Table.PromoteHeaders(Csv, [PromoteAllScalars = true])
 in
@@ -444,14 +437,14 @@ in
 
 
 def render_expressions() -> str:
-    L = desc_lines("Where the CSV files live: an https base URL ending in '/' (the default, the public GitHub copy) "
-                   "or a local folder such as C:\\data\\global-revenue-v2\\. Every table reads <DataRoot><file>.csv.", "")
-    L.append(f'expression DataRoot = "{DEFAULT_DATA_ROOT}" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]')
-    L.append(f"\tlineageTag: {gid('expression', 'DataRoot')}")
+    L = desc_lines("The folder the CSV files are read from, as a path under https://raw.githubusercontent.com ending in '/' "
+                   "(owner/repository/branch/folder/). Every table reads https://raw.githubusercontent.com/<DataPath><file>.csv.", "")
+    L.append(f'expression DataPath = "{DEFAULT_DATA_PATH}" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]')
+    L.append(f"\tlineageTag: {gid('expression', 'DataPath')}")
     L.append("")
     L.append("\tannotation PBI_ResultType = Text")
     L.append("")
-    L += desc_lines("Loads one CSV file from DataRoot (web or local folder) and promotes its header row.", "")
+    L += desc_lines("Loads one CSV file from the DataPath folder on raw.githubusercontent.com and promotes its header row.", "")
     L.append("expression fnLoadCsv =")
     L += expr_block(FN_LOAD_CSV, "\t\t")
     L.append(f"\tlineageTag: {gid('expression', 'fnLoadCsv')}")
@@ -475,7 +468,7 @@ def render_relationships() -> str:
 
 def render_model() -> str:
     names = [t["name"] for t in TABLES] + ["_Measures", "Growth Rate"]
-    order = json.dumps([t["name"] for t in TABLES] + ["DataRoot", "fnLoadCsv"])
+    order = json.dumps([t["name"] for t in TABLES] + ["DataPath", "fnLoadCsv"])
     L = ["model Model", "\tculture: en-US", "\tdefaultPowerBIDataSourceVersion: powerBI_V3", "\tsourceQueryCulture: en-US",
          "\tdataAccessOptions", "\t\tlegacyRedirects", "\t\treturnErrorValuesAsNull", "",
          "annotation __PBI_TimeIntelligenceEnabled = 0", "", f"annotation PBI_QueryOrder = {order}", ""]
@@ -569,8 +562,8 @@ def build(out: str) -> None:
                    "71 cities) meant to be queried with DAX by an app. Every table, column and measure carries a "
                    "description; run EVALUATE INFO.VIEW.MEASURES() or INFO.VIEW.COLUMNS() to read them."}],
         [{"value": ""}],
-        [{"value": "This page is intentionally empty of charts. The DataRoot parameter (Transform data > Edit "
-                   "parameters) chooses where the CSV files are read from: the public web copy or a local folder."}],
+        [{"value": "This page is intentionally empty of charts. The DataPath parameter (Transform data > Edit "
+                   "parameters) chooses which public copy of the CSV files is read."}],
     ]
     write_json(os.path.join(rd, "pages", page, "visuals", visual, "visual.json"), {
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",

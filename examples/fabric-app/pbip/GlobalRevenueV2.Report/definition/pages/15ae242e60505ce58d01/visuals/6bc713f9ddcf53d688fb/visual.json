@@ -51,7 +51,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "This page is intentionally empty of charts. The DataRoot parameter (Transform data > Edit parameters) chooses where the CSV files are read from: the public web copy or a local folder."
+                    "value": "This page is intentionally empty of charts. The DataPath parameter (Transform data > Edit parameters) chooses which public copy of the CSV files is read."
                   }
                 ]
               }
