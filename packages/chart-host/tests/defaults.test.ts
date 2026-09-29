@@ -188,12 +188,17 @@ describe("resolveOptions — host fields pass through by identity", () => {
         expect(resolveOptions({ flipSync: false }).flipSync).toBe(false);
     });
 
-    it("deck flipIntervalMs: absent/junk -> 0 (manual only), explicit 0 survives, floor 0", () => {
-        expect(resolveOptions({}).flipIntervalMs).toBe(0);
-        expect(resolveOptions({ flipIntervalMs: undefined }).flipIntervalMs).toBe(0);
-        expect(resolveOptions({ flipIntervalMs: "" }).flipIntervalMs).toBe(0);
-        expect(resolveOptions({ flipIntervalMs: "junk" }).flipIntervalMs).toBe(0);
+    it("flipIntervalMs: absent/blank/junk stays UNSET (the chart's default), explicit 0 survives, floor 0", () => {
+        // UNSET IS NOT 0 (the rotating carousel). The default belongs to the chart: the deck reads
+        // `+(x || 0)` and is manual either way, a carousel reads `x == null ? 5000 : +x` - and when
+        // this resolved unset to 0, every host handed the carousel an explicit "manual".
+        expect(resolveOptions({}).flipIntervalMs).toBeUndefined();
+        expect(resolveOptions({ flipIntervalMs: undefined }).flipIntervalMs).toBeUndefined();
+        expect(resolveOptions({ flipIntervalMs: null }).flipIntervalMs).toBeUndefined();
+        expect(resolveOptions({ flipIntervalMs: "" }).flipIntervalMs).toBeUndefined();
+        expect(resolveOptions({ flipIntervalMs: "junk" }).flipIntervalMs).toBeUndefined();
         expect(resolveOptions({ flipIntervalMs: 0 }).flipIntervalMs).toBe(0);
+        expect(resolveOptions({ flipIntervalMs: "0" }).flipIntervalMs).toBe(0);
         expect(resolveOptions({ flipIntervalMs: -5 }).flipIntervalMs).toBe(0);
         // A real interval must arrive INTACT: the chart-side clamp (500..120000) is the only
         // clamp, deliberately. Two clamps in two repositories is how they end up disagreeing.

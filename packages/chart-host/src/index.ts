@@ -21,6 +21,7 @@ export {
     GEO_POINT_PRECISIONS,
     MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS, ROW_IDX_ATTR, LIFT_SELECTED_CLASS, CONTROL_CLASS,
     NO_ROW_MARKS_ATTR,
+    SNAPSHOT_SVG_ATTR,
     XFILTER_REFRESH_EVENT,
     CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE,
@@ -33,7 +34,7 @@ export {
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     ANIMATION_OPTION_KEYS,
     COLOR_SCALE_SELF_CLAMP_PCT_DEFAULT, COLOR_SCALE_SELF_CLAMP_PCT_MIN, COLOR_SCALE_SELF_CLAMP_PCT_MAX,
-    FLIP_MODE_DEFAULT,
+    FLIP_MODE_DEFAULT, FLIP_INTERVAL_MIN_MS, FLIP_INTERVAL_MAX_MS,
     APPROXIMATE_POSITIONS_DEFAULT,
     VALUE_AXIS_BASELINE_DEFAULT,
     SEASONAL_MARKERS_DEFAULT,
@@ -107,7 +108,7 @@ export { planTrivialChart, compileTrivialSource, type TrivialPlan, type TrivialS
 // affordance - anything that wants "what the user is actually looking at" goes through the
 // same serialize/rasterize/fallback path, and its traps (CSS-only sizing, non-latin1 labels,
 // hung decodes) are solved once here rather than once per host.
-export { captureSvgSnapshot, svgToDataUrl, svgNaturalSize, rasterizeSvgToPngDataUrl, tableHostOf, htmlToSvgDataUrl, htmlNaturalSize, type SnapshotOptions } from "./snapshot";
+export { captureSvgSnapshot, svgToDataUrl, svgNaturalSize, rasterizeSvgToPngDataUrl, tableHostOf, chartSvgOf, htmlToSvgDataUrl, htmlNaturalSize, type SnapshotOptions } from "./snapshot";
 // The AI vision review's pure decision core: when to review, what the wire looks like, and
 // how a verdict maps to an action. Hosts own the capture, the POST, and the ask-the-user
 // dialog; the DECIDING lives here so every host resolves ambiguity the same way - toward the

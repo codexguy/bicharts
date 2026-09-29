@@ -139,6 +139,12 @@ export const ROW_IDX_ATTR = "data-row-idx";
 // that drew it.
 export const NO_ROW_MARKS_ATTR = "data-lch-no-row-marks";
 
+// THE CHART'S OWN <svg>, when it draws more than one: stamped on the svg that IS the picture. A chart
+// that mounts several - a carousel's front face beside the faces peeking at each side - is otherwise
+// read by its FIRST svg in document order, and the thumbnail and the frame grow then act on a peek.
+// Absent, everything that looks for the chart's svg takes the first one, as it always has.
+export const SNAPSHOT_SVG_ATTR = "data-lch-snapshot";
+
 // Bubbling CustomEvent a chart dispatches on its container when its own selection
 // changes (e.g. a scrubber period). detail = { clear:true, source } | { mark, source }.
 export const XFILTER_REFRESH_EVENT = "llm-xfilter-refresh";
@@ -279,6 +285,11 @@ export type TimelineStyle = "" | "line" | "boxes";
 // cached chart keeps behaving exactly as it did. See RenderOptions.flipMode.
 export type FlipMode = "" | "single" | "all" | "both";
 export const FLIP_MODE_DEFAULT: FlipMode = "both";
+// The dwell a chart that pages through faces clamps a non-zero flipIntervalMs to, so a stray small
+// number cannot strobe. Stated here for panes and validators; the CLAMP itself stays chart-side
+// (resolveOptions passes the value through intact), and 0 - manual only - sits outside it.
+export const FLIP_INTERVAL_MIN_MS = 500;
+export const FLIP_INTERVAL_MAX_MS = 120_000;
 
 // What to do with rows a gazetteer could not place exactly: draw the mark at the coarse
 // position anyway (the default), roll them into the coarser area they DID resolve to, or draw
@@ -481,8 +492,9 @@ export interface RenderOptions {
     //   flipSync       — true (the default) advances every card together, and the deck carries
     //                    ONE control strip; false gives every card its own controls and its own
     //                    face, so a reader can park one card while paging another.
-    //   flipIntervalMs — 0 (the default) is MANUAL ONLY, so a deck never moves unless someone
-    //                    asks it to; a non-zero value is clamped chart-side to 500..120000.
+    //   flipIntervalMs — 0 is MANUAL ONLY; a non-zero value is clamped chart-side to 500..120000.
+    //                    UNSET arrives as undefined, and the chart supplies its own default: the
+    //                    deck is manual (`+(x || 0)`), a carousel turns every 5 s.
     // BOTH ARE BOOLEAN/NUMBER VALUES, never callbacks — a generated chart that treats flipSync
     // as a subscription hook has misread this contract (a real consumer did exactly that).
     flipSync?: boolean;

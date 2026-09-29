@@ -28,6 +28,11 @@
 //      aspect and every row the reader could see.
 //   6. A SERIALIZED SVG CARRIES NO HOST CSS. Text that inherits its font from the page renders in
 //      the image's default serif. The computed font of every <text> is inlined on the clone first.
+//   7. A CHART CAN MOUNT SEVERAL SVGS. A carousel draws its front face between two faces peeking at
+//      each side, one <svg> each, and the first in document order is a PEEK. The chart stamps the
+//      svg that is its picture (SNAPSHOT_SVG_ATTR) and chartSvgOf takes that one first.
+
+import { SNAPSHOT_SVG_ATTR } from "./contract";
 
 export interface SnapshotOptions {
     /**
@@ -126,6 +131,18 @@ export function tableHostOf(root: Element | null | undefined): HTMLElement | nul
         if (host && (!firstSvg || host.contains(firstSvg))) return host;
     }
     return null;
+}
+
+/**
+ * THE CHART'S OWN <svg> under `root`: the one stamped SNAPSHOT_SVG_ATTR, else the first.
+ *
+ * ONE PICKER for everything that acts on "the chart's svg" - the thumbnail here and the frame grow in
+ * fitDom - because a chart with several svgs (a carousel mounts its front face between two peeks) is
+ * otherwise read by whichever was appended first, and the two callers would each have to know that.
+ */
+export function chartSvgOf(root: Element | null | undefined): SVGSVGElement | null {
+    if (!root || typeof (root as any).querySelector !== "function") return null;
+    return (root.querySelector(`svg[${SNAPSHOT_SVG_ATTR}]`) ?? root.querySelector("svg")) as SVGSVGElement | null;
 }
 
 /** A length in px from an inline style value ("811px"), or 0. */
@@ -269,7 +286,7 @@ export function rasterizeSvgToPngDataUrl(
 
 /**
  * Capture the chart under `root` as a PNG data URL: its table FRAME when the chart is an HTML table
- * lane (see tableHostOf), else the first <svg> under `root` (or the element itself). Falls back to
+ * lane (see tableHostOf), else the chart's own <svg> under `root` (chartSvgOf), or the element itself. Falls back to
  * the SVG data URL when rasterizing is unavailable, and to null only when there is genuinely nothing
  * on the canvas to capture.
  *
@@ -282,7 +299,7 @@ export async function captureSvgSnapshot(
     if (!root) return null;
     const table = root instanceof SVGSVGElement ? null : tableHostOf(root);
     const svg: SVGSVGElement | null = table ? null
-        : root instanceof SVGSVGElement ? root : (root.querySelector("svg") as SVGSVGElement | null);
+        : root instanceof SVGSVGElement ? root : chartSvgOf(root);
     if (!table && !svg) return null;
     let svgUrl: string;
     let width: number, height: number;

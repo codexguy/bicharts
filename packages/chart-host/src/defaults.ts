@@ -178,11 +178,17 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
             if (p.flipSync === true) return "all";
             return FLIP_MODE_DEFAULT;
         })(),
-        // 0 is MEANINGFUL here (manual only) and is the default, so numberOr — not
-        // `|| DEFAULT` — for the same reason animLoopDelaySec uses it. Clamping stays
-        // chart-side: the archetype already clamps 500..120000 and two clamps in two
+        // 0 is MEANINGFUL here (manual only), so numberOr — not `|| DEFAULT` — for the same
+        // reason animLoopDelaySec uses it. UNSET STAYS UNSET (undefined), because the default is
+        // the CHART's, not this function's: the card deck reads `+(x || 0)` and is manual, a
+        // carousel reads `x == null ? 5000 : +x` and turns by itself. Resolving unset to 0 here
+        // made the carousel's default unreachable - every host handed it an explicit "manual".
+        // Clamping stays chart-side too: the archetypes clamp 500..120000, and two clamps in two
         // repositories is how they end up disagreeing.
-        flipIntervalMs: Math.max(0, numberOr(p.flipIntervalMs, 0)),
+        flipIntervalMs: ((): number | undefined => {
+            const n = numberOr(p.flipIntervalMs, NaN);
+            return Number.isFinite(n) ? Math.max(0, n) : undefined;
+        })(),
         // `raw || undefined`, the same idiom as the colour-scale endpoints and the map fills:
         // blank must arrive as ABSENT, not as an empty string, because the chart's fallback is
         // `options.cardBackgroundColor || <its own choice>` and "" would satisfy a truthiness

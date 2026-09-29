@@ -22,6 +22,7 @@ import {
     planAxisPin, axisPinPlacement,
 } from "./fit";
 import type { ContentExtent, MeasuredBox, AxisPinCandidate, AxisPinEdge, LabelRowBox } from "./fit";
+import { SNAPSHOT_SVG_ATTR } from "./contract";
 
 // How many elements the ink walk will measure before giving up. Layout-flushing calls in a loop,
 // so it is a real ceiling and not a formality.
@@ -544,7 +545,10 @@ export function fitRenderedChart(
         // The chart's own frame: an <svg> among the container's children. Charts that draw into a
         // wrapper div are handled by the descendant lookup, and a host whose container holds
         // several is served by the first - the generated contract is one chart per container.
-        let svg: SVGSVGElement | null = null;
+        // A chart that mounts several svgs of its OWN stamps the one that is its picture, and that
+        // one wins: a carousel's first svg is a face peeking at the side, and growing it to its ink
+        // would resize a face the reader can barely see.
+        let svg: SVGSVGElement | null = container.querySelector(`svg[${SNAPSHOT_SVG_ATTR}]`) as SVGSVGElement | null;
         for (let i = 0; i < container.children.length && !svg; i++) {
             const el = container.children[i] as Element;
             if (el.tagName && el.tagName.toLowerCase() === "svg") svg = el as unknown as SVGSVGElement;

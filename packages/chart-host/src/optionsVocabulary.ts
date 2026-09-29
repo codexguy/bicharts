@@ -22,6 +22,7 @@ import {
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
     VALUE_AXIS_BASELINE_DEFAULT, SEASONAL_MARKERS_DEFAULT, MAX_MAP_POINTS_DEFAULT,
+    FLIP_MODE_DEFAULT, FLIP_INTERVAL_MAX_MS,
 } from "./contract";
 
 /**
@@ -83,6 +84,15 @@ export const OPTIONS_VOCABULARY = Object.freeze({
     /** "" chooses by the number of periods. */
     animTimelineStyle: entry({ timing: "live", default: "", values: ["", "line", "boxes"] }),
     filtersDuringPlay: entry({ timing: "live", default: false }),
+    /** Where a card deck's flip controls live: every card's own arrows, one strip for the deck, or both. */
+    flipMode: entry({ timing: "live", default: FLIP_MODE_DEFAULT, values: ["both", "all", "single"] }),
+    /**
+     * BLANK - "the chart's own" - is the default, and it is not 0. A host that was never told a value
+     * sends none (resolveOptions keeps it absent) and the chart supplies its own: manual on the card
+     * deck, a 5 s dwell on a carousel. 0 is a reader's explicit "manual only". A non-zero value is
+     * clamped chart-side to FLIP_INTERVAL_MIN_MS..FLIP_INTERVAL_MAX_MS.
+     */
+    flipIntervalMs: entry({ timing: "live", default: "", min: 0, max: FLIP_INTERVAL_MAX_MS }),
     // ---- the next generated chart ----
     levelOfDetail: entry({ timing: "next-generate", default: "", values: ["", "High", "Medium", "Low"], wire: "clientHints" }),
     favorLimitTo: entry({ timing: "next-generate", default: "", values: ["", "latest", "top / greatest", "bottom / smallest", "most common", "outliers"], wire: "clientHints" }),

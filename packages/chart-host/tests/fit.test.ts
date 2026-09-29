@@ -496,4 +496,32 @@ describe("fitRenderedChart", () => {
         // does not grow to meet it.
         expect(r.overflowX).toBe("auto");
     });
+
+    it("grows the chart's STAMPED svg, never a face peeking beside it", () => {
+        // A carousel mounts three faces, one <svg> each, inside a scene div, and the first in
+        // document order is the face peeking on the left. Both overdraw here, so whichever svg
+        // the pass picks is the one that grows - and it must be the front, the chart's picture.
+        const c = container(600, 300);
+        const scene = el("div", { left: 0, top: 0, right: 600, bottom: 300 });
+        const face = (stamped: boolean) => {
+            const s = doc.createElementNS("http://www.w3.org/2000/svg", "svg") as any;
+            s.getBoundingClientRect = () => asRect({ left: 0, top: 0, right: 380, bottom: 280 });
+            s.setAttribute("height", "280");
+            if (stamped) s.setAttribute("data-lch-snapshot", "");
+            const t = doc.createElementNS("http://www.w3.org/2000/svg", "text") as any;
+            t.getBoundingClientRect = () => asRect({ left: 4, top: 380, right: 120, bottom: 400 });
+            s.appendChild(t);
+            s.getScreenCTM = () => ({ a: 1, b: 0 });
+            scene.appendChild(s);
+            return s;
+        };
+        const peek = face(false), front = face(true);
+        face(false);
+        c.appendChild(scene);
+
+        const r = fitRenderedChart(c);
+        expect(r.grew).toBe(true);
+        expect(front.getAttribute("height")).toBe("400");
+        expect(peek.getAttribute("height")).toBe("280");
+    });
 });
