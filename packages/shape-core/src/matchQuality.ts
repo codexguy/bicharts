@@ -91,14 +91,25 @@ const BLANK_LIKE = new Set([
 ]);
 
 /**
+ * The multi-word placeholders with their spaces squeezed out - "NotApplicable", "not_specified",
+ * "ToBeDetermined" - because a placeholder typed without its spaces is still a placeholder. Only
+ * the entries that HAD a space, and "n a" never: squeezed, it is "na", Namibia's code, which is
+ * exactly the collision the note above keeps it spaced for.
+ */
+const BLANK_LIKE_SQUEEZED = new Set(
+    Array.from(BLANK_LIKE).filter(b => b.includes(" ") && b !== "n a").map(b => b.replace(/ /g, "")),
+);
+
+/**
  * Is this ALREADY-NORMALIZED token a blank in disguise?
  *
  * Callers pass the output of normalizePlaceName, so genuine blanks are "" by then; this
- * catches the ones a person typed.
+ * catches the ones a person typed. A lookup that goes on to the LOOSE key asks this first, on the
+ * exact key, so a blank can never be squeezed into a place.
  */
 export function isBlankLike(normalized: string): boolean {
     if (!normalized) return true;
-    return BLANK_LIKE.has(normalized);
+    return BLANK_LIKE.has(normalized) || BLANK_LIKE_SQUEEZED.has(normalized.replace(/ /g, ""));
 }
 
 /**

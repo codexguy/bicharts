@@ -61,7 +61,8 @@ export type GeoPointResult = {
 // one character misses every lookup silently). Kept on geoPoint's public surface
 // because callers have always imported it from here.
 export { normalizePlaceName } from "./geoCountryNames";
-import { normalizePlaceName } from "./geoCountryNames";
+import { normalizePlaceName, placeLooseKey } from "./geoCountryNames";
+import { LooseIndex, looseNameKey, isUsableLooseKey } from "./knownNameKey";
 
 /** Which point-map's candidate set a lookup runs against. Rows carry kind flags
  *  (N = North America map, W = World map; a row may carry both), so ONE table serves
@@ -152,6 +153,8 @@ export function registerCityTable(packed: string): void {
     _cityPacked = packed || "";
     _cities = null;
     _cityAlias = null;
+    _citiesLoose = null;
+    _cityAliasLoose = null;
     // The COUNTRY tier is now DERIVED from this table (largest city), so it is downstream of
     // this swap. Leaving it cached would answer the new gazetteer's questions with the old
     // one's cities — and silently, since both return a plausible coordinate.
@@ -230,8 +233,11 @@ function cityIndex(): Map<string, CityHit[]> {
         // overlay below, resolved at parse time by (country, normalized name). Overlay
         // entries that match no gazetteer row simply do nothing - the tag can only ever
         // annotate a city that actually exists in the table.
+        // Compared on the LOOSE key, so an overlay entry written "kuala lumpur" tags a row the
+        // table spells "Kuala-Lumpur" or "KualaLumpur" too - the same city either way, and the
+        // overlay is scoped to one country, so the looser comparison cannot reach a second one.
         const capKey = CAPITAL_BY_CC[row.cc];
-        if (capKey && normalizePlaceName(p[0]) === capKey) {
+        if (capKey && looseNameKey(p[0]) === looseNameKey(capKey)) {
             if (!row.tags) row.tags = [];
             if (!row.tags.includes("capital")) row.tags.push("capital");
         }
@@ -290,13 +296,26 @@ function cityAliasIndex(): Map<string, CityHit[]> {
 }
 
 /** Candidate city rows for an already-normalized name: the direct gazetteer hit, else the
- *  "<name> City" shorthand when that city is dominant enough to be what was meant. */
-function cityRowsFor(key: string): CityHit[] | undefined {
+ *  "<name> City" shorthand when that city is dominant enough to be what was meant - and only
+ *  when the exact key found nothing at all, the same two questions asked of the LOOSE key
+ *  ("SaoPaulo"). `looseKey` defaults to the loose form of `key`; a caller holding the raw value
+ *  passes the raw value's loose key, which also reads "&" as "and". */
+function cityRowsFor(key: string, looseKey?: string): CityHit[] | undefined {
     if (!key) return undefined;
-    const direct = cityIndex().get(key);
+    const exact = cityRowsForIn(cityIndex(), cityAliasIndex(), key);
+    if (exact) return exact;
+    // A typed blank never reaches the loose key ("N/A" squeezes to a code).
+    if (isBlankLike(key)) return undefined;
+    const lk = looseKey ?? looseNameKey(key);
+    if (!isUsableLooseKey(lk)) return undefined;
+    return cityRowsForIn(looseCityIndex(), looseCityAliasIndex(), lk);
+}
+
+function cityRowsForIn(index: Map<string, CityHit[]>, aliases: Map<string, CityHit[]>, key: string): CityHit[] | undefined {
+    const direct = index.get(key);
     // A direct PRIMARY hit is the meaning of the word — no shorthand needed.
     if (direct?.some(h => h.primary)) return direct;
-    const alias = cityAliasIndex().get(key);
+    const alias = aliases.get(key);
     if (!alias) return direct;
     // Otherwise the shorthand competes with whatever variants answer to the same key. It
     // enters as a PRIMARY door (it IS the city's own name, minus a suffix people omit), so
@@ -304,6 +323,38 @@ function cityRowsFor(key: string): CityHit[] | undefined {
     // the row that merely lists it as a variant.
     const asPrimary = alias.map(h => ({ row: h.row, primary: true }));
     return direct ? [...asPrimary, ...direct] : asPrimary;
+}
+
+// THE CITY TABLE UNDER THE LOOSE KEY. Every exact key's candidates are pooled under its loose key,
+// so a loose key that two exact keys share carries BOTH sets of rows: "StJohns" reaches St. John's
+// (Newfoundland) and St. Johns (Florida) together, and the city tier's own rules then settle it -
+// a state or country column narrows it to one, and without one the row is refused as ambiguous,
+// exactly as two cities that share a name always have been. Rebuilt with the table it indexes.
+let _citiesLoose: Map<string, CityHit[]> | null = null;
+function looseCityIndex(): Map<string, CityHit[]> {
+    if (!_citiesLoose) _citiesLoose = poolUnderLooseKeys(cityIndex());
+    return _citiesLoose;
+}
+let _cityAliasLoose: Map<string, CityHit[]> | null = null;
+function looseCityAliasIndex(): Map<string, CityHit[]> {
+    if (!_cityAliasLoose) _cityAliasLoose = poolUnderLooseKeys(cityAliasIndex());
+    return _cityAliasLoose;
+}
+function poolUnderLooseKeys(index: Map<string, CityHit[]>): Map<string, CityHit[]> {
+    const m = new Map<string, CityHit[]>();
+    for (const [key, hits] of index) {
+        const lk = looseNameKey(key);
+        if (!isUsableLooseKey(lk)) continue;
+        const cur = m.get(lk);
+        if (!cur) { m.set(lk, hits.slice()); continue; }
+        for (const h of hits) {
+            const i = cur.findIndex(c => c.row === h.row);
+            if (i < 0) cur.push(h);
+            else if (h.primary && !cur[i].primary) cur[i] = h;   // a primary door wins
+        }
+    }
+    for (const hits of m.values()) hits.sort((a, b) => b.row.pop - a.row.pop);
+    return m;
 }
 
 // COUNTRY POINTS — THE LARGEST CITY (2026-08-03: "switch to use largest city if it's
@@ -394,6 +445,18 @@ function adminIndex(): Map<string, Admin1Row> {
     return m;
 }
 
+// The admin1 table under the LOOSE key ("NorthCarolina", "Nuevo-Leon", "BritishColumbia"), built
+// from the exact keys the table above settled on - so bare "Mexico", which that table deliberately
+// does not hold, cannot come back loosely either. Two-letter codes never enter it.
+let _adminsLoose: LooseIndex<Admin1Row> | null = null;
+function adminLooseIndex(): LooseIndex<Admin1Row> {
+    if (_adminsLoose) return _adminsLoose;
+    const loose = new LooseIndex<Admin1Row>();
+    for (const [key, row] of adminIndex()) loose.add(key, row);
+    _adminsLoose = loose;
+    return loose;
+}
+
 let _zip3: Map<string, { lon: number; lat: number }> | null = null;
 function zip3Index(): Map<string, { lon: number; lat: number }> {
     if (_zip3) return _zip3;
@@ -428,7 +491,11 @@ export function resolveAdmin1(value: string | null | undefined): string | null {
     if (value === null || value === undefined) return null;
     const k = normalizePlaceName(String(value));
     if (!k) return null;
-    return adminIndex().get(k)?.key ?? null;
+    const exact = adminIndex().get(k);
+    if (exact) return exact.key;
+    // Loose only on a miss, and never for a typed blank ("N/A" squeezes to a code).
+    if (isBlankLike(k)) return null;
+    return adminLooseIndex().get(placeLooseKey(String(value)))?.key ?? null;
 }
 
 // Country identifiers -> the 2-letter code the tables are keyed by. Scope is US/CA/MX
@@ -451,7 +518,21 @@ export function normalizeCountry(value: string | null | undefined): string | nul
     if (value === null || value === undefined) return null;
     const k = normalizePlaceName(String(value));
     if (!k) return null;
-    return COUNTRY_CODE_BY_NAME[k] ?? null;
+    const exact = COUNTRY_CODE_BY_NAME[k];
+    if (exact) return exact;
+    if (isBlankLike(k)) return null;
+    return countryCodeLoose().get(placeLooseKey(String(value))) ?? null;
+}
+
+// COUNTRY_CODE_BY_NAME under the loose key ("UnitedStates", "united-states-of-america"). Its short
+// entries ("us", "ca", "u s a") stay exact-only by the loose key's floor.
+let _countryCodeLoose: LooseIndex<string> | null = null;
+function countryCodeLoose(): LooseIndex<string> {
+    if (_countryCodeLoose) return _countryCodeLoose;
+    const loose = new LooseIndex<string>();
+    for (const [key, cc] of Object.entries(COUNTRY_CODE_BY_NAME)) loose.add(key, cc);
+    _countryCodeLoose = loose;
+    return loose;
 }
 
 /** Which country an admin1 key belongs to ("ON" -> "CA", "TX" -> "US"). The CITY table
@@ -637,7 +718,7 @@ export function resolveGeoPoint(args: {
     //        side of the very question the refusal exists to surface.
     if (args.city !== undefined && args.city !== null) {
         const key = normalizePlaceName(String(args.city));
-        const allRows = cityRowsFor(key);
+        const allRows = cityRowsFor(key, placeLooseKey(String(args.city)));
         const all = allRows ? candidatesFor(allRows, args.mapKind) : null;
         if (all && all.length) {
             const stateRaw = args.state === undefined || args.state === null ? "" : String(args.state).trim();
@@ -912,7 +993,7 @@ function describeRow(r: { city?: any; state?: any; zip?: any; country?: any; lab
 export function cityTagsFor(name: string, country?: string | null): string[] {
     const key = normalizePlaceName(String(name ?? ""));
     if (!key) return [];
-    const hits = cityRowsFor(key);
+    const hits = cityRowsFor(key, placeLooseKey(String(name ?? "")));
     if (!hits) return [];
     const iso3 = countryIso3(country ?? null);
     const out = new Set<string>();
@@ -958,7 +1039,9 @@ export function cityMatchPct(values: Array<string | null | undefined>, mapKind?:
         // standalone measure worse than none.
         if (isBlankLike(k) || seen.has(k)) continue;
         seen.add(k);
-        if (isKnownCity(k, mapKind)) matched++;
+        // The raw value's loose key, not the normalized one's: it also reads "&" as "and".
+        const rows = cityRowsFor(k, placeLooseKey(String(v)));
+        if (rows && candidatesFor(rows, mapKind).length > 0) matched++;
     }
     return seen.size === 0 ? 0 : Math.round((matched / seen.size) * 1000) / 10;
 }

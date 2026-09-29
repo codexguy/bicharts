@@ -140,6 +140,11 @@ export {
 } from "./geoPointRoles";
 export type { PointBind, PointRoleResolution } from "./geoPointRoles";
 export { monthLookupFor, normalizeMonthKey } from "./monthNames";
+// KNOWN-NAME KEYS - the one loose form (accents, case, spaces and punctuation all folded away)
+// every match against a table of names we know uses on a miss of its exact key: places, months,
+// weekdays, chart-type names. Public so a host matching a known name of its own compares the same
+// key the package does.
+export { looseNameKey, isUsableLooseKey, LOOSE_KEY_MIN_LENGTH, LooseIndex } from "./knownNameKey";
 
 // Pure utilities (shared so adapters can hash/stringify identically to the engine).
 export { STR, SIMPLE_STRING_HASH, GET_RANDOM, isDeterministicRefusal, nameWords, DEFAULT_TEMPERATURE } from "./util";

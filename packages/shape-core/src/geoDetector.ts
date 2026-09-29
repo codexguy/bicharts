@@ -52,7 +52,9 @@ import { US_ZIP3_PREFIXES } from "./geoUsZip3Prefixes.generated";
 import {
     ISO_3166_PAIRS, ISO2_TO_ISO3, ISO2_SET, ISO3_SET, SUPPORTED_LANGS,
     COUNTRY_ALIAS_OVERLAY, countryNameMap, normalizePlaceName, countryIso3,
+    countryNameIso3, placeLooseKey,
 } from "./geoCountryNames";
+import { LooseIndex } from "./knownNameKey";
 
 // ISO 3166-1: alpha-2 → alpha-3, the full assigned set. This is the ONLY geo
 // name/code table that ships (a few KB); everything else (country names in 27
@@ -115,6 +117,24 @@ const STATE_NAME_TO_USPS: Map<string, string> = (() => {
     }
     return m;
 })();
+// The same table under the LOOSE key ("NorthCarolina", "north_carolina", "N.Dak"), built from the
+// exact keys it settled on. Two-letter squeezes ("N.C." -> "nc") never enter it: below the loose
+// key's floor a value is a CODE, and a USPS code is already read as one (see LOOSE_KEY_MIN_LENGTH).
+const STATE_NAME_LOOSE: LooseIndex<string> = (() => {
+    const loose = new LooseIndex<string>();
+    for (const [key, code] of STATE_NAME_TO_USPS) loose.add(key, code);
+    return loose;
+})();
+
+/** A US state NAME or traditional abbreviation (never a bare USPS code) to its USPS code: the
+ *  exact key first, then the loose key, never for a typed blank. Null when it names no state. */
+function stateUspsForName(raw: string): string | null {
+    const exact = normalizeName(raw);
+    const hit = STATE_NAME_TO_USPS.get(exact);
+    if (hit) return hit;
+    if (isBlankLike(exact)) return null;
+    return STATE_NAME_LOOSE.get(placeLooseKey(raw)) ?? null;
+}
 
 // Valid 2-digit state FIPS prefixes (50 states + DC + 5 territories). A 5-digit
 // numeric is a plausible county FIPS only when its first two digits are in here;
@@ -281,8 +301,11 @@ export function detectGeo(
         if (isIso2) iso2++;
         if (isUsps) usps++;
         if (isIso2 && isUsps) iso2AndUsps++;
-        const isCName = cnMap.has(nm);
-        const isSName = STATE_NAME_TO_USPS.has(nm);
+        // Names on the exact key first and the loose key on a miss ("NewZealand",
+        // "NorthCarolina"); the loose key never reads a two- or three-letter value, so a code
+        // column cannot start counting as names through it.
+        const isCName = cnMap.has(nm) || countryNameIso3(raw) !== null;
+        const isSName = STATE_NAME_TO_USPS.has(nm) || stateUspsForName(raw) !== null;
         if (isCName) cName++;
         if (isSName) sName++;
         if (isCName && isSName) cNameAndSName++;
@@ -503,7 +526,7 @@ export function toGeoIso(value: string | null | undefined, geoKind: GeoKind): st
             // resolve rather than dropping to unmatched.
             const u = normalizeCode(raw);
             if (USPS_SET.has(u)) return u;
-            return STATE_NAME_TO_USPS.get(normalizeName(raw)) ?? null;
+            return stateUspsForName(raw);
         }
         case "us-zip5": {
             // ONE reader, shared with the point cascade (geoPoint.normalizeZip5). These two

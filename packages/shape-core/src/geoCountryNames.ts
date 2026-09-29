@@ -15,14 +15,27 @@
 // A second copy of either is a silent-drift bug rather than a loud one: the packed
 // tables are keyed by NORMALIZED names, so a normalizer that disagrees by a single
 // character misses every lookup and reports "not a country" instead of throwing.
+// (It imports only the two leaf modules below, which import nothing.)
 //
 // normalizePlaceName lives here for exactly that reason (it was geoPoint's; geoPoint
 // re-exports it, so the published API is unchanged).
+//
+// TWO KEYS, ASKED IN ORDER. `normalizePlaceName` is the EXACT key: accents and case folded,
+// punctuation turned into a space, so "St. Louis" is "st louis". `placeLooseKey` is the LOOSE key
+// (knownNameKey.ts): the same letters with every space and punctuation mark squeezed out and "&"
+// read as "and", so "NewZealand", "Cote dIvoire" and "Trinidad and Tobago" reach the names the
+// tables hold. Every lookup asks the exact key first and the loose key only on a miss, so nothing
+// that resolved before resolves differently; a loose key that names two different places is
+// AMBIGUOUS and resolves to nothing. A typed blank ("N/A") is judged on the exact key BEFORE
+// anything is loosened - squeezed, it would be "na", which is Namibia.
 
+import { foldLatin, looseNameKey, LooseIndex } from "./knownNameKey";
+import { isBlankLike } from "./matchQuality";
 
 // ── Normalizer ────────────────────────────────────────────────────────
-// MUST match tools/geo_build_points.py norm() or lookups silently miss:
-// strip diacritics, lowercase, non-alphanumerics to space, collapse whitespace.
+// MUST match tools/geo_build_points.py norm() or lookups silently miss (a parity test there
+// runs both over the same strings): strip diacritics, lowercase, fold the fused Latin letters,
+// non-alphanumerics to space, collapse whitespace.
 // Folding diacritics on BOTH sides is why no alternate-spelling table is needed —
 // "Montréal" and "Montreal" land on the same key.
 // NFD + combining-mark stripping folds every letter whose accent is a SEPARATE code point
@@ -30,32 +43,43 @@
 // itself — ø, ł, đ, ı, æ, ß, þ, ð have no decomposition at all, so they survive into the
 // key and leave "København" unreachable from "Kobenhavn". Those are exactly the letters
 // Danish, Norwegian, Polish, Turkish, Vietnamese and Icelandic place names are full of.
-// (2026-08-02: "convert accented 'o' into just utf-8 'o' ... and that's it" — this
-// map is the rest of that instruction, the part NFD can't do.) The multi-letter
-// expansions are the conventional transliterations, not inventions: ß→ss is how German
-// writes it without the letter, æ→ae and œ→oe likewise.
-const LATIN_FOLD: Record<string, string> = {
-    "ø": "o", "œ": "oe", "æ": "ae", "ß": "ss", "ł": "l", "đ": "d", "ð": "d",
-    "þ": "th", "ı": "i", "ħ": "h", "ŧ": "t", "ŋ": "n", "ĸ": "k",
-    // Schwa has TWO code points in real place data — U+0259 and U+01DD (turned e).
-    // Azerbaijani names carry both ("Gəncə" / "Gǝncǝ"); the second one reached the table
-    // when the world set was uncapped and the generated-table invariant test caught it.
-    "ə": "e", "ǝ": "e",
-    "ĳ": "ij", "ŀ": "l", "ſ": "s",
-};
+// (2026-08-02: "convert accented 'o' into just utf-8 'o' ... and that's it" — the fold
+// map in knownNameKey.ts is the rest of that instruction, the part NFD can't do.)
+//
+// THE FOLD NOW REACHES EVERY LETTER IN THE MAP. It used to run through a hand-typed character
+// class that left out ǝ (U+01DD), ĳ, ŀ and ſ, so those four map entries never ran here while the
+// Python generator folded them - "Gǝncǝ" keyed as "gǝncǝ" in the package and "gence" in the
+// table it had written. The class is now built from the map's own keys.
 
 export function normalizePlaceName(s: string): string {
-    return s
+    return foldLatin(s
         .normalize("NFD")
         .replace(/\p{Diacritic}/gu, "")
-        .toLowerCase()
-        .replace(/[øœæßłđðþıħŧŋəĸ]/g, ch => LATIN_FOLD[ch])
+        .toLowerCase())
         // \p{Nd} (decimal digits) rather than \p{N}: the wider class keeps superscripts and
         // fractions, and a footnote marker riding a place name ("Ottawa²") then becomes part
         // of its key. Letters stay unrestricted — country names arrive in every script.
         .replace(/[^\p{L}\p{Nd}\s]/gu, " ")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+/**
+ * The LOOSE key of a place name - the shared known-name key (knownNameKey.ts), named here because
+ * every place table indexes under it. "New Zealand", "NewZealand" and "new-zealand" are one key;
+ * "Trinidad & Tobago" and "Trinidad and Tobago" are one key. Never the first question: see the
+ * TWO KEYS note at the top of this file.
+ */
+export function placeLooseKey(s: string): string {
+    return looseNameKey(s);
+}
+
+/**
+ * Is this value a typed BLANK ("N/A", "unknown", "-")? Judged on the EXACT key, and always before
+ * a loose lookup: squeezing "N/A" gives "na", which is Namibia.
+ */
+export function isPlaceBlank(value: string): boolean {
+    return isBlankLike(normalizePlaceName(value));
 }
 
 
@@ -141,14 +165,78 @@ export const COUNTRY_ALIAS_OVERLAY: Record<string, string> = {
     "east timor": "TLS", "timor leste": "TLS",
 };
 
+/**
+ * THE FORMS A COUNTRY IS WRITTEN IN THAT NO RUNTIME PROMISES, as a table this package ships.
+ *
+ * Two families, both common in real data and both missed before this table existed:
+ *
+ *  - "X AND Y". The runtime's English names write these with "&" ("Trinidad & Tobago", "Bosnia &
+ *    Herzegovina"), so every export that spells out "and" - which is most of them, and the UN's
+ *    and ISO's own spelling - resolved to nothing. The loose key reads "&" as "and" and would reach
+ *    most of these through the runtime's names, but WHICH names a runtime carries is its own
+ *    business: the answer must not depend on it.
+ *  - The ISO 3166 / UN official forms, which is what a column exported from a reference dataset
+ *    holds: "Korea, Republic of", "Russian Federation", "Iran (Islamic Republic of)".
+ *
+ * Applied only where the runtime produced no answer for the same exact key, so it can add
+ * spellings and never move one; a test holds every entry to its intended code.
+ */
+export const COUNTRY_FORMAL_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+    // "X and Y" - the English short names as ISO and the UN write them.
+    "Antigua and Barbuda": "ATG",
+    "Bosnia and Herzegovina": "BIH",
+    "Heard Island and McDonald Islands": "HMD",
+    "Saint Kitts and Nevis": "KNA", "St Kitts and Nevis": "KNA",
+    "Saint Pierre and Miquelon": "SPM", "St Pierre and Miquelon": "SPM",
+    "Saint Vincent and the Grenadines": "VCT", "St Vincent and the Grenadines": "VCT",
+    "Sao Tome and Principe": "STP",
+    "South Georgia and the South Sandwich Islands": "SGS",
+    "Svalbard and Jan Mayen": "SJM",
+    "Trinidad and Tobago": "TTO",
+    "Turks and Caicos Islands": "TCA", "Turks and Caicos": "TCA",
+    "Wallis and Futuna": "WLF",
+    "Saint Helena, Ascension and Tristan da Cunha": "SHN",
+    "Bonaire, Sint Eustatius and Saba": "BES",
+    "United Kingdom of Great Britain and Northern Ireland": "GBR",
+    // ISO 3166-1 / UN official forms.
+    "Bolivia, Plurinational State of": "BOL", "Bolivia (Plurinational State of)": "BOL",
+    "Brunei Darussalam": "BRN",
+    "Congo, The Democratic Republic of the": "COD", "Congo, Democratic Republic of the": "COD",
+    "Democratic Republic of Congo": "COD",
+    "Falkland Islands (Malvinas)": "FLK",
+    "Holy See (Vatican City State)": "VAT", "Holy See": "VAT",
+    "Iran, Islamic Republic of": "IRN", "Iran (Islamic Republic of)": "IRN", "Islamic Republic of Iran": "IRN",
+    "Korea, Republic of": "KOR", "Republic of Korea": "KOR", "Korea (the Republic of)": "KOR",
+    "Korea, Democratic People's Republic of": "PRK", "Democratic People's Republic of Korea": "PRK",
+    "Korea (the Democratic People's Republic of)": "PRK",
+    "Lao People's Democratic Republic": "LAO",
+    "Micronesia, Federated States of": "FSM", "Micronesia (Federated States of)": "FSM",
+    "Moldova, Republic of": "MDA", "Republic of Moldova": "MDA",
+    "Palestine, State of": "PSE", "State of Palestine": "PSE",
+    "Russian Federation": "RUS",
+    "Syrian Arab Republic": "SYR",
+    "Taiwan, Province of China": "TWN",
+    "Tanzania, United Republic of": "TZA", "United Republic of Tanzania": "TZA",
+    "Venezuela, Bolivarian Republic of": "VEN", "Venezuela (Bolivarian Republic of)": "VEN",
+    "Viet Nam": "VNM",
+    "Virgin Islands, British": "VGB", "Virgin Islands, U.S.": "VIR",
+    "Saint Martin (French part)": "MAF", "Sint Maarten (Dutch part)": "SXM",
+    "Netherlands (Kingdom of the)": "NLD",
+    "Macedonia, the former Yugoslav Republic of": "MKD",
+});
+
 // Country-name → ISO3 lookup, built once (lazily) from Intl across all supported
 // languages UNION the alias overlay. English is added first so it wins any
 // cross-language normalized-key collision; the overlay is applied last so an
 // explicit alias always resolves. Cached module-wide (monthNames.ts pattern).
 let _countryNameMap: Map<string, string> | null = null;
+let _countryLoose: LooseIndex<string> | null = null;
 export function countryNameMap(): Map<string, string> {
     if (_countryNameMap) return _countryNameMap;
     const m = new Map<string, string>();
+    // Every spelling that was offered, with the country it was offered for: the loose index is
+    // built from these once the exact map has settled every precedence question.
+    const offered: Array<[string, string]> = [];
     // English first (authoritative on collisions), then the rest.
     const langs = ["en", ...SUPPORTED_LANGS.filter(l => l !== "en")];
     for (const lang of langs) {
@@ -169,14 +257,58 @@ export function countryNameMap(): Map<string, string> {
             if (!name || name === a2) continue;
             const key = normalizePlaceName(name);
             if (key && !m.has(key)) m.set(key, a3);
+            offered.push([name, a3]);
         }
+    }
+    // The formal forms fill gaps only - a spelling the runtime already answers keeps its answer.
+    for (const [alias, a3] of Object.entries(COUNTRY_FORMAL_ALIASES)) {
+        const key = normalizePlaceName(alias);
+        if (key && !m.has(key)) m.set(key, a3);
+        offered.push([alias, a3]);
     }
     for (const [alias, a3] of Object.entries(COUNTRY_ALIAS_OVERLAY)) {
         const key = normalizePlaceName(alias);
         if (key) m.set(key, a3); // overlay wins — explicit intent
+        offered.push([alias, a3]);
+    }
+    // THE LOOSE INDEX FOLLOWS THE EXACT MAP'S VERDICTS. A spelling is indexed loosely only for the
+    // country its exact key settled on, so the precedence rules above (English first, the overlay
+    // last) decide the loose answer too, and a spelling that lost its exact key to another country
+    // cannot come back through the loose one. Two surviving spellings that squeeze to one key but
+    // name different countries leave that key AMBIGUOUS, which resolves to nothing.
+    const loose = new LooseIndex<string>();
+    for (const [name, a3] of offered) {
+        const key = normalizePlaceName(name);
+        if (m.get(key) !== a3) continue;
+        loose.add(name, a3);
+        // The exact key as a spelling of its own: "Trinidad & Tobago" keys as "trinidad tobago",
+        // so a reader's "TrinidadTobago" reaches it as well as "TrinidadandTobago".
+        loose.add(key, a3);
     }
     _countryNameMap = m;
+    _countryLoose = loose;
     return m;
+}
+
+/** The loose country index (see countryNameMap). Exposed for the collision tests. */
+export function countryLooseIndex(): LooseIndex<string> {
+    if (!_countryLoose) countryNameMap();
+    return _countryLoose!;
+}
+
+/**
+ * A country NAME (never a code) to ISO-3: the exact key first, then the loose key, never for a
+ * typed blank. Null when it names no country or when its loose key names more than one.
+ */
+export function countryNameIso3(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const exact = normalizePlaceName(raw);
+    const hit = countryNameMap().get(exact);
+    if (hit) return hit;
+    if (isBlankLike(exact)) return null;
+    return countryLooseIndex().get(placeLooseKey(raw)) ?? null;
 }
 
 /** ISO-2 -> ISO-3 ("CA" -> "CAN"). Null when the code is not assigned. */
@@ -186,8 +318,10 @@ export function iso2ToIso3(a2: string): string | null {
 
 /**
  * Resolve ANY country identifier to ISO-3: a name in any of the 30 supported
- * languages, an ISO-2 code, an ISO-3 code, or an overlay alias ("USA", "UK",
- * "Holland"). Null when it is not a country.
+ * languages, an ISO-2 code, an ISO-3 code, an overlay alias ("USA", "UK",
+ * "Holland") or a formal form ("Korea, Republic of"). Names match on the exact key first
+ * and then the loose one ("NewZealand", "Trinidad and Tobago"); codes match as codes only.
+ * Null when it is not a country, and when a loose key names more than one.
  *
  * This is the WORLD-wide resolver, and it is deliberately NOT the same thing as
  * geoPoint.normalizeCountry — that one stays narrow (US/CA/MX, 2-letter) because it
@@ -201,5 +335,5 @@ export function countryIso3(value: string | null | undefined): string | null {
     const up = raw.toUpperCase();
     if (up.length === 3 && ISO3_SET.has(up)) return up;
     if (up.length === 2 && ISO2_SET.has(up)) return ISO2_TO_ISO3.get(up) ?? null;
-    return countryNameMap().get(normalizePlaceName(raw)) ?? null;
+    return countryNameIso3(raw);
 }
