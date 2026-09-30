@@ -37,6 +37,12 @@ export interface ChartGroupSourceOptions {
     geo?: { column: string; kind: string } | null;
     /** Point-map geocoding binding (city/state/zip/lat/lon column names). */
     point?: GeoPointBinding | null;
+    /**
+     * A route's far end (an origin-destination flow map): `point` is then the origin. The same
+     * binding buildRenderPayload takes, so the group builds the destination columns too instead of
+     * leaving a hosted flow map with one end.
+     */
+    destination?: GeoPointBinding | null;
 }
 
 /** How one member takes part in the group. */
@@ -165,6 +171,7 @@ export function createChartGroup(columns: readonly any[], rows: readonly Record<
     let table = rows;
     let geo = opts.geo ?? null;
     let point = opts.point ?? null;
+    let destination = opts.destination ?? null;
     let selection: ChartGroupSelection = EMPTY;
     const subs = new Set<(s: ChartGroupSelection, c: ChartGroupChange) => void>();
     const members = new Set<ChartGroupMember>();
@@ -185,7 +192,8 @@ export function createChartGroup(columns: readonly any[], rows: readonly Record<
         const subset = idxs.map(i => table[i]);
         // p.rows[k] corresponds to source row idxs[k]. __rowIdx__ inside the payload is re-based
         // to 0..n-1 by the builder - this map is what makes indices comparable across charts.
-        const payload = buildRenderPayload(cols as any, subset as any, geo ?? undefined, point ?? undefined);
+        const payload = buildRenderPayload(cols as any, subset as any, geo ?? undefined, point ?? undefined,
+                                           destination ?? undefined);
         return { payload, rowMap: idxs };
     };
 
@@ -212,6 +220,7 @@ export function createChartGroup(columns: readonly any[], rows: readonly Record<
             table = nextRows;
             geo = o.geo ?? null;
             point = o.point ?? null;
+            destination = o.destination ?? null;
             notify("source");
         },
         onChange(cb) {

@@ -131,6 +131,8 @@ export interface BicChartGroupProps {
     geo?: { column: string; kind: string } | null;
     /** Point-map geocoding binding (city/state/zip/lat/lon column names). */
     point?: GeoPointBinding | null;
+    /** A route's far end (an origin-destination flow map); `point` is then the origin. */
+    destination?: GeoPointBinding | null;
     children: ReactNode;
 }
 
@@ -139,20 +141,20 @@ export interface BicChartGroupProps {
  * `filteredBy`; the group re-derives the filtered member's payload and translates row
  * indices in both directions, so a click in one chart filters another CORRECTLY.
  */
-export function BicChartGroup({ rows, columns, geo, point, children }: BicChartGroupProps) {
+export function BicChartGroup({ rows, columns, geo, point, destination, children }: BicChartGroupProps) {
     // ONE core group for the component's life. A member captures it when its host is built, so
     // it is never replaced: a new source table goes in through setSource, which keeps the
     // selection, as this component always did.
     const groupRef = useRef<ChartGroup | null>(null);
-    if (!groupRef.current) groupRef.current = createChartGroup(columns, rows, { geo, point });
+    if (!groupRef.current) groupRef.current = createChartGroup(columns, rows, { geo, point, destination });
     const group = groupRef.current;
     const [sel, setSel] = useState<ChartGroupSelection>(group.selection);
     // Applied during render, before the members render, so they derive from the new table in
     // the same pass. Idempotent, so StrictMode's double render costs nothing.
     const source = useMemo(() => {
-        group.setSource(columns, rows, { geo, point });
+        group.setSource(columns, rows, { geo, point, destination });
         return {};
-    }, [group, rows, columns, geo, point]);
+    }, [group, rows, columns, geo, point, destination]);
     // A "source" change is this component's own props: the render already carries it.
     useEffect(() => group.onChange((s, change) => { if (change !== "source") setSel(s); }), [group]);
     const value = useMemo<GroupCtx>(() => ({ group, selection: sel, source }), [group, sel, source]);
