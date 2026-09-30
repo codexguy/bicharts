@@ -38,6 +38,7 @@ import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacemen
 import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
+import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -227,9 +228,22 @@ export interface ChartHostConfig {
      * throws exactly as it always has, so an existing host is untouched.
      */
     onInvalidSentinel?: (info: { reason: string; message: string }) => void;
+    /**
+     * NOTES ON MARKS. Each annotation names a key - a value in a column of this chart's data, such as a
+     * country code - and the host draws a badge on that key's mark after every render, wherever a filter,
+     * a re-query or a zoom has put it. Keyed by value, never by row position. Change them with
+     * setAnnotations; none (the default) draws nothing.
+     */
+    annotations?: MarkAnnotation[];
+    /** A badge was clicked. The mark beneath is not selected. */
+    onAnnotationClick?: (annotation: MarkAnnotation) => void;
 }
 
 export interface ChartHost {
+    /** Replace the notes drawn on marks (see ChartHostConfig.annotations); redraws them at once. */
+    setAnnotations(list: MarkAnnotation[]): void;
+    /** How many annotations the last draw placed on a mark, and how many had none in this render. */
+    readonly annotationReport: AnnotationReport;
     render(): void;
     /**
      * THE LAST RENDER, SETTLED. render() stays synchronous — it returns nothing, exactly as it
@@ -584,6 +598,14 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // passes would land on the SECOND one's DOM and the older draw would win by finishing last.
     // Every render takes a ticket; a continuation that no longer holds the current one stops.
     let renderSeq = 0;
+    // Notes on marks (annotations.ts): drawn by the host after every settled render, keyed by a
+    // column value in THIS chart's data, so a filter or a group member's own payload never moves one.
+    const annotationLayer = createAnnotationLayer(container, a => config.onAnnotationClick?.(a));
+    const drawAnnotations = () => annotationLayer.draw(
+        { columns: data.columns, rows: data.rows },
+        { fg: (resolved as any).themeFg, accent: (resolved as any).themeAccent,
+          bg: (resolved as any).backgroundColor ?? (resolved as any).themeBg });
+    annotationLayer.set(config.annotations ?? []);
     // What `host.rendered` hands out — replaced by every render, so a caller always awaits the
     // latest draw rather than a stale one.
     let renderedPromise: Promise<void> = Promise.resolve();
@@ -931,6 +953,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 config.onFit?.(r);
             } catch { /* a fit pass must never break a render that already succeeded */ }
         }
+        // NOTES ON MARKS, after the fit: the badges sit on the marks where they finally are.
+        try { drawAnnotations(); } catch { /* a badge must never break a render that already succeeded */ }
     };
 
     // ONE FAILURE BODY for both lanes, for the same reason the passes above are one function:
@@ -1067,6 +1091,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             host.render();
         },
         get options() { return resolved; },
+        setAnnotations(list) {
+            annotationLayer.set(list);
+            if (!destroyed) try { drawAnnotations(); } catch { /* never breaks the chart on screen */ }
+        },
+        get annotationReport() { return annotationLayer.report; },
         // A GETTER, not a captured value: `rendered` names the LATEST render, so a host that
         // read it once would otherwise hold the promise of a draw long since replaced.
         get rendered() { return renderedPromise; },
@@ -1103,6 +1132,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             container.removeEventListener(XFILTER_REFRESH_EVENT, onXf);
             container.removeEventListener("click", onClick);
             subs.clear();
+            annotationLayer.destroy();
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
             container.innerHTML = "";
         },

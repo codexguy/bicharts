@@ -84,6 +84,8 @@ export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./date
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
     sessionViewStateProvider, noopViewStateProvider, assembleD3, D3_PLUGIN_PACKAGES,
     type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
+// NOTES ON MARKS: badges the host draws on a key's mark after every render (ChartHostConfig.annotations).
+export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
 // THE CROSS-FILTER GROUP (2026-09-24): several charts over one source table and one selection,
 // with the payload-row -> source-row translation owned here. <BicChartGroup> in "./react" is a
 // wrapper over it; a host without React calls it directly.

@@ -87,6 +87,14 @@ export interface BicChartProps {
     respondsWith?: "filter" | "highlight";
     /** Selection callback in SOURCE row indices (group) or payload indices (standalone). */
     onSelect?: (rowIdxs: number[]) => void;
+    /**
+     * Notes on marks: a badge on each key's mark, redrawn after every render - e.g.
+     * `[{ column: "CountryCode", value: "USA", label: "2", title: "..." }]`. Keyed by a value in a column,
+     * never a row position, so a filter or a re-query never moves one.
+     */
+    annotations?: ChartHostConfig["annotations"];
+    /** A badge was clicked (the mark beneath is not selected). */
+    onAnnotationClick?: ChartHostConfig["onAnnotationClick"];
     className?: string;
     style?: React.CSSProperties;
 }
@@ -163,7 +171,8 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
-            onInvalidSentinel, id, filteredBy, respondsWith, onSelect, className, style } = props;
+            onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
+            className, style } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -201,6 +210,12 @@ export function BicChart(props: BicChartProps) {
     onLabelContrastRef.current = onLabelContrast;
     const onInvalidSentinelRef = useRef(onInvalidSentinel);
     onInvalidSentinelRef.current = onInvalidSentinel;
+    const onAnnotationClickRef = useRef(onAnnotationClick);
+    onAnnotationClickRef.current = onAnnotationClick;
+    // By content, so a page that builds the list inline on every render does not redraw the badges each time.
+    const annKey = useMemo(() => JSON.stringify(annotations ?? []), [annotations]);
+    const annotationsRef = useRef(annotations);
+    annotationsRef.current = annotations;
 
     // GEOMETRY — core render() is synchronous by contract, so the host can only attach what
     // is already cached; a cold cache used to mean a bubble map that painted its marks over
@@ -238,8 +253,11 @@ export function BicChart(props: BicChartProps) {
                                                return onInvalidSentinelRef.current
                                                    ? (info: { reason: string; message: string }) => onInvalidSentinelRef.current?.(info)
                                                    : undefined;
-                                           } });
+                                           },
+                                           annotations: annotationsRef.current ?? [],
+                                           onAnnotationClick: a => onAnnotationClickRef.current?.(a) });
         hostRef.current = host;
+        builtAnnKeyRef.current = annKey;
         const off = host.selection.onChange((payloadIdxs, source) => {
             // "host" = a programmatic clear WE issued (below) to drop a stale highlight.
             // Publishing it would overwrite the selection another chart just made — the
@@ -276,6 +294,14 @@ export function BicChart(props: BicChartProps) {
         hostRef.current.setOptions(options);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optKey]);
+
+    // NOTES ON MARKS changed - the badges alone are redrawn; the chart is not.
+    const builtAnnKeyRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!hostRef.current || builtAnnKeyRef.current === annKey) return;
+        builtAnnKeyRef.current = annKey;
+        hostRef.current.setAnnotations(annotationsRef.current ?? []);
+    }, [annKey]);
 
     // DATA change (including a cross-filter re-derive) — a redraw, never a recompile. Skipped when
     // it is the payload the host was just built with.
