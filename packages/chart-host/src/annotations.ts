@@ -12,10 +12,15 @@
 import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
 
 export interface MarkAnnotation {
-    /** The column holding the key. */
-    column: string;
+    /** The column holding the key (with `value`). */
+    column?: string;
     /** The key's value; matched as text, trimmed, so a number column and a string key agree. */
-    value: string | number;
+    value?: string | number;
+    /**
+     * A key over several columns - a route by both of its ends, `{ Origin: "BRA", Dest: "CHL" }` - so no key
+     * column has to be added to the query or the chart. Every named column must match. Used instead of column/value.
+     */
+    where?: Record<string, string | number>;
     /** Badge text (a count, a letter). Default: a dot. */
     label?: string;
     /** Tooltip text - the note, or a summary of several. */
@@ -102,11 +107,15 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
         const origin = container.getBoundingClientRect();
         let shown = 0;
         for (const a of list) {
-            const col = names.indexOf(a.column);
-            const want = text(a.value);
+            // The key as (column index, wanted text) pairs; a column this chart doesn't have matches nothing.
+            const pairs: Array<[number, string]> = (a.where
+                ? Object.entries(a.where)
+                : a.column != null ? [[a.column, a.value] as [string, unknown]] : []
+            ).map(([c, v]) => [names.indexOf(c), text(v)]);
+            const want = pairs.map(p => p[1]).join(" / ");
             const hits = new Set<Element>();
-            if (col >= 0) (data.rows || []).forEach((row, r) => {
-                if (text(row?.[col]) === want) for (const m of marksByRow.get(r) ?? []) hits.add(m);
+            if (pairs.length && pairs.every(p => p[0] >= 0)) (data.rows || []).forEach((row, r) => {
+                if (pairs.every(([ci, v]) => text(row?.[ci]) === v)) for (const m of marksByRow.get(r) ?? []) hits.add(m);
             });
             if (!hits.size) continue;
             shown++;

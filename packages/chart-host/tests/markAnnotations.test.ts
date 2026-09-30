@@ -130,6 +130,32 @@ describe("mark annotations", () => {
         restore();
     });
 
+    it("keys a route by both of its ends - no key column has to be added to the query or the chart", () => {
+        const LANES = `
+function render(container, data) {
+  const doc = container.ownerDocument;
+  data.rows.forEach((r, i) => {
+    const m = doc.createElement("div");
+    m.className = "d3-mark";
+    m.setAttribute("data-row-idx", String(i));
+    m.setAttribute("data-code", ["USA", "CAN", "FRA"][i]);
+    container.appendChild(m);
+  });
+}`;
+        const restore = stubBoxes();
+        const el = document.createElement("div"); el.dataset.host = "1"; document.body.appendChild(el);
+        const host = createChartHost(el, { code: LANES, d3: {},
+            data: { columns: [{ name: "Origin" }, { name: "Dest" }, { name: "Units" }],
+                    rows: [["BRA", "ARG", 5], ["BRA", "CHL", 3], ["ARG", "BRA", 4]] } as any,
+            annotations: [{ where: { Origin: "BRA", Dest: "CHL" }, label: "1" }, { where: { Origin: "BRA", Dest: "USA" } }] } as any);
+        host.render();
+        const b = badges(el);
+        expect(b).toHaveLength(1);
+        expect(b[0].style.left).toBe("140px");     // row 1 (BRA -> CHL), drawn as the second mark
+        expect(host.annotationReport).toEqual({ shown: 1, notShown: 1 });
+        restore();
+    });
+
     it("draws nothing and touches nothing when a host passes no annotations", () => {
         const { el, host } = mount();
         expect(el.querySelector(".bic-annotations")).toBeNull();
