@@ -114,6 +114,42 @@ describe("mountProductFeedbackBox", () => {
         expect(parent.querySelector(".bic-product-feedback")).toBeNull();
     });
 
+    // A READER TOOK THE BOX FOR A CHART PROMPT (a chart request arrived as a suggestion while the host's own prompt was
+    // hidden). So the box starts as a link: a closed affordance cannot be mistaken for the place a chart is asked for.
+    it("starts closed behind a link, and opens with the cursor in the box when the link is pressed", () => {
+        const onOpened = vi.fn();
+        const { box, input } = mount(async () => ({ ok: true }), { onOpened });
+        const opener = box.element.querySelector(".bic-product-feedback-open") as HTMLButtonElement;
+        const panel = box.element.querySelector(".bic-product-feedback-panel") as HTMLElement;
+        expect(opener.hidden).toBe(false);
+        expect(opener.textContent).toBe("Suggest an improvement");
+        expect(panel.hidden).toBe(true);
+        expect(box.element.getAttribute("data-open")).toBe("false");
+        opener.click();
+        expect(panel.hidden).toBe(false);
+        expect(opener.hidden).toBe(true);
+        expect(box.element.getAttribute("data-open")).toBe("true");
+        expect(document.activeElement).toBe(input);
+        expect(onOpened).toHaveBeenCalledTimes(1);
+    });
+
+    it("mounts open when the host asks, with no link", () => {
+        const { box } = mount(async () => ({ ok: true }), { collapsed: false });
+        expect((box.element.querySelector(".bic-product-feedback-open") as HTMLElement).hidden).toBe(true);
+        expect((box.element.querySelector(".bic-product-feedback-panel") as HTMLElement).hidden).toBe(false);
+    });
+
+    it("the default words are about the PRODUCT, and say it is not a chart prompt BEFORE the box", () => {
+        const { box, input } = mount(async () => ({ ok: true }), { collapsed: false });
+        const label = box.element.querySelector(".bic-product-feedback-label")!.textContent!;
+        const hint = box.element.querySelector(".bic-product-feedback-hint")!;
+        expect(label).not.toMatch(/chart/i);
+        expect(input.placeholder).not.toMatch(/chart/i);
+        expect(hint.textContent).toMatch(/won't draw a chart/);
+        // The hint is read before typing starts, not discovered under the box afterwards.
+        expect(hint.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it("a host callback that throws never breaks the box", async () => {
         const { button, status, type } = mount(async () => ({ ok: true }), { onShown: () => { throw new Error("x"); }, onSent: () => { throw new Error("y"); } });
         type("Still works");

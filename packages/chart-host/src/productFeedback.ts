@@ -119,12 +119,18 @@ export interface ProductFeedbackText {
     sending?: string;
     sent?: string;
     failed?: string;
+    /** The link the closed box shows. */
+    open?: string;
 }
 
+// THE WORDS SAY PRODUCT, NEVER CHART. A reader typed a chart request here while the host's own prompt was hidden, and the
+// old placeholder ("an idea, a missing chart, ...") had invited exactly that. The not-a-prompt line comes BEFORE the box,
+// so it is read before typing starts rather than found under the box afterwards.
 const DEFAULT_TEXT: Required<ProductFeedbackText> = {
-    label: "Your suggestions",
-    placeholder: "An idea, a missing chart, or something that got in your way",
-    hint: "Sent to our team. It is never used to draw a chart.",
+    label: "Ideas to improve this product",
+    placeholder: "A feature you'd like, or something that got in your way",
+    hint: "This sends a note to our team. It won't draw a chart.",
+    open: "Suggest an improvement",
     send: "Send",
     sending: "Sending...",
     sent: "Thank you - your suggestion was sent.",
@@ -138,8 +144,13 @@ export interface ProductFeedbackBoxOptions {
     /** Added to the wrapper so the host can skin it; the structure stays the same. */
     className?: string;
     maxChars?: number;
+    /** Start as a link that opens the box (the default). A closed affordance cannot be mistaken for a chart prompt;
+     *  pass false only where the box is the page's only purpose. Once opened it stays open, so a draft is never hidden. */
+    collapsed?: boolean;
     /** Called once, when the box is mounted - the host's "shown" counter. */
     onShown?: () => void;
+    /** Called once, when the reader opens a closed box. */
+    onOpened?: () => void;
     /** Called after a successful send - the host's "sent" counter. */
     onSent?: () => void;
     /** Called after a failed send, with what failed, so the host can log it. */
@@ -154,8 +165,10 @@ export interface ProductFeedbackBox {
 
 /**
  * Build the box inside `container`. The wrapper carries `bic-product-feedback` (plus the host's
- * class); the textarea, button and status line carry `bic-product-feedback-input`, `-send` and
- * `-status`, so hosts and tests can find them without depending on the order of elements.
+ * class) and `data-open`; the opening link is `bic-product-feedback-open`, and everything it
+ * reveals sits in `bic-product-feedback-panel`; the textarea, button and status line carry
+ * `bic-product-feedback-input`, `-send` and `-status`, so hosts and tests can find them without
+ * depending on the order of elements.
  */
 export function mountProductFeedbackBox(container: HTMLElement, opts: ProductFeedbackBoxOptions): ProductFeedbackBox {
     const doc = container.ownerDocument ?? document;
@@ -196,7 +209,28 @@ export function mountProductFeedbackBox(container: HTMLElement, opts: ProductFee
     status.setAttribute("aria-live", "polite");
     row.append(button, status);
 
-    wrap.append(label, input, hint, row);
+    const opener = doc.createElement("button");
+    opener.type = "button";
+    opener.className = "bic-product-feedback-open";
+    opener.textContent = text.open;
+    const panel = doc.createElement("div");
+    panel.className = "bic-product-feedback-panel";
+    panel.append(label, hint, input, row);
+
+    const setOpen = (open: boolean) => {
+        opener.hidden = open;
+        panel.hidden = !open;
+        wrap.setAttribute("data-open", String(open));
+    };
+    setOpen(opts.collapsed === false);
+    const onOpen = () => {
+        if (!panel.hidden) return;
+        setOpen(true);
+        input.focus();
+        safely(() => opts.onOpened?.());
+    };
+
+    wrap.append(opener, panel);
     container.appendChild(wrap);
 
     let sending = false;
@@ -242,6 +276,7 @@ export function mountProductFeedbackBox(container: HTMLElement, opts: ProductFee
 
     input.addEventListener("input", onInput);
     button.addEventListener("click", onClick);
+    opener.addEventListener("click", onOpen);
     sync();
     safely(() => opts.onShown?.());
 
@@ -250,6 +285,7 @@ export function mountProductFeedbackBox(container: HTMLElement, opts: ProductFee
         destroy() {
             input.removeEventListener("input", onInput);
             button.removeEventListener("click", onClick);
+            opener.removeEventListener("click", onOpen);
             wrap.remove();
         },
     };
