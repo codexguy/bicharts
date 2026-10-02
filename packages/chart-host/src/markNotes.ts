@@ -17,7 +17,6 @@ export interface MarkNoteLike {
     markKey?: unknown;
     markKeyTo?: unknown;
     body?: string | null;
-    [k: string]: unknown;
 }
 
 export interface NoteBadgeOptions<N> {

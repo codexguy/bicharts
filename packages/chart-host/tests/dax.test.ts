@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { treatAs, calculateTable, daxLiteral } from "../src/dax";
+import { treatAs, calculateTable, daxLiteral, filterQuery } from "../src/dax";
 import { createFilter } from "../src/filterScope";
 
 // A PAGE FILTER INTO DAX, the way Microsoft's data app skills build it (CALCULATETABLE + TREATAS),
@@ -43,5 +43,25 @@ describe("treatAs", () => {
         expect(treatAs(["USA"], "Geo[Code]")).toBe("TREATAS({\"USA\"}, Geo[Code])");
         expect(() => treatAs(["USA"], "Geo.Code")).toThrow(/column reference/);
         expect(() => treatAs(["USA"])).toThrow();
+    });
+});
+
+describe("filterQuery", () => {
+    const Q = "DEFINE VAR x = 1\nEVALUATE\nSUMMARIZECOLUMNS(DimDate[Year], \"Revenue\", [Revenue])\nORDER BY DimDate[Year]";
+    it("leaves the query alone with no filter", () => {
+        expect(filterQuery(Q, null)).toBe(Q);
+    });
+    it("wraps the table expression, keeping DEFINE and ORDER BY", () => {
+        const f = createFilter("CountryCode");
+        f.set("AUS");
+        expect(filterQuery(Q, treatAs(f, "DimCountry[CountryCode]"))).toBe(
+            "DEFINE VAR x = 1\nEVALUATE\nCALCULATETABLE(\nSUMMARIZECOLUMNS(DimDate[Year], \"Revenue\", [Revenue]),\n"
+            + "TREATAS({\"AUS\"}, DimCountry[CountryCode])\n)\nORDER BY DimDate[Year]");
+    });
+    it("works on a query with no ORDER BY", () => {
+        expect(filterQuery("EVALUATE T", "TREATAS({1}, T[c])")).toBe("EVALUATE\nCALCULATETABLE(\nT,\nTREATAS({1}, T[c])\n)");
+    });
+    it("refuses a query with two EVALUATEs", () => {
+        expect(() => filterQuery("EVALUATE A EVALUATE B", "TREATAS({1}, T[c])")).toThrow(/one EVALUATE/);
     });
 });

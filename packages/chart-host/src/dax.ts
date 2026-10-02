@@ -65,6 +65,23 @@ export function calculateTable(table: string, ...filters: Array<string | null | 
     return live.length ? `CALCULATETABLE(\n${table},\n${live.join(",\n")}\n)` : table;
 }
 
+/**
+ * A whole query (`[DEFINE ...] EVALUATE <table> [ORDER BY ...]`, as a .dax file holds it) with its table filtered:
+ * the table expression goes inside CALCULATETABLE with the filters, DEFINE and ORDER BY stay where they are. With no
+ * live filter the query comes back unchanged. One EVALUATE only (throws on more).
+ *
+ *   filterQuery(PROJECTION_DAX, treatAs(country, "DimCountry[CountryCode]"))
+ */
+export function filterQuery(query: string, ...filters: Array<string | null | undefined | false>): string {
+    const live = filters.filter((f): f is string => typeof f === "string" && f.trim().length > 0);
+    if (!live.length) return query;
+    const evals = query.match(/\bEVALUATE\b/gi) ?? [];
+    if (evals.length !== 1) throw new Error(`filterQuery: expected one EVALUATE, found ${evals.length}`);
+    const m = /^([\s\S]*?\bEVALUATE\b)([\s\S]*?)(\bORDER\s+BY\b[\s\S]*)?$/i.exec(query)!;
+    const head = m[1], table = m[2].trim(), tail = m[3] ?? "";
+    return `${head}\n${calculateTable(table, ...live)}\n${tail}`.replace(/\n$/, "");
+}
+
 function isFilter(x: unknown): x is Filter {
     return !!x && typeof x === "object" && Array.isArray((x as Filter).keys) && typeof (x as Filter).has === "function";
 }
