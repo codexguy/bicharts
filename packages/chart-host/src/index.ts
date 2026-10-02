@@ -92,6 +92,13 @@ export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type Ann
 export { createChartGroup, toSourceRows, syncMemberSelection,
     type ChartGroup, type ChartGroupMember, type ChartGroupSelection, type ChartGroupChange,
     type ChartGroupMemberOptions, type ChartGroupSourceOptions, type ChartGroupPayload } from "./group";
+// THE PAGE'S FILTERS (2026-10-02): what a page filters by, kept by column VALUES, with the click /
+// clear / page clear / new-data rules owned here. useBicFilter in "./react" wraps it; bindFilter
+// wires any chart host (a Blazor page over JS interop, a plain page); fromVegaInteraction lets
+// Microsoft's VegaVisual / DataGrid drive the same filter.
+export { createFilter, createFilterScope, bindFilter, payloadRowReader, fromVegaInteraction,
+    type Filter, type FilterScope, type FilterOptions, type FilterKey, type FilterChangeReason,
+    type FilterBinding, type BindFilterOptions, type VegaInteractionEvent } from "./filterScope";
 export {
     createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,

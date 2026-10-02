@@ -20,14 +20,19 @@
 // THE GROUP ITSELF IS THE CORE'S createChartGroup (group.ts) since 2026-09-24, so a host with
 // no React coordinates charts by the same rules. What stays here is only what is React's: the
 // context, the effects that hand a member its payload, and the state a page reads.
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode, RefObject } from "react";
 import { createChartHost, type ChartHost, type ChartHostConfig } from "./host";
 import type { ResolveOptionsInput } from "./defaults";
 import type { GeoPointBinding } from "./payload";
 import { geoFromCache, loadGeo } from "./geoLazy";
 import { createChartGroup, syncMemberSelection, toSourceRows, type ChartGroup, type ChartGroupSelection } from "./group";
+import { bindFilter, createFilter, createFilterScope, payloadRowReader,
+         type Filter, type FilterBinding, type FilterOptions, type FilterScope } from "./filterScope";
+
 export { assembleD3 } from "./host";
+export { createFilter, createFilterScope, fromVegaInteraction,
+         type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
 
 export interface BicChartProps {
     /** Generated render() source (an ES module's `code` export, or the raw string). */
@@ -85,7 +90,21 @@ export interface BicChartProps {
      * now two props rather than a DOM workaround.
      */
     respondsWith?: "filter" | "highlight";
-    /** Selection callback in SOURCE row indices (group) or payload indices (standalone). */
+    /**
+     * THE PAGE FILTER THIS CHART SELECTS - from useBicFilter("CountryCode"). A click sets it, the
+     * same click or a click on empty canvas clears it, and the filter's state is painted onto the
+     * marks whoever changed it: `filter.clear()` from a page button clears the marks too. New data
+     * keeps a selection whose key is still drawn and clears (reason "data") one whose key is gone.
+     * The page reads `filter.value` / `filter.row` and never writes a select handler. With
+     * `selects`, the filter owns what this chart shows as selected.
+     */
+    selects?: Filter;
+    /**
+     * Selection callback in SOURCE row indices (group) or payload indices (standalone). An empty
+     * list means the selection was CLEARED: the same mark clicked again, a click on empty canvas,
+     * or new data that no longer draws what was selected. The chart toggles for you - set your
+     * state from exactly what this gives you, never toggle it again. Prefer `selects`.
+     */
     onSelect?: (rowIdxs: number[]) => void;
     /**
      * Notes on marks: a badge on each key's mark, redrawn after every render - e.g.
@@ -172,7 +191,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
-            className, style } = props;
+            className, style, selects } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -200,6 +219,15 @@ export function BicChart(props: BicChartProps) {
     }, [group, ctx?.source, filterSel && filterSel.join(",")]);
     const data = built ? built.payload : props.data;
     rowMapRef.current = built ? built.rowMap : null;
+    const dataRef = useRef(data);
+    dataRef.current = data;
+    // What the page filter reads a drawn row as: the SOURCE row object in a group (the page's own
+    // rows, keyed by column name), or the payload row otherwise.
+    const groupRef = useRef(group);
+    groupRef.current = group;
+    const bindingRef = useRef<FilterBinding | null>(null);
+    // Whether the selection this chart shows now was made by the reader on it (not painted in).
+    const userSelectedRef = useRef(false);
     const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
     const builtWithRef = useRef<{ data?: unknown; optKey?: string } | null>(null);
 
@@ -263,6 +291,7 @@ export function BicChart(props: BicChartProps) {
             // Publishing it would overwrite the selection another chart just made — the
             // feedback loop that makes mutual cross-filtering fight itself.
             if (source === "host") return;
+            userSelectedRef.current = payloadIdxs.length > 0;
             // Translate to SOURCE indices before anything leaves this chart.
             const sourceIdxs = toSourceRows(rowMapRef.current, payloadIdxs);
             if (group && id) group.publish(id, sourceIdxs);
@@ -283,6 +312,38 @@ export function BicChart(props: BicChartProps) {
         // (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [code, renderFn, d3, geoKind, labelContrast]);
+
+    // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
+    // filter replaced. The first paint restores a selection made before this chart mounted (a
+    // chart that remounts on a re-query shows what the page still holds).
+    useLayoutEffect(() => {
+        const host = hostRef.current;
+        if (!host || !selects) return;
+        const payloadRows = payloadRowReader(() => dataRef.current as any);
+        const b = bindFilter(host, selects, {
+            rowAt(i) {
+                const g = groupRef.current, map = rowMapRef.current;
+                if (g && map) {
+                    const s = map[i];
+                    return s === undefined ? null : (g.rows[s] as Record<string, unknown>) ?? null;
+                }
+                return payloadRows.rowAt(i);
+            },
+            rowCount() {
+                const map = rowMapRef.current;
+                return groupRef.current && map ? map.length : payloadRows.rowCount();
+            },
+        });
+        bindingRef.current = b;
+        // Reconcile, not just paint: a chart that remounted after its query reloaded adopts the
+        // selection its click made and drops it if the new rows don't carry it.
+        b.reconcile();
+        return () => {
+            b.detach();
+            if (bindingRef.current === b) bindingRef.current = null;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selects, code, renderFn, d3, geoKind, labelContrast]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the
@@ -310,6 +371,8 @@ export function BicChart(props: BicChartProps) {
         if (builtWithRef.current?.data === data) return;
         builtWithRef.current = { ...builtWithRef.current, data };
         hostRef.current.setData(data);
+        // The page filter's selection, against the rows drawn now: kept if its key is still here.
+        bindingRef.current?.reconcile();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data]);
 
@@ -320,15 +383,119 @@ export function BicChart(props: BicChartProps) {
     // In HIGHLIGHT mode the same effect does the opposite job as well: a sibling's
     // selection is PAINTED here rather than clearing. Both branches route through the
     // host's `"host"` source, so nothing published here comes back as a new selection.
+    //
+    // A chart bound to a page filter (`selects`) skips this: the filter owns what it shows.
+    //
+    // NEW DATA THAT DROPS A SELECTION IS REPORTED. When a new source table makes this effect clear
+    // a selection the reader made on this chart, `onSelect([])` says so - the page's own state of
+    // what's selected would otherwise go stale, still showing a pick the chart no longer does.
+    const lastSourceRef = useRef<object | undefined>(ctx?.source);
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !ctx) return;
+        const sourceChanged = lastSourceRef.current !== ctx.source;
+        lastSourceRef.current = ctx.source;
+        if (selects) return;
+        const before = (host.selection.current ?? []).length;
         syncMemberSelection(host, ctx.selection, id, highlightMode, incoming, rowMapRef.current);
+        if (sourceChanged && before && !(host.selection.current ?? []).length && userSelectedRef.current) {
+            userSelectedRef.current = false;
+            onSelectRef.current?.([]);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ctx?.selection, id, ctx, highlightMode, incoming && incoming.join(",")]);
+    }, [ctx?.selection, id, ctx, highlightMode, incoming && incoming.join(","), selects]);
 
     // No children: the chart owns this element's contents.
     return <div ref={ref} className={className} style={style} />;
+}
+
+// ── The page's filters ─────────────────────────────────────────────────────────
+//
+// What a page filters by, kept by column VALUES (a country code, a route's two ends) rather than
+// by any chart's row positions, so it survives re-queries and works across charts drawn from
+// different queries. See filterScope.ts for the rules; these are the React handles.
+
+// The page every filter belongs to unless a <BicPage> says otherwise: one per app, so a page needs
+// no provider for <BicFilterChips /> to list its filters - and a hook called in the same component
+// that renders the chips can't miss them by sitting outside its own provider.
+const defaultScope = createFilterScope();
+const PageCtx = createContext<FilterScope>(defaultScope);
+
+/**
+ * A SEPARATE filter scope, for an app with several independent pages or panels mounted at once.
+ * Not needed otherwise: every filter joins the app's one default scope. Call useBicFilter in a
+ * component INSIDE it - a hook can't see a provider its own component renders.
+ */
+export function BicPage({ children }: { children: ReactNode }) {
+    const ref = useRef<FilterScope | null>(null);
+    if (!ref.current) ref.current = createFilterScope();
+    return <PageCtx.Provider value={ref.current}>{children}</PageCtx.Provider>;
+}
+
+/**
+ * A page filter keyed by one model column ("CountryCode") or several (a route:
+ * ["OriginCountryCode", "DestinationCountryCode"]). Pass it to a chart's `selects` and read
+ * `value` / `values` / `row` / `active` for the rest of the page; `clear()` clears it and the
+ * chart's marks. Re-renders the component on every change. The key columns are read once.
+ */
+export function useBicFilter(columns: string | readonly string[], opts?: FilterOptions): Filter {
+    const scope = useContext(PageCtx);
+    const ref = useRef<Filter | null>(null);
+    if (!ref.current) ref.current = createFilter(columns, opts);
+    const f = ref.current;
+    useEffect(() => scope.add(f), [scope, f]);
+    useSyncExternalStore(cb => f.onChange(() => cb()), () => f.version, () => f.version);
+    return f;
+}
+
+/** Every filter on the page (or the enclosing <BicPage>), and its clear-all - for a page's own chip bar or count. */
+export function useBicFilters(): { filters: readonly Filter[]; active: readonly Filter[]; clearAll: () => void } {
+    const scope = useContext(PageCtx);
+    const [, tick] = useState(0);
+    useEffect(() => scope.onChange(() => tick(t => t + 1)), [scope]);
+    return { filters: scope.filters, active: scope.active, clearAll: () => scope.clearAll() };
+}
+
+export interface BicFilterChipsProps {
+    className?: string;
+    /** Each chip's class (the label, the value and its × are inside). */
+    chipClassName?: string;
+    /** The words on the clear-all button, shown when two or more filters are active. Default "Clear all". */
+    clearAllText?: string;
+    style?: React.CSSProperties;
+}
+
+/**
+ * What the page is filtered by: one chip per active filter ("Country: Australia ×"), a × that
+ * clears it (and its chart's marks), and "Clear all" when two or more are active. Renders nothing
+ * while nothing is filtered. Plain markup with class names to style.
+ */
+export function BicFilterChips({ className, chipClassName, clearAllText = "Clear all", style }: BicFilterChipsProps) {
+    const { active, clearAll } = useBicFilters();
+    if (!active.length) return null;
+    const chip: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 4px 2px 10px",
+                                        border: "1px solid currentColor", borderRadius: 999, font: "inherit", lineHeight: 1.6 };
+    const x: React.CSSProperties = { border: 0, background: "transparent", color: "inherit", cursor: "pointer",
+                                     font: "inherit", padding: "0 6px", lineHeight: 1 };
+    return (
+        <div className={["bic-filter-chips", className].filter(Boolean).join(" ")} role="group" aria-label="Filters"
+             style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", ...style }}>
+            {active.map(f => (
+                <span key={f.id} className={["bic-filter-chip", chipClassName].filter(Boolean).join(" ")}
+                      style={chipClassName ? undefined : chip}>
+                    <span className="bic-filter-chip-label">{f.label}: </span>
+                    <span className="bic-filter-chip-value">{f.text}</span>
+                    <button type="button" className="bic-filter-chip-clear" aria-label={`Clear ${f.label}`}
+                            style={chipClassName ? undefined : x} onClick={() => f.clear()}>×</button>
+                </span>
+            ))}
+            {active.length > 1 && (
+                <button type="button" className="bic-filter-chips-clear-all" onClick={clearAll}
+                        style={{ font: "inherit", background: "transparent", border: 0, color: "inherit",
+                                 textDecoration: "underline", cursor: "pointer" }}>{clearAllText}</button>
+            )}
+        </div>
+    );
 }
 
 /**
