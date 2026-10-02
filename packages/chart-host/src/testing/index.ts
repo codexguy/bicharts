@@ -83,3 +83,6 @@ export async function assertMarkerStoreConformance(store: MarkerStore): Promise<
     }
     done();
 }
+
+// Reader gestures on a hosted chart, and what it shows as selected - for an app's own tests.
+export { chartContainers, marksOf, findMark, clickMark, clickEmpty, selectedRows } from "./interact";
