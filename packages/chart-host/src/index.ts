@@ -99,7 +99,7 @@ export { createChartGroup, toSourceRows, syncMemberSelection,
     type ChartGroupMemberOptions, type ChartGroupSourceOptions, type ChartGroupPayload } from "./group";
 // THE PAGE'S FILTERS (2026-10-02): the types; the code is in "./page" and "./react" (see the note above).
 export type { Filter, FilterScope, FilterOptions, FilterKey, FilterChangeReason, FilterBinding, BindFilterOptions,
-    VegaInteractionEvent } from "./filterScope";
+    VegaInteractionEvent, PageView } from "./filterScope";
 export {
     createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,

@@ -25,6 +25,7 @@
 // Blazor page over JS interop and a plain page apply the same rules.
 
 import type { ChartHost } from "./host";
+import type { Controls } from "./controls";
 
 /** Why a filter changed. */
 export type FilterChangeReason = "click" | "clear" | "page" | "data";
@@ -43,10 +44,27 @@ export interface FilterOptions {
     display?: string | readonly string[];
     /** A stable id for this filter within its scope. Generated when absent. */
     id?: string;
+    /** Its name in a saved view (scope.save / a link). Defaults to the key columns joined with "+". */
+    key?: string;
+    /**
+     * LINKED HOVER: hovering a mark on a chart bound to this filter lights the marks with the same key on every other
+     * chart bound to it (a glow, never a filter). Off by default.
+     */
+    hover?: boolean;
 }
 
 export interface Filter {
     readonly id: string;
+    /** Its name in a saved view. */
+    readonly key: string;
+    /** Whether linked hover is on (FilterOptions.hover). */
+    readonly hoverEnabled: boolean;
+    /** The key being hovered on a bound chart now, or null. */
+    readonly hovered: FilterKey | null;
+    /** Set or clear the hovered key (bound charts do this; a page may too). */
+    setHover(key: FilterKey | null): void;
+    /** Subscribe to hover changes. Returns the unsubscribe. */
+    onHover(cb: (key: FilterKey | null) => void): () => void;
     /** The key column(s). */
     readonly columns: readonly string[];
     readonly label: string;
@@ -106,8 +124,45 @@ export interface FilterScope {
     add(filter: Filter): () => void;
     /** Clear every filter. */
     clearAll(reason?: FilterChangeReason): void;
-    /** Subscribe to any change of any filter, and to filters being added or removed. */
+    /** Subscribe to any change of any filter or controls, and to either being added or removed. */
     onChange(cb: (scope: FilterScope) => void): () => void;
+    /** A chart's controls, to be saved and restored with the page's view. Returns the remove. */
+    addControls(key: string, controls: Controls): () => void;
+    /** The registered controls, by key. */
+    readonly controls: ReadonlyMap<string, Controls>;
+    /** The page's view now: every filter's keys and every registered controls' values - JSON-safe. */
+    save(): PageView;
+    /** Put a saved view back: each filter set (or cleared when the view doesn't name it), each controls set. */
+    restore(view: PageView | null | undefined): void;
+}
+
+/** A saved page view: what save() returns and restore() takes. */
+export interface PageView {
+    v: 1;
+    filters?: Record<string, unknown[][]>;
+    controls?: Record<string, Record<string, unknown>>;
+}
+
+/** A view as a URL-safe token (base64url of its JSON), for a link or a bookmark. */
+export function viewToken(view: PageView): string {
+    const bytes = new TextEncoder().encode(JSON.stringify(view));
+    let bin = "";
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** A token from viewToken back to a view; null when it isn't one. */
+export function viewFromToken(token: string | null | undefined): PageView | null {
+    if (!token) return null;
+    try {
+        const b64 = token.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((token.length + 3) % 4);
+        const bin = atob(b64);
+        const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+        const v = JSON.parse(new TextDecoder().decode(bytes));
+        return v && v.v === 1 ? v as PageView : null;
+    } catch {
+        return null;
+    }
 }
 
 // ── keys ────────────────────────────────────────────────────────────────────
@@ -147,6 +202,8 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
     let reason: FilterChangeReason | null = null;
     let version = 0;
     const subs = new Set<(f: Filter, r: FilterChangeReason) => void>();
+    let hovered: FilterKey | null = null;
+    const hoverSubs = new Set<(k: FilterKey | null) => void>();
     // keep() memo: per input array, the last (version, columns) and its result.
     const kept = new WeakMap<readonly unknown[], { version: number; cols: string; out: any[] }>();
 
@@ -187,6 +244,19 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
 
     const filter: Filter = {
         id: opts.id ?? `f${++nextId}`,
+        key: opts.key ?? cols.join("+"),
+        hoverEnabled: !!opts.hover,
+        get hovered() { return hovered; },
+        setHover(k) {
+            const next = k && k.length ? k.slice(0, cols.length) : null;
+            if ((next ? keyString(next) : null) === (hovered ? keyString(hovered) : null)) return;
+            hovered = next;
+            for (const cb of Array.from(hoverSubs)) cb(hovered);
+        },
+        onHover(cb) {
+            hoverSubs.add(cb);
+            return () => { hoverSubs.delete(cb); };
+        },
         columns: cols,
         label: opts.label ?? cols.join(" / "),
         get active() { return keys.length > 0; },
@@ -252,6 +322,8 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
 export function createFilterScope(): FilterScope {
     const list: Filter[] = [];
     const offs = new Map<Filter, () => void>();
+    const ctl = new Map<string, Controls>();
+    const ctlOffs = new Map<string, () => void>();
     const subs = new Set<(s: FilterScope) => void>();
     const notify = () => { for (const cb of Array.from(subs)) cb(scope); };
     const scope: FilterScope = {
@@ -285,6 +357,44 @@ export function createFilterScope(): FilterScope {
             subs.add(cb);
             return () => { subs.delete(cb); };
         },
+        get controls() { return ctl; },
+        addControls(key, c) {
+            let k = key, n = 1;
+            while (ctl.has(k) && ctl.get(k) !== c) k = `${key}-${++n}`;
+            if (!ctl.has(k)) {
+                ctl.set(k, c);
+                ctlOffs.set(k, c.onChange(() => notify()));
+                notify();
+            }
+            return () => {
+                if (ctl.get(k) !== c) return;
+                ctlOffs.get(k)?.();
+                ctlOffs.delete(k);
+                ctl.delete(k);
+                notify();
+            };
+        },
+        save() {
+            const view: PageView = { v: 1 };
+            for (const f of list) if (f.active) (view.filters ??= {})[f.key] = f.keys.map(k => k.slice());
+            for (const [k, c] of ctl) {
+                const values = c.values;
+                if (Object.keys(values).length) (view.controls ??= {})[k] = { ...values };
+            }
+            return view;
+        },
+        restore(view) {
+            if (!view || view.v !== 1) return;
+            for (const f of list) {
+                const keys = view.filters?.[f.key];
+                if (keys && keys.length) f.set(keys, "page");
+                else f.clear("page");
+            }
+            for (const [k, c] of ctl) {
+                const values = view.controls?.[k];
+                if (values) c.set(values);
+            }
+        },
     };
     return scope;
 }
@@ -309,6 +419,21 @@ export interface BindFilterOptions {
     rowAt(i: number): Record<string, unknown> | null;
     /** How many rows the chart is drawing now. */
     rowCount(): number;
+    /** The chart's container, for linked hover (FilterOptions.hover). Without it the chart takes no part in hover. */
+    container?: HTMLElement | null;
+}
+
+/** The class a mark wears while its key is hovered on another chart bound to the same filter. */
+export const LINKED_HOVER_CLASS = "bic-linked-hover";
+let hoverStyled = false;
+function ensureHoverStyle(doc: Document) {
+    if (hoverStyled || !doc?.head) return;
+    hoverStyled = true;
+    const s = doc.createElement("style");
+    s.setAttribute("data-bic", "linked-hover");
+    // A glow, never a colour: a mark keeps its own fill and stroke, which carry the chart's encoding.
+    s.textContent = `.${LINKED_HOVER_CLASS}{filter:drop-shadow(0 0 2px var(--bic-linked-hover,rgba(0,0,0,.65))) drop-shadow(0 0 1px var(--bic-linked-hover,rgba(0,0,0,.65)))}`;
+    doc.head.appendChild(s);
 }
 
 /** The source row behind each payload row, from a payload of { columns, rows: unknown[][] }. */
@@ -389,6 +514,38 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         paint();
     });
 
+    // LINKED HOVER: this chart's hovered mark sets the filter's hovered key; any hovered key lights this chart's marks.
+    const el = opts.container ?? null;
+    let offHoverDom = () => {};
+    let offHover = () => {};
+    if (filter.hoverEnabled && el) {
+        ensureHoverStyle(el.ownerDocument);
+        const markRow = (t: EventTarget | null): number | null => {
+            const m = (t as Element | null)?.closest?.(".d3-mark[data-row-idx]");
+            const v = m ? parseInt((m.getAttribute("data-row-idx") ?? "").split(",")[0], 10) : NaN;
+            return Number.isFinite(v) ? v : null;
+        };
+        const over = (e: Event) => {
+            const i = markRow(e.target);
+            const r = i === null ? null : opts.rowAt(i);
+            if (r) filter.setHover(keyOfRow(r, filter.columns));
+        };
+        const leave = () => filter.setHover(null);
+        el.addEventListener("mouseover", over);
+        el.addEventListener("mouseleave", leave);
+        offHoverDom = () => { el.removeEventListener("mouseover", over); el.removeEventListener("mouseleave", leave); };
+        const paintHover = (k: FilterKey | null) => {
+            const want = k ? keyString(k) : null;
+            el.querySelectorAll(".d3-mark[data-row-idx]").forEach(m => {
+                const idx = parseInt((m.getAttribute("data-row-idx") ?? "").split(",")[0], 10);
+                const r = Number.isFinite(idx) ? opts.rowAt(idx) : null;
+                const on = !!want && !!r && keyString(keyOfRow(r, filter.columns)) === want;
+                m.classList.toggle(LINKED_HOVER_CLASS, on);
+            });
+        };
+        offHover = filter.onHover(paintHover);
+    }
+
     return {
         reconcile() {
             if (filter.active && opts.rowCount() > 0 && isMine()) {
@@ -410,6 +567,8 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         detach() {
             offHost();
             offFilter();
+            offHoverDom();
+            offHover();
             const o = owners.get(filter);
             if (o && o.token === token) owners.set(filter, { ...o, orphan: true });
         },

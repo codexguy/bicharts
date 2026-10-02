@@ -7,6 +7,7 @@
 // Their own entry, not the package's main one, so a host that only draws charts (the Power BI visual, the Excel
 // add-in) never loads them: the main entry's eager closure is budgeted (scripts/checkEagerSize.mjs).
 
+export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
 export { createFilter, createFilterScope, bindFilter, payloadRowReader, fromVegaInteraction,
     type Filter, type FilterScope, type FilterOptions, type FilterKey, type FilterChangeReason,
     type FilterBinding, type BindFilterOptions, type VegaInteractionEvent } from "./filterScope";

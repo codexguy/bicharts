@@ -27,13 +27,14 @@ import type { ResolveOptionsInput } from "./defaults";
 import type { GeoPointBinding } from "./payload";
 import { geoFromCache, loadGeo } from "./geoLazy";
 import { createChartGroup, syncMemberSelection, toSourceRows, type ChartGroup, type ChartGroupSelection } from "./group";
-import { bindFilter, createFilter, createFilterScope, payloadRowReader,
+import { bindFilter, createFilter, createFilterScope, payloadRowReader, viewToken, viewFromToken, type PageView,
          type Filter, type FilterBinding, type FilterOptions, type FilterScope } from "./filterScope";
 
 export { assembleD3 } from "./host";
 import { attachControls, createControls, type Controls, type ControlsAttachment } from "./controls";
 export { createControls, type Controls, type ControlInfo } from "./controls";
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
+export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
 export { createFilter, createFilterScope, fromVegaInteraction,
          type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
 
@@ -346,6 +347,7 @@ export function BicChart(props: BicChartProps) {
         if (!host || !selects) return;
         const payloadRows = payloadRowReader(() => dataRef.current as any);
         const b = bindFilter(host, selects, {
+            container: ref.current,
             rowAt(i) {
                 const g = groupRef.current, map = rowMapRef.current;
                 if (g && map) {
@@ -481,12 +483,84 @@ export function useBicFilter(columns: string | readonly string[], opts?: FilterO
  * and `summary`, `set(saved)` to apply a saved scenario, `reset()` for the defaults. Re-renders the
  * component on every change. `initial` seeds the values the chart first draws with.
  */
-export function useBicControls(initial?: Readonly<Record<string, unknown>>): Controls {
+export function useBicControls(initial?: Readonly<Record<string, unknown>>, opts?: { id?: string }): Controls {
+    const scope = useContext(PageCtx);
     const ref = useRef<Controls | null>(null);
     if (!ref.current) ref.current = createControls(initial);
     const c = ref.current;
+    // Registered with the page, so a saved view (useBicView, useBicUrlState) carries the chart's controls too.
+    useEffect(() => scope.addControls(opts?.id ?? "controls", c), [scope, c, opts?.id]);
     useSyncExternalStore(cb => c.onChange(() => cb()), () => c.version, () => c.version);
     return c;
+}
+
+/**
+ * THE PAGE'S VIEW, SAVED AND PUT BACK: every page filter's keys and every chart's controls (useBicControls). `save()`
+ * returns a JSON-safe view to store (a saved view, a user preference); `restore(view)` puts one back; `token()` /
+ * `restoreToken(t)` do the same as a URL-safe string for a link.
+ */
+export function useBicView(): { save: () => PageView; restore: (v: PageView | null | undefined) => void;
+                                token: () => string; restoreToken: (t: string | null | undefined) => void } {
+    const scope = useContext(PageCtx);
+    return useMemo(() => ({
+        save: () => scope.save(),
+        restore: (v: PageView | null | undefined) => scope.restore(v),
+        token: () => viewToken(scope.save()),
+        restoreToken: (t: string | null | undefined) => scope.restore(viewFromToken(t)),
+    }), [scope]);
+}
+
+/**
+ * THE VIEW IN THE ADDRESS BAR (opt-in): restores the page's filters and controls from `?<param>=` on mount, then keeps
+ * the parameter current as they change (history.replaceState - no navigation, no new history entries). A copied link
+ * opens the page as it was. Call once, in the page component, after its useBicFilter / useBicControls calls.
+ */
+export function useBicUrlState(param = "view"): void {
+    const scope = useContext(PageCtx);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const url = new URL(window.location.href);
+        scope.restore(viewFromToken(url.searchParams.get(param)));
+        return scope.onChange(() => {
+            const u = new URL(window.location.href);
+            const view = scope.save();
+            const empty = !view.filters && !view.controls;
+            if (empty) u.searchParams.delete(param); else u.searchParams.set(param, viewToken(view));
+            if (u.href !== window.location.href) window.history.replaceState(window.history.state, "", u.href);
+        });
+    }, [scope, param]);
+}
+
+/**
+ * A DEVELOPER'S VIEW OF THE PAGE'S STATE: every filter (its keys, its text, the last change and why), every chart's
+ * controls, and the last changes in order. Collapsed in a corner; render it only in development.
+ */
+export function BicDevtools({ max = 20 }: { max?: number }) {
+    const scope = useContext(PageCtx);
+    const [, tick] = useState(0);
+    const log = useRef<string[]>([]);
+    useEffect(() => scope.onChange(() => {
+        const at = new Date().toLocaleTimeString();
+        const changed = scope.filters.map(f => `${f.label}: ${f.active ? f.text : "(none)"}${f.reason ? ` [${f.reason}]` : ""}`);
+        log.current = [`${at}  ${changed.join(" | ")}`, ...log.current].slice(0, max);
+        tick(t => t + 1);
+    }), [scope, max]);
+    const box: React.CSSProperties = { position: "fixed", right: 8, bottom: 8, zIndex: 2147483000, maxWidth: 420,
+        maxHeight: "50vh", overflow: "auto", font: "12px/1.4 ui-monospace, monospace", background: "Canvas",
+        color: "CanvasText", border: "1px solid GrayText", borderRadius: 6, padding: 6, opacity: 0.95 };
+    return (
+        <details className="bic-devtools" style={box}>
+            <summary style={{ cursor: "pointer" }}>chart-host: {scope.active.length} filter(s) active</summary>
+            {scope.filters.map(f => (
+                <div key={f.id}>
+                    <b>{f.label}</b> [{f.key}] {f.active ? JSON.stringify(f.keys) : "(none)"} {f.text && `"${f.text}"`}
+                    {f.reason ? ` - last: ${f.reason}` : ""} v{f.version}
+                </div>
+            ))}
+            {[...scope.controls].map(([k, c]) => <div key={k}><b>controls</b> [{k}] {c.summary || JSON.stringify(c.values)}</div>)}
+            <div style={{ marginTop: 4, opacity: 0.8 }}>{log.current.map((l, i) => <div key={i}>{l}</div>)}</div>
+        </details>
+    );
 }
 
 /** Every filter on the page (or the enclosing <BicPage>), and its clear-all - for a page's own chip bar or count. */
