@@ -374,6 +374,63 @@ describe("svgInkReach", () => {
         expect(svgInkReach(svgWith({ left: 0, top: 0, right: 0, bottom: 0 }, []))).toBeNull();
         expect(svgInkReach(svgWith({ left: 0, top: 0, right: 600, bottom: 400 }, []))).toBeNull();
     });
+
+    /*
+        INK A CLIP-PATH HIDES IS NOT INK. A world flow map clipped its routes to a 362px frame;
+        their boxes still reached 377 (getBoundingClientRect ignores clip-path), the frame grew
+        15px, and the page's panel scrolled both ways over a map that drew nothing there.
+    */
+    function clippedSvg(frame: Rect, clipBox: { x: number; y: number; width: number; height: number },
+                        marks: Rect[], opts: { units?: string; onGroup?: boolean } = {}): SVGSVGElement {
+        const NS = "http://www.w3.org/2000/svg";
+        const s = doc.createElementNS(NS, "svg") as any;
+        s.getBoundingClientRect = () => asRect(frame);
+        const defs = doc.createElementNS(NS, "defs");
+        const cp = doc.createElementNS(NS, "clipPath");
+        cp.setAttribute("id", "geoclip");
+        if (opts.units) cp.setAttribute("clipPathUnits", opts.units);
+        const cr = doc.createElementNS(NS, "rect") as any;
+        cr.getBBox = () => clipBox;
+        cp.appendChild(cr);
+        defs.appendChild(cp);
+        s.appendChild(defs);
+        const ctm = () => ({ a: 1, b: 0, c: 0, d: 1, e: frame.left, f: frame.top });
+        const g = doc.createElementNS(NS, "g") as any;
+        g.getScreenCTM = ctm;
+        if (opts.onGroup !== false) g.setAttribute("clip-path", "url(#geoclip)");
+        s.appendChild(g);
+        for (const m of marks) {
+            const p = doc.createElementNS(NS, "path") as any;
+            p.setAttribute("class", "d3-mark");
+            p.getBoundingClientRect = () => asRect(m);
+            p.getScreenCTM = ctm;
+            if (opts.onGroup === false) p.setAttribute("clip-path", "url(#geoclip)");
+            g.appendChild(p);
+        }
+        return s as SVGSVGElement;
+    }
+
+    it("stops at the clip's window when an ancestor group clips the marks", () => {
+        const s = clippedSvg({ left: 0, top: 0, right: 840, bottom: 362 }, { x: 0, y: 0, width: 700, height: 362 },
+                             [{ left: 500, top: 200, right: 690, bottom: 377 },
+                              { left: 300, top: 335, right: 420, bottom: 377 }]);
+        const ink = svgInkReach(s)!;
+        expect(ink.bottom).toBe(362);
+        expect(ink.right).toBe(690);
+    });
+
+    it("honours a clip-path on the mark itself, and skips a mark the clip hides entirely", () => {
+        const s = clippedSvg({ left: 0, top: 0, right: 840, bottom: 362 }, { x: 0, y: 0, width: 700, height: 340 },
+                             [{ left: 10, top: 200, right: 200, bottom: 300 },
+                              { left: 10, top: 345, right: 200, bottom: 377 }], { onGroup: false });
+        expect(svgInkReach(s)!.bottom).toBe(300);
+    });
+
+    it("leaves objectBoundingBox clips alone - the old answer, never a narrower guess", () => {
+        const s = clippedSvg({ left: 0, top: 0, right: 840, bottom: 362 }, { x: 0, y: 0, width: 1, height: 1 },
+                             [{ left: 10, top: 200, right: 200, bottom: 377 }], { units: "objectBoundingBox" });
+        expect(svgInkReach(s)!.bottom).toBe(377);
+    });
 });
 
 // ---------------------------------------------------------------- the shared entry point
