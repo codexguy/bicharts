@@ -88,6 +88,9 @@ export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, e
 export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
 // READERS' NOTES -> BADGES (2026-10-02): notes stored by a mark's key, shown on that mark.
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
+// IN-CHART CONTROLS AS PAGE STATE (2026-10-02): a chart's own sliders read by the host after every
+// render - values from the first draw, the chart's label and readout - and set from a saved scenario.
+export { createControls, attachControls, readControls, type Controls, type ControlInfo, type ControlsAttachment } from "./controls";
 // THE CROSS-FILTER GROUP (2026-09-24): several charts over one source table and one selection,
 // with the payload-row -> source-row translation owned here. <BicChartGroup> in "./react" is a
 // wrapper over it; a host without React calls it directly.
