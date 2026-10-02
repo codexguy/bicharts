@@ -615,6 +615,10 @@ export class IndexedText implements IValueCollection {
     // armed for and the alias. `headerName` is false when the same code ALSO reads the column's
     // live name, so the one positional CSV header slot keeps the live name.
     private _englishAliases: Map<number, { name: string; alias: string; headerName: boolean }> = new Map();
+    // Columns whose dimension role the CALLER stated (see declareDimensions). Keyed by the column
+    // object, not its name or position: setColumns may rename a column (the doubled-prefix
+    // collapse) and a later setColumns brings new objects, which are rightly not declared.
+    private _declaredDimensions: WeakSet<LLMColumnWithValue> = new WeakSet();
 
     /**
      * Collapse value-identical rows on addRow. DEFAULT TRUE — the long-standing behaviour,
@@ -664,6 +668,20 @@ export class IndexedText implements IValueCollection {
 
     public getColumns(): LLMColumnWithValue[] {
         return this._cols;
+    }
+
+    /**
+     * Mark columns as dimensions BY DECLARATION, so measure inference in getColumnsWithStats
+     * never promotes them. Pass the same objects given to setColumns, before the stats pass.
+     *
+     * A column arriving isMeasure=false says nothing on its own: a host that drops a whole table
+     * into one binding hands its quantities over the same way, and inference exists to catch
+     * those. A caller that NAMES a column a dimension has said something the values cannot
+     * overrule - latitude in a lanes table is continuous and still not a quantity. ingest()
+     * calls this for its `dimensions` option; a host that never calls it is unaffected.
+     */
+    public declareDimensions(cols: Iterable<LLMColumnWithValue>): void {
+        for (const c of cols) if (c) this._declaredDimensions.add(c);
     }
 
     /**
@@ -849,7 +867,15 @@ export class IndexedText implements IValueCollection {
             // returns Ordinal for Year/Day/small level-scales and Categorical for id-like, so only
             // genuine quantities flip. isMeasure is NOT part of the schema hash (name+dataType only),
             // so existing cached charts are undisturbed — this only sharpens NEW generations.
-            if (!col.isMeasure && (col.dataType === "Integer" || col.dataType === "Decimal")) {
+            //
+            // It fills a GAP in the caller's roles and never overrules one. It was written for
+            // a host whose only role signal is a binding, and it ran after ingest() had applied
+            // a caller's explicit `dimensions` - so it overrode them: in a lanes table with every
+            // coordinate declared a dimension, the 40-valued destination latitude/longitude came
+            // back measures while the 12-valued origin ones did not, and a flow chart sized its
+            // arcs by a latitude. A column the caller declared (declareDimensions) is skipped.
+            if (!col.isMeasure && !this._declaredDimensions.has(col)
+                && (col.dataType === "Integer" || col.dataType === "Decimal")) {
                 const nature = classifyNumericValueNature({
                     dataType: col.dataType, isMeasure: false, name: col.name,
                     distinct: vals.size, nonblank, prec, maxval: typeof maxval === "number" ? maxval : 0, minval: typeof minval === "number" ? minval : 0,

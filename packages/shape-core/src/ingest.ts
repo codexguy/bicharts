@@ -268,6 +268,11 @@ function buildProfile(
     const index = new IndexedText();
     index.dedupRows = opts.dedup !== false;      // default true
     index.setColumns(cols);
+    // The caller's `dimensions` hold through the stats pass too. Without this the engine's
+    // measure inference, which runs after the ladder above, promoted any of them whose values
+    // read as continuous - the override that "wins" lost to the last resort. Matched on the
+    // descriptor's name: setColumns may already have collapsed the column's own.
+    index.declareDimensions(cols.filter((_, c) => forceD.has(descriptors[c].name.toLowerCase())));
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         index.addRow(Array.from({ length: n }, (_, c) => convert(r?.[c], types[c], decimals[c])), i);

@@ -139,6 +139,68 @@ describe("precedence ladder: caller override > host metadata > inference", () =>
     });
 });
 
+// A shipping-lanes table: every lane names both ends by country, code and coordinates, and
+// carries one quantity. 12 origins and 40 destinations, so the destination coordinates take
+// 40 distinct values each - enough for the engine's numeric classifier to call them
+// Continuous - while the origin coordinates, at 12, are not.
+function lanes(): { header: string[]; rows: any[][] } {
+    const header = [
+        "OriginCountry", "OriginCountryCode", "OriginLatitude", "OriginLongitude",
+        "DestinationCountry", "DestinationCountryCode", "DestinationLatitude", "DestinationLongitude",
+        "UnitsShipped",
+    ];
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const rows: any[][] = [];
+    for (let o = 0; o < 12; o++) {
+        for (let d = 0; d < 40; d++) {
+            if ((o * 7 + d) % 5 === 0) continue;                  // not every pair trades
+            rows.push([
+                `Origin ${o}`, `O${o}`, r2(-35 + o * 6.41), r2(-110 + o * 19.3),
+                `Destination ${d}`, `D${d}`, r2(-40 + d * 2.137), r2(-120 + d * 6.113),
+                1000 + ((o * 40 + d) * 7919) % 900000,
+            ]);
+        }
+    }
+    return { header, rows };
+}
+
+describe("a caller-declared dimension is never promoted to a measure", () => {
+    const DIMS = [
+        "OriginCountry", "OriginCountryCode", "OriginLatitude", "OriginLongitude",
+        "DestinationCountry", "DestinationCountryCode", "DestinationLatitude", "DestinationLongitude",
+    ];
+
+    it("every column named in `dimensions` comes back a dimension, however continuous its values", () => {
+        // The engine's measure inference runs AFTER the role ladder and used to overrule it:
+        // the destination coordinates (40 distinct values) came back measures while the origin
+        // ones (12) stayed dimensions, and a flow chart downstream sized its arcs by a latitude.
+        const { header, rows } = lanes();
+        const res = ingest({ kind: "grid", header, rows }, { dimensions: DIMS });
+        for (const name of DIMS) {
+            expect(byName(res, name).isMeasure, `${name} was declared a dimension`).toBe(false);
+        }
+        expect(byName(res, "UnitsShipped").isMeasure).toBe(true);
+    });
+
+    it("the engine still promotes the same continuous numeric when nobody declared its role", () => {
+        // The inference exists for a host that hands every column over in one non-measure
+        // binding. Nothing declared, so the classifier's Continuous still makes it a measure -
+        // and this is what proves the case above is a real one: the same values ARE promoted.
+        const { header, rows } = lanes();
+        const idx = new IndexedText();
+        const types = ["String", "String", "Decimal", "Decimal", "String", "String", "Decimal", "Decimal", "Integer"];
+        idx.setColumns(header.map((name, c) => ({ name, dataType: types[c], isMeasure: false })));
+        rows.forEach((r, i) => idx.addRow(r, i));
+        const shape = idx.getColumnsWithStats("20");
+        const col = (n: string) => shape.find(c => c.name === n)!;
+        expect(col("DestinationLatitude").isMeasure).toBe(true);
+        expect(col("DestinationLongitude").isMeasure).toBe(true);
+        expect(col("UnitsShipped").isMeasure).toBe(true);
+        // Too few distinct values to read as a quantity: left alone, declared or not.
+        expect(col("OriginLatitude").isMeasure).toBe(false);
+    });
+});
+
 describe("dedup", () => {
     const DUPES: any[][] = [["a", "1"], ["a", "1"], ["b", "2"]];
 
