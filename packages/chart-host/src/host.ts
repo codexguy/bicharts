@@ -878,9 +878,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 warnedIds = true;
                 try {
                     (win?.console ?? console)?.warn(
-                        `[@bicharts/chart-host] this chart named ${r.collisions.length} id(s) another element on the ` +
-                        `page already uses (${r.collisions.slice(0, 5).join(", ")}). They were scoped to this chart, ` +
-                        `so its clip paths and gradients resolve to its own definitions.`);
+                        `[@bicharts/chart-host] ids shared with another chart, scoped: ${r.collisions.slice(0, 5).join(", ")}`);
                 } catch { /* advisory only */ }
             }
             config.onIdScope?.(r);

@@ -22,7 +22,20 @@ import {
     SEASONAL_MARKERS_DEFAULT,
     MAX_MAP_POINTS_DEFAULT,
 } from "./contract";
+import { toRGBA, compositeOver, relativeLuminance } from "./labelContrast";
+
 import { resolveAutoColorScale } from "./autoRamp";
+
+// A DARK CANVAS GETS A DARK LANDMASS. A map's land and no-data regions default to a light grey in the chart itself,
+// which is right on a light page and a glaring white world on a dark one; only a host that names geoLandColor (the
+// Power BI visual) avoided it. When the host names none and the canvas is dark, the land is the theme's ink laid
+// over the canvas at 18% - the same relation the light default has to a white page. A light canvas is left alone.
+function themedLand(p: { geoLandColor?: string; backgroundColor?: string; themeFg?: string }): string | undefined {
+    const bg = p.geoLandColor ? null : toRGBA(p.backgroundColor);
+    if (!bg || bg[3] < 1 || relativeLuminance([bg[0], bg[1], bg[2]]) > 0.2) return undefined;
+    const fg = toRGBA(p.themeFg) ?? [255, 255, 255, 1];
+    return "#" + compositeOver([fg[0], fg[1], fg[2], 0.18], [bg[0], bg[1], bg[2]]).map(v => v.toString(16).padStart(2, "0")).join("");
+}
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
 export type ResolveOptionsInput = { [K in keyof RenderOptions]?: any };
@@ -102,7 +115,7 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // Map fills: `raw || undefined` like the colour-scale endpoints. The no-data ->
         // land cascade is left to the chart (so the fallback chain is visible in the
         // generated code); HC substitution has already happened in the caller.
-        geoLandColor: p.geoLandColor || undefined,
+        geoLandColor: p.geoLandColor || themedLand(p) || undefined,
         geoNoDataColor: p.geoNoDataColor || undefined,
         aggregation: (p.aggregation == null ? "" : String(p.aggregation)) || undefined,
         // A recognised value wins, anything else falls to the default: an unknown string must
