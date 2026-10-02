@@ -37,6 +37,7 @@ import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
 import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
+import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
 
@@ -215,6 +216,11 @@ export interface ChartHostConfig {
     labelContrast?: boolean | LabelContrastOptions;
     /** What the label-contrast pass did after each render - counts, so a host can log them. */
     onLabelContrast?: (report: LabelContrastReport) => void;
+    /**
+     * What the id-scoping pass did after each render: how many of the chart's ids got this host's suffix, and which
+     * of them also existed elsewhere in the page (a clash it prevented - two same-size charts naming one clip path).
+     */
+    onIdScope?: (report: IdScopeReport) => void;
     /**
      * THE CHART SAID THE DATA LACKS SOMETHING IT IS BUILT ON. Generated code has one sanctioned
      * hard stop at runtime: a column the chart needs is gone from `data.columns`, and it throws
@@ -592,6 +598,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let destroyed = false;
     let warnedGeo = false;
     let warnedBlank = false;   // once per host: a repainting chart must not spam the console
+    let warnedIds = false;     // the same, for an id clash the scoping pass prevented
+    const idScope = newIdScope();
     // WHICH RENDER IS THE CURRENT ONE. A synchronous chart cannot overlap with itself, but an
     // async one can: setOptions/setData during a slow draw starts a second render while the
     // first is still in flight, and without a way to tell them apart the FIRST one's post-render
@@ -861,6 +869,22 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // synchronous one gets, and the only way to guarantee that as passes are added is for both
     // lanes to call the same function rather than each keep a copy that drifts.
     const runPostRenderPasses = () => {
+        // ONE PAGE, ONE ID SPACE - first, before any pass reads the DOM. The chart's clip paths and gradients get this
+        // host's suffix and its url(#...) references follow, so a second chart of the same size can't be clipped by
+        // the first one's rectangle. A clash it prevented is said once, in the console, where a developer looks.
+        try {
+            const r = scopeChartIds(container, idScope);
+            if (r.collisions.length && !warnedIds) {
+                warnedIds = true;
+                try {
+                    (win?.console ?? console)?.warn(
+                        `[@bicharts/chart-host] this chart named ${r.collisions.length} id(s) another element on the ` +
+                        `page already uses (${r.collisions.slice(0, 5).join(", ")}). They were scoped to this chart, ` +
+                        `so its clip paths and gradients resolve to its own definitions.`);
+                } catch { /* advisory only */ }
+            }
+            config.onIdScope?.(r);
+        } catch { /* a scoping pass must never break a render that already succeeded */ }
         // CAN THE LABELS ON THE MARKS BE READ? First of the post-render passes, and BEFORE
         // the hit-target heal on purpose: that heal injects fill:'transparent' rects over
         // tagged groups, and although this pass treats alpha-0 as "not a backdrop", the

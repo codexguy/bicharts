@@ -246,6 +246,9 @@ export {
     applyLabelContrast, LABEL_CONTRAST_DONE_ATTR, LABEL_CONTRAST_CAP, LABEL_PILL_CLASS,
     type LabelContrastOptions, type LabelContrastReport,
 } from "./labelContrastDom";
+// Every chart's ids are scoped to its host after each render, so same-size charts on one page never share a clip
+// path; the pass is exported for a host that draws outside createChartHost.
+export { scopeChartIds, newIdScope, type IdScopeReport } from "./idScope";
 export {
     decideLabelColor, toRGBA, compositeOver, relativeLuminance, contrastRatio,
     isPillBackdropAlpha, pillBacksGlyph, backingHoldsGlyph, cellSuppressesNormalize, glyphSampleGrid,
