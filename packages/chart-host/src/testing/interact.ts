@@ -25,7 +25,7 @@ export function marksOf(chart: ParentNode): Element[] {
 
 /**
  * The mark drawing payload row `rowIdx` - or, given a predicate, the first mark it accepts (e.g.
- * `m => m.getAttribute("data-code") === "AUS"` for a chart that labels its marks).
+ * `m => m.getAttribute("data-code") === "JPN"` for a chart that labels its marks).
  */
 export function findMark(chart: ParentNode, which: number | ((mark: Element) => boolean)): Element | null {
     const marks = marksOf(chart);

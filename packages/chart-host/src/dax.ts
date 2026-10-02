@@ -5,8 +5,8 @@
 // unescaped). Microsoft's own data app skills build the same thing as CALCULATETABLE + TREATAS,
 // so this does exactly that, with the escaping done once:
 //
-//   const q = calculateTable(BASE, treatAs(country, "'DimCountry'[CountryCode]"));
-//   // no country picked -> BASE unchanged; picked -> CALCULATETABLE(BASE, TREATAS({"AUS"}, 'DimCountry'[CountryCode]))
+//   const q = calculateTable(BASE, treatAs(region, "'Geography'[RegionCode]"));
+//   // nothing picked -> BASE unchanged; picked -> CALCULATETABLE(BASE, TREATAS({"JPN"}, 'Geography'[RegionCode]))
 //
 // A filter keyed by several columns names a column reference for each, in the filter's order.
 
@@ -39,7 +39,7 @@ export function daxLiteral(v: unknown): string {
  */
 export function treatAs(selection: Filter | readonly (FilterKey | unknown)[] | null | undefined,
                         ...columnRefs: string[]): string | null {
-    if (!columnRefs.length) throw new Error("treatAs: name the model column, e.g. treatAs(country, \"'DimCountry'[CountryCode]\")");
+    if (!columnRefs.length) throw new Error("treatAs: name the model column, e.g. treatAs(region, \"'Geography'[RegionCode]\")");
     for (const c of columnRefs) {
         if (!COLUMN_REF.test(c.trim())) throw new Error(`treatAs: "${c}" isn't a column reference like 'Table'[Column]`);
     }
@@ -70,7 +70,7 @@ export function calculateTable(table: string, ...filters: Array<string | null | 
  * the table expression goes inside CALCULATETABLE with the filters, DEFINE and ORDER BY stay where they are. With no
  * live filter the query comes back unchanged. One EVALUATE only (throws on more).
  *
- *   filterQuery(PROJECTION_DAX, treatAs(country, "DimCountry[CountryCode]"))
+ *   filterQuery(FORECAST_DAX, treatAs(region, "Geography[RegionCode]"))
  */
 export function filterQuery(query: string, ...filters: Array<string | null | undefined | false>): string {
     const live = filters.filter((f): f is string => typeof f === "string" && f.trim().length > 0);

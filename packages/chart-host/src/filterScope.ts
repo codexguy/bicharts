@@ -2,7 +2,7 @@
 //
 // A data app's page does one thing with a chart click more than any other: it remembers WHAT was
 // picked (a country, a route) and lets the rest of the page follow - another chart's rows, a
-// query, a "Filtered to Australia - clear" button, a notes dialog. Left to the app, that wiring
+// query, a "Filtered to Japan - clear" button, a notes dialog. Left to the app, that wiring
 // went wrong in every app an agent built (five of five, in different places): an empty selection
 // ignored, so a second click never un-filtered; a page Clear that left the chart's marks lit; a
 // re-query that dropped the chart's selection while the page still showed it.
@@ -37,7 +37,7 @@ export interface FilterOptions {
     label?: string;
     /**
      * The column(s) a chip shows for a selected key, read from the selected rows ("Country" for a
-     * CountryCode key; ["OriginCountry", "DestinationCountry"] for a route, joined " → ").
+     * RegionCode key; ["OriginName", "DestinationName"] for a route, joined " → ").
      * Defaults to the key columns.
      */
     display?: string | readonly string[];
@@ -138,7 +138,7 @@ let nextId = 0;
 export function createFilter(columns: string | readonly string[], opts: FilterOptions = {}): Filter {
     const cols = (Array.isArray(columns) ? columns.slice() : [columns as string]) as string[];
     if (!cols.length || cols.some(c => typeof c !== "string" || !c)) {
-        throw new Error("createFilter: name the key column(s), e.g. createFilter(\"CountryCode\")");
+        throw new Error("createFilter: name the key column(s), e.g. createFilter(\"RegionCode\")");
     }
     const display = opts.display == null ? cols : (Array.isArray(opts.display) ? opts.display.slice() : [opts.display as string]);
     let keys: FilterKey[] = [];

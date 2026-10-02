@@ -20,7 +20,7 @@ export interface MarkNoteLike {
 }
 
 export interface NoteBadgeOptions<N> {
-    /** The chart's key column(s) the note keys live in: "CountryCode", or a route's two ends. */
+    /** The chart's key column(s) the note keys live in: "RegionCode", or a route's two ends. */
     columns: string | readonly string[];
     /** Only notes whose `chart` is this (one notes table serving several charts). */
     chart?: string;

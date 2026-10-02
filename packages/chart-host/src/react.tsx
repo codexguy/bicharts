@@ -93,7 +93,7 @@ export interface BicChartProps {
      */
     respondsWith?: "filter" | "highlight";
     /**
-     * THE PAGE FILTER THIS CHART SELECTS - from useBicFilter("CountryCode"). A click sets it, the
+     * THE PAGE FILTER THIS CHART SELECTS - from useBicFilter("RegionCode"). A click sets it, the
      * same click or a click on empty canvas clears it, and the filter's state is painted onto the
      * marks whoever changed it: `filter.clear()` from a page button clears the marks too. New data
      * keeps a selection whose key is still drawn and clears (reason "data") one whose key is gone.
@@ -103,7 +103,7 @@ export interface BicChartProps {
     selects?: Filter;
     /**
      * THE CHART'S OWN CONTROLS AS PAGE STATE - from useBicControls(). For a chart that draws
-     * sliders (the What-if projection's growth rate and horizon): `controls.values` holds every
+     * sliders (the What-if projection's rate and horizon): `controls.values` holds every
      * knob's value from the first draw (no slider has to move first), `controls.info` / `summary`
      * the chart's own label and readout for each ("growth per year +5.5%"), `controls.set(saved)`
      * applies a saved scenario and `controls.reset()` returns to the defaults. It owns the chart's
@@ -119,7 +119,7 @@ export interface BicChartProps {
     onSelect?: (rowIdxs: number[]) => void;
     /**
      * Notes on marks: a badge on each key's mark, redrawn after every render - e.g.
-     * `[{ column: "CountryCode", value: "USA", label: "2", title: "..." }]`. Keyed by a value in a column,
+     * `[{ column: "RegionCode", value: "JPN", label: "2", title: "..." }]`. Keyed by a value in a column,
      * never a row position, so a filter or a re-query never moves one.
      */
     annotations?: ChartHostConfig["annotations"];
@@ -127,7 +127,7 @@ export interface BicChartProps {
     onAnnotationClick?: ChartHostConfig["onAnnotationClick"];
     className?: string;
     style?: React.CSSProperties;
-    /** What a screen reader announces for the chart ("Revenue per capita vs return rate, by country"). */
+    /** What a screen reader announces for the chart ("Occupancy vs average daily rate, by country"). */
     ariaLabel?: string;
 }
 
@@ -460,8 +460,8 @@ export function BicPage({ children }: { children: ReactNode }) {
 }
 
 /**
- * A page filter keyed by one model column ("CountryCode") or several (a route:
- * ["OriginCountryCode", "DestinationCountryCode"]). Pass it to a chart's `selects` and read
+ * A page filter keyed by one model column ("RegionCode") or several (a route:
+ * ["OriginCode", "DestinationCode"]). Pass it to a chart's `selects` and read
  * `value` / `values` / `row` / `active` for the rest of the page; `clear()` clears it and the
  * chart's marks. Re-renders the component on every change. The key columns are read once.
  */
@@ -506,7 +506,7 @@ export interface BicFilterChipsProps {
 }
 
 /**
- * What the page is filtered by: one chip per active filter ("Country: Australia ×"), a × that
+ * What the page is filtered by: one chip per active filter ("Country: Japan ×"), a × that
  * clears it (and its chart's marks), and "Clear all" when two or more are active. Renders nothing
  * while nothing is filtered. Plain markup with class names to style.
  */
