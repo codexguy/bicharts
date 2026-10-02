@@ -71,6 +71,34 @@ describe("a filter keyed by one column", () => {
     });
 });
 
+describe("display text for any key, and a keep() that can't drop everything silently", () => {
+    it("textOf names a key from rows given, from rows seen, else its values", () => {
+        const f = createFilter("CountryCode", { display: "Country" });
+        const table = [{ CountryCode: "AUS", Country: "Australia" }, { CountryCode: "CHL", Country: "Chile" }];
+        expect(f.textOf("CHL", table)).toBe("Chile");          // a badge's key, no selection needed
+        expect(f.textOf(["NZL"], table)).toBe("NZL");
+        f.selectRows([table[0]]);
+        f.clear();
+        expect(f.textOf("AUS")).toBe("Australia");              // remembered from the click
+        f.set("AUS");
+        expect(f.text).toBe("Australia");                       // set by value, named from what it has seen
+    });
+
+    it("keep() on rows without the key column warns once instead of dropping them all unnoticed", () => {
+        const f = createFilter("CountryCode", { label: "Country" });
+        f.set("AUS");
+        const warn = console.warn;
+        const seen: string[] = [];
+        console.warn = (m: string) => { seen.push(m); };
+        try {
+            expect(f.keep([{ Year: 2024 }, { Year: 2025 }])).toEqual([]);
+            f.keep([{ Year: 2026 }]);
+        } finally { console.warn = warn; }
+        expect(seen).toHaveLength(1);
+        expect(seen[0]).toMatch(/no CountryCode column.*filterQuery/);
+    });
+});
+
 describe("a filter keyed by several columns (a route)", () => {
     it("matches the whole key, and shows both ends", () => {
         const f = createFilter(["OriginCountryCode", "DestinationCountryCode"],

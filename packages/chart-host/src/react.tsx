@@ -127,6 +127,8 @@ export interface BicChartProps {
     onAnnotationClick?: ChartHostConfig["onAnnotationClick"];
     className?: string;
     style?: React.CSSProperties;
+    /** What a screen reader announces for the chart ("Revenue per capita vs return rate, by country"). */
+    ariaLabel?: string;
 }
 
 // ── Group coordination ──────────────────────────────────────────────────────
@@ -202,7 +204,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
-            className, style, selects, controls } = props;
+            className, style, selects, controls, ariaLabel } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -430,7 +432,8 @@ export function BicChart(props: BicChartProps) {
     }, [ctx?.selection, id, ctx, highlightMode, incoming && incoming.join(","), selects]);
 
     // No children: the chart owns this element's contents.
-    return <div ref={ref} className={className} style={style} />;
+    return <div ref={ref} className={className} style={style}
+                role={ariaLabel ? "figure" : undefined} aria-label={ariaLabel || undefined} />;
 }
 
 // ── The page's filters ─────────────────────────────────────────────────────────

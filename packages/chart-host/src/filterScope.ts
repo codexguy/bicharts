@@ -64,6 +64,12 @@ export interface Filter {
     readonly values: readonly unknown[];
     /** What a chip shows: the display column(s) of each selected key, "A → B" within a key, ", " between keys. */
     readonly text: string;
+    /**
+     * The display text for ANY key - a badge's, a key set by value - read from `rows` (a table carrying the display
+     * columns, e.g. the chart's own rows) or else from the rows this filter has seen; the key's values when neither
+     * has it.
+     */
+    textOf(key: FilterKey | unknown, rows?: readonly Record<string, unknown>[]): string;
     /** Why the last change happened (null before any). */
     readonly reason: FilterChangeReason | null;
     /** Bumped on every change: a cheap identity for memoising on the filter's state. */
@@ -165,12 +171,19 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         return ks.filter(k => { const s = keyString(k); if (seen.has(s)) return false; seen.add(s); return true; });
     };
 
-    const displayOf = (k: FilterKey): string => {
-        const s = keyString(k);
-        const row = rows.find(r => keyString(keyOfRow(r, cols)) === s);
-        const parts = row ? display.map(d => row[d]) : k;
-        return parts.filter(p => p != null && p !== "").map(String).join(" → ");
+    // Display text for every row ever handed to the filter (a click, a selectRows), so a chip keeps its name.
+    const seen = new Map<string, Record<string, unknown>>();
+    const remember = (list: readonly Record<string, unknown>[]) => {
+        for (const r of list) seen.set(keyString(keyOfRow(r, cols)), r);
     };
+    const displayOf = (k: FilterKey, more?: readonly Record<string, unknown>[]): string => {
+        const s = keyString(k);
+        const row = (more ?? []).find(r => keyString(keyOfRow(r, cols)) === s) ?? seen.get(s);
+        const parts = row ? display.map(d => row[d]) : k;
+        const text = parts.filter(p => p != null && p !== "").map(String).join(" → ");
+        return text || k.filter(p => p != null && p !== "").map(String).join(" → ");
+    };
+    let warnedKeep = false;
 
     const filter: Filter = {
         id: opts.id ?? `f${++nextId}`,
@@ -182,11 +195,16 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         get row() { return rows[0] ?? null; },
         get value() { return keys.length ? keys[0][0] : null; },
         get values() { return keys.map(k => k[0]); },
-        get text() { return keys.map(displayOf).join(", "); },
+        get text() { return keys.map(k => displayOf(k)).join(", "); },
+        textOf(key, more) {
+            const k = Array.isArray(key) ? key as FilterKey : [key];
+            return displayOf(k.slice(0, cols.length), more);
+        },
         get reason() { return reason; },
         get version() { return version; },
         selectRows(selected, why = "page") {
             const list = (selected ?? []).filter(r => r && typeof r === "object") as Record<string, unknown>[];
+            remember(list);
             commit(dedupe(list.map(r => keyOfRow(r, cols))), list, why);
         },
         set(input, why = "page") {
@@ -210,6 +228,14 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
             const colKey = (on ?? cols).join("\u0001");
             const hit = kept.get(list);
             if (hit && hit.version === version && hit.cols === colKey) return hit.out;
+            const where = on && on.length ? on : cols;
+            // A table that doesn't carry the key column can't be filtered by it: every row would drop, silently. Say
+            // so once - query it with filterQuery instead, or add the key to its query.
+            if (keys.length && list.length && !warnedKeep && !list.some(r => r && where.some(c => c in r))) {
+                warnedKeep = true;
+                try { console.warn(`[chart-host] filter "${filter.label}": these rows have no ${where.join(" / ")} column, `
+                    + `so keep() drops them all - filter their query (filterQuery + treatAs) or add the key column.`); } catch { /* no console */ }
+            }
             const out = keys.length ? list.filter(r => filter.has(r, on)) : list.slice();
             kept.set(list, { version, cols: colKey, out });
             return out;

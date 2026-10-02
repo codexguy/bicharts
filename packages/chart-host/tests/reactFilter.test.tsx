@@ -212,3 +212,13 @@ describe("<BicPage>: a separate scope, for a hook called inside it", () => {
         expect(el.querySelector(".chips-b")?.textContent).toBe("");
     });
 });
+
+describe("a chart can be named for a screen reader", () => {
+    it("ariaLabel makes the chart a labelled figure", async () => {
+        await act(async () => { root.render(createElement(BicChart, { code: PROBE, data: { columns: COLUMNS, rows: [["AUS", "Australia", 1]] } as any,
+            d3: D3, className: "fig", labelContrast: false, ariaLabel: "Revenue by country" })); });
+        const fig = chart("fig");
+        expect(fig.getAttribute("role")).toBe("figure");
+        expect(fig.getAttribute("aria-label")).toBe("Revenue by country");
+    });
+});
