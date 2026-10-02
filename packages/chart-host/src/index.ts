@@ -86,6 +86,8 @@ export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, e
     type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
 // NOTES ON MARKS: badges the host draws on a key's mark after every render (ChartHostConfig.annotations).
 export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
+// READERS' NOTES -> BADGES (2026-10-02): notes stored by a mark's key, shown on that mark.
+export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
 // THE CROSS-FILTER GROUP (2026-09-24): several charts over one source table and one selection,
 // with the payload-row -> source-row translation owned here. <BicChartGroup> in "./react" is a
 // wrapper over it; a host without React calls it directly.

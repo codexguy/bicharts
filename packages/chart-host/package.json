@@ -39,6 +39,11 @@
       "import": "./dist/geo-us-zip3.mjs",
       "default": "./dist/geo-us-zip3.mjs"
     },
+    "./dax": {
+      "types": "./dist/types/dax.d.ts",
+      "import": "./dist/dax.mjs",
+      "default": "./dist/dax.mjs"
+    },
     "./testing": {
       "types": "./dist/types/testing/index.d.ts",
       "import": "./dist/testing.mjs",

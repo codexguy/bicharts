@@ -70,6 +70,9 @@ const result = await build({
         // The host-service conformance checks, for a host's own test project. Its own entry so
         // nothing a runtime entry imports can reach it.
         testing: join(here, "src/testing/index.ts"),
+        // A page filter into a DAX query (TREATAS / CALCULATETABLE): its own entry, as only a
+        // semantic-model app wants it.
+        dax: join(here, "src/dax.ts"),
     },
     bundle: true,
     splitting: true,

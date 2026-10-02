@@ -31,6 +31,8 @@ import { bindFilter, createFilter, createFilterScope, payloadRowReader,
          type Filter, type FilterBinding, type FilterOptions, type FilterScope } from "./filterScope";
 
 export { assembleD3 } from "./host";
+import { attachControls, createControls, type Controls, type ControlsAttachment } from "./controls";
+export { createControls, type Controls, type ControlInfo } from "./controls";
 export { createFilter, createFilterScope, fromVegaInteraction,
          type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
 
@@ -99,6 +101,15 @@ export interface BicChartProps {
      * `selects`, the filter owns what this chart shows as selected.
      */
     selects?: Filter;
+    /**
+     * THE CHART'S OWN CONTROLS AS PAGE STATE - from useBicControls(). For a chart that draws
+     * sliders (the What-if projection's growth rate and horizon): `controls.values` holds every
+     * knob's value from the first draw (no slider has to move first), `controls.info` / `summary`
+     * the chart's own label and readout for each ("growth per year +5.5%"), `controls.set(saved)`
+     * applies a saved scenario and `controls.reset()` returns to the defaults. It owns the chart's
+     * uiState / setUiState.
+     */
+    controls?: Controls;
     /**
      * Selection callback in SOURCE row indices (group) or payload indices (standalone). An empty
      * list means the selection was CLEARED: the same mark clicked again, a click on empty canvas,
@@ -191,7 +202,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
-            className, style, selects } = props;
+            className, style, selects, controls } = props;
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);
@@ -226,6 +237,11 @@ export function BicChart(props: BicChartProps) {
     const groupRef = useRef(group);
     groupRef.current = group;
     const bindingRef = useRef<FilterBinding | null>(null);
+    const controlsRef = useRef<ControlsAttachment | null>(null);
+    const readControlsSoon = () => {
+        const h = hostRef.current, c = controlsRef.current;
+        if (h && c) h.rendered.then(c.read, () => {});
+    };
     // Whether the selection this chart shows now was made by the reader on it (not painted in).
     const userSelectedRef = useRef(false);
     const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
@@ -269,7 +285,10 @@ export function BicChart(props: BicChartProps) {
     useLayoutEffect(() => {
         const el = ref.current;
         if (!el || (!code && !renderFn) || !data) return;
-        const host = createChartHost(el, { code, renderFn, data, options, d3, geoKind, viewState,
+        const ctl = controls ? attachControls(() => hostRef.current, el, controls) : null;
+        controlsRef.current = ctl;
+        const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
+        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState,
                                            labelContrast,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
                                            // A GETTER, not a wrapper: the host decides whether to
@@ -298,6 +317,7 @@ export function BicChart(props: BicChartProps) {
             onSelectRef.current?.(sourceIdxs);
         });
         host.render();
+        readControlsSoon();
         // What the host was BUILT with, so the effects below do not hand the same data or options
         // straight back: that was a second full render of every chart on mount.
         builtWithRef.current = { data, optKey };
@@ -305,13 +325,15 @@ export function BicChart(props: BicChartProps) {
             // StrictMode double-mount and every unmount land here: stop the timer, drop the
             // listeners, clear the DOM. Skipping this is the animated-chart leak.
             off();
+            ctl?.detach();
+            if (controlsRef.current === ctl) controlsRef.current = null;
             host.destroy();
             hostRef.current = null;
         };
         // labelContrast is a HOST config, read once at creation, so flipping it is a rebuild
         // (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind, labelContrast]);
+    }, [code, renderFn, d3, geoKind, labelContrast, controls]);
 
     // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
     // filter replaced. The first paint restores a selection made before this chart mounted (a
@@ -353,6 +375,7 @@ export function BicChart(props: BicChartProps) {
         if (builtWithRef.current?.optKey === optKey) return;
         builtWithRef.current = { ...builtWithRef.current, optKey };
         hostRef.current.setOptions(options);
+        readControlsSoon();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optKey]);
 
@@ -373,6 +396,7 @@ export function BicChart(props: BicChartProps) {
         hostRef.current.setData(data);
         // The page filter's selection, against the rows drawn now: kept if its key is still here.
         bindingRef.current?.reconcile();
+        readControlsSoon();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data]);
 
@@ -446,6 +470,19 @@ export function useBicFilter(columns: string | readonly string[], opts?: FilterO
     useEffect(() => scope.add(f), [scope, f]);
     useSyncExternalStore(cb => f.onChange(() => cb()), () => f.version, () => f.version);
     return f;
+}
+
+/**
+ * A chart's in-chart controls as page state: pass to the chart's `controls`, read `values`, `info`
+ * and `summary`, `set(saved)` to apply a saved scenario, `reset()` for the defaults. Re-renders the
+ * component on every change. `initial` seeds the values the chart first draws with.
+ */
+export function useBicControls(initial?: Readonly<Record<string, unknown>>): Controls {
+    const ref = useRef<Controls | null>(null);
+    if (!ref.current) ref.current = createControls(initial);
+    const c = ref.current;
+    useSyncExternalStore(cb => c.onChange(() => cb()), () => c.version, () => c.version);
+    return c;
 }
 
 /** Every filter on the page (or the enclosing <BicPage>), and its clear-all - for a page's own chip bar or count. */
