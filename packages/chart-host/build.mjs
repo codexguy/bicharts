@@ -73,6 +73,8 @@ const result = await build({
         // A page filter into a DAX query (TREATAS / CALCULATETABLE): its own entry, as only a
         // semantic-model app wants it.
         dax: join(here, "src/dax.ts"),
+        // The page's filters, controls and notes for a host without React; off the main entry (its eager budget).
+        page: join(here, "src/page.ts"),
     },
     bundle: true,
     splitting: true,

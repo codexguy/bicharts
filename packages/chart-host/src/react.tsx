@@ -33,6 +33,7 @@ import { bindFilter, createFilter, createFilterScope, payloadRowReader,
 export { assembleD3 } from "./host";
 import { attachControls, createControls, type Controls, type ControlsAttachment } from "./controls";
 export { createControls, type Controls, type ControlInfo } from "./controls";
+export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
 export { createFilter, createFilterScope, fromVegaInteraction,
          type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
 
