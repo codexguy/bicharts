@@ -9,7 +9,7 @@
 // The key is matched against the chart's CURRENT data on every draw, so it lands on the right mark in any
 // payload space. Host-side and additive: no generated chart has to know annotations exist.
 
-import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
+import { CONTROL_CLASS, MARK_CLASS, ROW_IDX_ATTR } from "./contract";
 
 export interface MarkAnnotation {
     /** The column holding the key (with `value`). */
@@ -39,7 +39,56 @@ export interface AnnotationReport {
 export const ANNOTATION_LAYER_CLASS = "bic-annotations";
 export const ANNOTATION_CLASS = "bic-annotation";
 
+/** The class the d3.llmGeoZoom helper gives its button pad - a control drawn by a generated chart without the
+ *  contract's CONTROL_CLASS, so the badge layer names it too. */
+export const ZOOM_PAD_CLASS = "llm-zoom-pad";
+
 const text = (v: unknown) => (v == null ? "" : String(v).trim());
+
+type Box = { l: number; t: number; r: number; b: number };
+const FREE: Box = { l: -Infinity, t: -Infinity, r: Infinity, b: Infinity };
+const box = (r: { left: number; top: number; right: number; bottom: number }): Box => ({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+const area = (b: Box) => (b.r - b.l) * (b.b - b.t);
+const cut = (a: Box | null, b: Box): Box | null => {
+    if (!a) return null;
+    const c = { l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) };
+    return c.r > c.l && c.b > c.t ? c : null;
+};
+
+/** Is a screen point on this mark's filled shape? Answers "yes" wherever the browser can't say (no isPointInFill, no
+ *  screen matrix, a throw), so a host without geometry keeps the plain box placement. */
+function shapeTest(mark: Element | null): (x: number, y: number) => boolean {
+    const g = mark as unknown as { isPointInFill?: (p: DOMPointInit) => boolean; getScreenCTM?: () => DOMMatrix | null } | null;
+    let inv: { a: number; b: number; c: number; d: number; e: number; f: number } | null = null;
+    try { inv = g?.isPointInFill ? g.getScreenCTM?.()?.inverse() ?? null : null; } catch { inv = null; }
+    if (!g || !inv) return () => true;
+    const m = inv;
+    return (x, y) => {
+        try { return g.isPointInFill!({ x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }); } catch { return true; }
+    };
+}
+
+/** The screen window one element's own clip-path opens (userSpaceOnUse), or null: none, or it won't measure. */
+function clipWindow(el: Element): Box | null {
+    try {
+        const m = /url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(el.getAttribute("clip-path") || "");
+        const cp = m ? el.ownerDocument.getElementById(m[1]) : null;
+        const ctm = cp ? (el as unknown as SVGGraphicsElement).getScreenCTM?.() : null;
+        if (!cp || !ctm || cp.getAttribute("clipPathUnits") === "objectBoundingBox") return null;
+        let w: Box | null = null;
+        for (const k of Array.from(cp.children)) {
+            const bb = (k as SVGGraphicsElement).getBBox?.();
+            if (!bb || !(bb.width > 0) || !(bb.height > 0)) continue;
+            for (const [x, y] of [[bb.x, bb.y], [bb.x + bb.width, bb.y + bb.height], [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y]]) {
+                const sx = ctm.a * x + ctm.c * y + ctm.e, sy = ctm.b * x + ctm.d * y + ctm.f;
+                w = w ? { l: Math.min(w.l, sx), t: Math.min(w.t, sy), r: Math.max(w.r, sx), b: Math.max(w.b, sy) } : { l: sx, t: sy, r: sx, b: sy };
+            }
+        }
+        return w && w.r > w.l && w.b > w.t ? w : null;
+    } catch {
+        return null;
+    }
+}
 const parseIdxs = (s: string | null) => (s || "").split(",").map(x => parseInt(x, 10)).filter(n => Number.isFinite(n));
 
 export interface AnnotationLayer {
@@ -105,6 +154,40 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             if (at) at.push(m); else marksByRow.set(r, [m]);
         }
         const origin = container.getBoundingClientRect();
+        const open = origin.width > 0 && origin.height > 0 ? box(origin) : FREE;
+        // Where a reader can see a mark: the container, the mark's svg (an svg clips at its own frame) and every
+        // clip-path window on the way up. A host that hasn't laid out yet constrains nothing.
+        const clipOf = new Map<Element, Box | null>();
+        const viewOf = (m: Element): Box | null => {
+            let v: Box | null = open;
+            const svg = m.closest("svg");
+            if (svg) { const s = svg.getBoundingClientRect(); if (s.width > 0 && s.height > 0) v = cut(v, box(s)); }
+            for (let el: Element | null = m.parentElement; v && el && el !== svg && el !== container; el = el.parentElement) {
+                if (!clipOf.has(el)) clipOf.set(el, clipWindow(el));
+                const w = clipOf.get(el);
+                if (w) v = cut(v, w);
+            }
+            return v;
+        };
+        // The chart's own controls - the contract's, and the zoom helper's button pad - which no badge may cover.
+        const controls = Array.from(container.querySelectorAll(`.${CONTROL_CLASS}, .${ZOOM_PAD_CLASS}`))
+            .map(c => c.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0).map(box);
+        // A point for a badge of this label inside `v`, its box clear of every control, and ON the mark's own shape
+        // where the browser can say (a country's visible box can be mostly ocean): the centre first, then the nearest
+        // points across the visible part, then just past the edge of a control it would cover. None -> null.
+        const clear = (v: Box, len: number, mark: Element | null): [number, number] | null => {
+            const hw = Math.max(16, len * 6 + 8) / 2, hh = 8, g = 2;
+            const cx = (v.l + v.r) / 2, cy = (v.t + v.b) / 2;
+            const free = (x: number, y: number) => x >= v.l && x <= v.r && y >= v.t && y <= v.b
+                && controls.every(c => x + hw <= c.l || x - hw >= c.r || y + hh <= c.t || y - hh >= c.b);
+            const onShape = shapeTest(mark);
+            const tries: Array<[number, number]> = [[cx, cy]];
+            for (let i = 0; i <= 8; i++) for (let j = 0; j <= 6; j++) tries.push([v.l + (v.r - v.l) * i / 8, v.t + (v.b - v.t) * j / 6]);
+            tries.sort((p, q) => Math.hypot(p[0] - cx, p[1] - cy) - Math.hypot(q[0] - cx, q[1] - cy));
+            for (const c of controls) tries.push([cx, c.b + hh + g], [cx, c.t - hh - g], [c.l - hw - g, cy], [c.r + hw + g, cy]);
+            return tries.find(([x, y]) => free(x, y) && onShape(x, y))
+                ?? tries.find(([x, y]) => free(x, y)) ?? null;
+        };
         let shown = 0;
         for (const a of list) {
             // The key as (column index, wanted text) pairs; a column this chart doesn't have matches nothing.
@@ -118,25 +201,31 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
                 if (pairs.every(([ci, v]) => text(row?.[ci]) === v)) for (const m of marksByRow.get(r) ?? []) hits.add(m);
             });
             if (!hits.size) continue;
-            shown++;
-            // The biggest of the key's marks carries the badge: a country's mainland, not an island; a route's arc,
-            // not its end dot.
-            let best: DOMRect | null = null;
+            // The biggest VISIBLE part of the key's marks carries the badge: a country's mainland, not an island; a
+            // route's arc, not its end dot; and on a zoomed or panned map, the part in view (a box clipped to the
+            // map, the svg, any clip-path) - not the centre of an outline running off the edge.
+            let best: Box | null = null, bestMark: Element | null = null, laidOut = false;
             for (const m of hits) {
                 const b = m.getBoundingClientRect();
-                if (!best || b.width * b.height > best.width * best.height) best = b;
+                if (!(b.width > 0 && b.height > 0)) continue;
+                laidOut = true;
+                const v = cut(box(b), viewOf(m));
+                if (v && (!best || area(v) > area(best))) { best = v; bestMark = m; }
             }
+            // Nothing of it in view: no badge (counted below as not shown). A mark with no box yet keeps the old way.
+            const pt: [number, number] | null = best ? clear(best, (a.label ?? "•").length, bestMark) : null;
+            if (laidOut && !pt) continue;
+            shown++;
             const badge = doc.createElement("div");
             badge.className = ANNOTATION_CLASS;
             badge.textContent = a.label ?? "•";
             if (a.title) badge.setAttribute("title", a.title);
             badge.setAttribute("role", "button");
             badge.setAttribute("aria-label", a.title ? `Note: ${a.title}` : `Note on ${want}`);
-            const laidOut = !!best && best.width > 0 && best.height > 0;
             Object.assign(badge.style, {
                 position: "absolute",
-                left: `${Math.round(laidOut ? best!.left - origin.left + best!.width / 2 : 0)}px`,
-                top: `${Math.round(laidOut ? best!.top - origin.top + best!.height / 2 : 0)}px`,
+                left: `${Math.round(pt ? pt[0] - origin.left : 0)}px`,
+                top: `${Math.round(pt ? pt[1] - origin.top : 0)}px`,
                 transform: "translate(-50%, -50%)",
                 minWidth: "16px", height: "16px", padding: "0 4px", boxSizing: "border-box",
                 borderRadius: "8px", font: "600 10px/16px system-ui, sans-serif", textAlign: "center",
