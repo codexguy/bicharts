@@ -403,6 +403,10 @@ describe("the one-shot late pickup - EXPIRED is about the window, not the chart"
         expect(pollGiveUpKeepsMarker("window-closed", withCorr)).toBe(true);
         expect(pollGiveUpKeepsMarker("hard-error", withCorr)).toBe(false);
         expect(pollGiveUpKeepsMarker("window-closed", { v: 1, t: T0, c: "", p: "" })).toBe(false);
+        // Checks that never reached the service say nothing about the chart: the next mount asks again.
+        expect(pollGiveUpKeepsMarker("unreachable", withCorr)).toBe(true);
+        expect(pollGiveUpKeepsMarker("unreachable", { v: 1, t: T0, c: "", p: "" })).toBe(false);
+        for (const o of ["cancelled", "failed", "not-received"]) expect(pollGiveUpKeepsMarker(o, withCorr), o).toBe(false);
     });
 });
 

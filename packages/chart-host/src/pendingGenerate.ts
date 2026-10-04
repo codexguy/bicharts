@@ -281,11 +281,12 @@ export function latePickupKeepsMarker(outcome: "found" | "not-yet" | "hard-error
 }
 
 /**
- * When the 15-minute poll runs out ("window-closed"), the marker STAYS for the next mount's late
- * pickup, as long as it carries a correlation. A definitive refusal ("hard-error") still clears it.
+ * When the 15-minute poll runs out ("window-closed"), or stops because no check could reach the
+ * service ("unreachable"), the marker STAYS for the next mount's late pickup, as long as it carries a
+ * correlation. A definitive refusal ("hard-error") or a final answer still clears it.
  */
 export function pollGiveUpKeepsMarker(outcome: string, m: PendingGenerateMarker | null | undefined): boolean {
-    return outcome === "window-closed" && !!m && !isBlindMarker(m);
+    return (outcome === "window-closed" || outcome === "unreachable") && !!m && !isBlindMarker(m);
 }
 
 /** Milliseconds left in the recovery window from `nowMs`, floored at 0. */
