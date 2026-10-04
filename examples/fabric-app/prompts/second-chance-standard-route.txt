@@ -1,0 +1,7 @@
+There is no land showing for the maps, ideally we'd see the shape of countries.
+=====
+The flow map would look better using arcs instead of straight lines.
+=====
+The revenue per capital map would ideally be a bivariate choropleth.
+=====
+The projection is showing for historical months. The intention was to have projections show for FUTURE months, projecting out from the last available month. Also, labels are overlapping in the projection view.

@@ -17,6 +17,7 @@ Every number is generated. None of it describes a real company.
 | `generator/generate_data.py` | Rebuilds `data/` from a fixed seed. Every run is byte-identical. |
 | `generator/build_pbip.py` | Rebuilds the project folder. |
 | `generator/check_shapes.py` | Prints the evidence that the data has each shape described below. |
+| `prompts/` | The prompts behind the Fabric Apps article, exactly as sent, with their SHA-256. |
 
 ## The model
 

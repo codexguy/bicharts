@@ -1,0 +1,5 @@
+add a dark mode button at the top.
+=====
+put the choropleth and flow map side-by-side.
+=====
+make the flow lines a bit darker (via opacity).

@@ -1,0 +1,7 @@
+Create a new Fabric app called global-revenue with `npx -y @microsoft/create-rayfin@latest --template dataapp`, for the Fabric workspace "Global Revenue Gate", and connect it to the semantic model "Global Revenue v2" in that workspace.
+=====
+Build the main page for a regional sales director. I want a world map that compares revenue per capita with return rate, a map of the shipping lanes between countries, and a revenue projection I can steer with a growth rate against our target. Use a bivariate world choropleth for the first, an origin-destination flow map for the second, and a what-if projection with its growth-rate slider drawn inside the chart for the third. Clicking a country should filter the other charts.
+=====
+Let people click any country or shipping lane and leave a note on it. Save each note in the app's database with who wrote it and when, and show it on that mark the next time anyone opens the page.
+=====
+Let people save the growth rate they picked as a named scenario with a comment, and show everyone's saved scenarios beside the projection.
