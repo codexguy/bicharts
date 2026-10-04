@@ -36,7 +36,7 @@ export interface GenerateClientServices {
 }
 
 /** Which call a request is. */
-export type GenerateCall = "generate" | "qualify" | "review" | "sample";
+export type GenerateCall = "generate" | "qualify" | "review" | "sample" | "refund";
 
 export interface GenerateClientEnv {
     /**
@@ -125,12 +125,21 @@ export interface GenerateClient {
     review(wire: unknown, opts: WireCallOptions): Promise<WireOutcome<unknown>>;
     /** POST an example-chart request as the signed envelope. The answer is the parsed JSON body. */
     sample(payload: unknown, opts: WireCallOptions): Promise<WireOutcome<unknown>>;
+    /**
+     * POST a refund for one generation, named by its correlation, as PLAIN JSON ({"CorrelationID": ...})
+     * signed over that text - the route reads and signs the raw body, as the review route does. Sent when a
+     * host gives up on a generation that never reached its reader; the service decides what, if anything,
+     * is refunded (it may hold the refund until the generation is recorded, and declines a delivered chart).
+     * The answer is the parsed JSON body.
+     */
+    refund(correlationId: string, opts: WireCallOptions): Promise<WireOutcome<unknown>>;
 }
 
 const GENERATE_ROUTE = "/LLMChart/";
 const QUALIFY_ROUTE = "/LLMChart/qualify";
 const REVIEW_ROUTE = "/VisionReview/";
 const SAMPLE_ROUTE = "/LLMChart/sample";
+const REFUND_ROUTE = "/RefundGenerate/";
 
 const isTimeout = (e: unknown): boolean =>
     !!e && typeof e === "object" && (e as { name?: unknown }).name === "TimeoutError";
@@ -231,6 +240,12 @@ export function createGenerateClient(services: GenerateClientServices, env: Gene
         async sample(payload, opts) {
             const o = checked("sample", opts);
             return exchange("sample", SAMPLE_ROUTE, encodePayload(payload), o, readJson);
+        },
+
+        async refund(correlationId, opts) {
+            const o = checked("refund", opts);
+            if (typeof correlationId !== "string" || correlationId.trim() === "") throw new TypeError("A refund needs the generation's correlation id");
+            return exchange("refund", REFUND_ROUTE, JSON.stringify({ CorrelationID: correlationId.trim() }), o, readJson);
         },
     };
 }

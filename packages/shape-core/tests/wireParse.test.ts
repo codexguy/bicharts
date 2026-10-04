@@ -110,6 +110,18 @@ describe("parseGenerateResponse", () => {
         expect([b.isVersionNotFound, b.isGenerationCancelled]).toEqual([true, true]);
     });
 
+    // The poll's final answers (2026-10-04). Present only when the server sent them, so every body above (an older
+    // server's shape) parses to exactly what it always did.
+    it("the recovery answers: final, with the ending the server named", () => {
+        const notReceived = parseGenerateResponse({ ...NOT_YET, isPollFinal: true, pollOutcome: "not-received", errorCode: "GENERATION_NOT_RECEIVED", retryable: false });
+        expect([notReceived.isVersionNotFound, notReceived.isPollFinal, notReceived.pollOutcome, notReceived.errorCode, notReceived.retryable])
+            .toEqual([true, true, "not-received", "GENERATION_NOT_RECEIVED", false]);
+        const stillRunning = parseGenerateResponse({ ...NOT_YET, isPollFinal: false, pollOutcome: null });
+        expect([stillRunning.isPollFinal, "pollOutcome" in stillRunning]).toEqual([false, false]);
+        expect("isPollFinal" in parseGenerateResponse(NOT_YET)).toBe(false);
+        expect(parseGenerateResponse(pascalize({ ...NOT_YET, isPollFinal: true, pollOutcome: "failed" }) as any).pollOutcome).toBe("failed");
+    });
+
     for (const [name, body] of Object.entries({ POINT_MAP, ROUTE, THROTTLED, NOT_YET, CANCELLED })) {
         it(`${name} reads the same in PascalCase`, () => {
             expect(parseGenerateResponse(pascalize(body))).toEqual(parseGenerateResponse(body));

@@ -173,11 +173,16 @@ describe("transportFailureShouldRecover - poll vs retry", () => {
     it("headers received on a genNew → the server has it → recover, never retry", () => {
         expect(transportFailureShouldRecover(true, true)).toBe(true);
     });
-    it("no headers → the server never saw it → ordinary retry", () => {
-        expect(transportFailureShouldRecover(false, true)).toBe(false);
+    // REVERSED 2026-10-04 (recover, then refund). The old case here asserted "no headers → the server
+    // never saw it → ordinary retry". Behind a buffering proxy the server saw every one of them in
+    // production - charged, never seen, and a retry charged a second time. A real generate whose
+    // transport fails recovers by correlation, headers or not.
+    it("no headers on a genNew → recover all the same: a proxy can hold the headers of a request the server is running", () => {
+        expect(transportFailureShouldRecover(false, true)).toBe(true);
     });
     it("a version FETCH that fails is not a generate in flight → retry path", () => {
         expect(transportFailureShouldRecover(true, false)).toBe(false);
+        expect(transportFailureShouldRecover(false, false)).toBe(false);
     });
 });
 
@@ -398,6 +403,10 @@ describe("the one-shot late pickup - EXPIRED is about the window, not the chart"
         expect(pollGiveUpKeepsMarker("window-closed", withCorr)).toBe(true);
         expect(pollGiveUpKeepsMarker("hard-error", withCorr)).toBe(false);
         expect(pollGiveUpKeepsMarker("window-closed", { v: 1, t: T0, c: "", p: "" })).toBe(false);
+        // Checks that never reached the service say nothing about the chart: the next mount asks again.
+        expect(pollGiveUpKeepsMarker("unreachable", withCorr)).toBe(true);
+        expect(pollGiveUpKeepsMarker("unreachable", { v: 1, t: T0, c: "", p: "" })).toBe(false);
+        for (const o of ["cancelled", "failed", "not-received"]) expect(pollGiveUpKeepsMarker(o, withCorr), o).toBe(false);
     });
 });
 
@@ -423,5 +432,75 @@ describe("a cancelled generation ends the recovery", () => {
         const m = await import("../src/pendingGenerate");
         expect(m.TRANSPORT_LOST_CHECKING_MESSAGE).not.toMatch(/still being built|will show it|when it lands/i);
         expect(m.TRANSPORT_LOST_CHECKING_MESSAGE.split(/[.!?](\s|$)/).filter(s => s && s.trim()).length).toBeLessThanOrEqual(2);
+    });
+});
+
+// THE POLL'S FINAL ANSWERS (2026-10-04). The server answers C (cancelled), D (failed, in the generation's own
+// words) and E (not received) with isPollFinal + pollOutcome, and keeps isVersionNotFound beside them for
+// older hosts - so the final reading must come first, and "not yet" must stay "not yet".
+describe("the recovery poll's final answers", () => {
+    it("reads each final outcome, and nothing else as final", async () => {
+        const m = await import("../src/pendingGenerate");
+        const nf = { isVersionNotFound: true };
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "cancelled", isGenerationCancelled: true })).toBe("cancelled");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "failed" })).toBe("failed");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "not-received" })).toBe("not-received");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "Not-Received " })).toBe("not-received");
+        // B, still running: final is false and the outcome is null - keep polling.
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: false, pollOutcome: null })).toBeNull();
+        expect(m.recoveryFinalOutcome(nf)).toBeNull();
+        expect(m.recoveryFinalOutcome(null)).toBeNull();
+        // An older server set only the flag: still a cancel.
+        expect(m.recoveryFinalOutcome({ ...nf, isGenerationCancelled: true })).toBe("cancelled");
+        // Final with an ending this build does not know: final, and claims nothing.
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "something-new" })).toBe("failed");
+        // An outcome without the final flag is not final.
+        expect(m.recoveryFinalOutcome({ ...nf, pollOutcome: "not-received" })).toBeNull();
+        // A parser that predates the flags still hands over the code: the three final codes are final by
+        // definition; any other code beside a not-found (the generation's own refusal, or VERSION_NOT_FOUND)
+        // is not, and an explicit isPollFinal:false always wins.
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_NOT_RECEIVED" })).toBe("not-received");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_FAILED" })).toBe("failed");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_CANCELLED" })).toBe("cancelled");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "FREEMIUM_COLUMN_CAP" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "VERSION_NOT_FOUND" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: false, errorCode: "GENERATION_NOT_RECEIVED" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ isVersionNotFound: false, errorCode: "GENERATION_NOT_RECEIVED" })).toBeNull();
+    });
+
+    it("only a cancel and a request never received prove nothing was charged", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryProvesNothingCharged("cancelled")).toBe(true);
+        expect(m.recoveryProvesNothingCharged("not-received")).toBe(true);
+        expect(m.recoveryProvesNothingCharged("failed")).toBe(false);
+        expect(m.recoveryProvesNothingCharged(null)).toBe(false);
+    });
+
+    it("refunds only a recovery that ended with nothing painted and nothing proven", async () => {
+        const m = await import("../src/pendingGenerate");
+        for (const o of ["window-closed", "hard-error", "unreachable"]) expect(m.recoveryGiveUpRefunds(o), o).toBe(true);
+        for (const o of ["found", "cancelled", "failed", "not-received", "marker-gone", "superseded", "exception", ""]) {
+            expect(m.recoveryGiveUpRefunds(o), o).toBe(false);
+        }
+    });
+
+    it("calls the service unreachable only after three failed checks and no answer at all", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.PENDING_RECOVERY_UNREACHABLE_POLLS).toBe(3);
+        expect(m.recoveryLooksUnreachable(2, false)).toBe(false);
+        expect(m.recoveryLooksUnreachable(3, false)).toBe(true);
+        // One answer - even "not yet" - proves the checks get through; the window decides from there.
+        expect(m.recoveryLooksUnreachable(9, true)).toBe(false);
+    });
+
+    it("words each final answer in the server's sentence, else the same words, and the unreachable sentence claims no charge", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryFinalMessage("failed", "This visual has 2 more data fields than the free tier allows.")).toBe("This visual has 2 more data fields than the free tier allows.");
+        expect(m.recoveryFinalMessage("cancelled", "")).toBe(m.GENERATION_CANCELLED_MESSAGE);
+        expect(m.recoveryFinalMessage("not-received", null)).toBe(m.GENERATION_NOT_RECEIVED_MESSAGE);
+        expect(m.recoveryFinalMessage("failed", "  ")).toBe(m.GENERATION_FAILED_MESSAGE);
+        expect(m.GENERATION_FAILED_MESSAGE).not.toMatch(/charg/i);
+        expect(m.RECOVERY_UNREACHABLE_MESSAGE).not.toMatch(/charg|nothing was generated/i);
+        expect(m.TRANSPORT_LOST_CHECKING_MESSAGE).not.toMatch(/charg/i);
     });
 });

@@ -145,6 +145,27 @@ describe("createGenerateClient: what reaches the transport", () => {
     });
 });
 
+describe("createGenerateClient: refund", () => {
+    it("plain JSON naming the correlation, signed over that text, to /api/RefundGenerate/, answered as parsed JSON", async () => {
+        const { posted, transport } = recording(async () => wire(200, '{"ok":false,"message":"Held."}'));
+        const out = await client(transport).refund(" 0f8fad5b-d9cb-469f-a165-70867728950e ", { timeoutMs: 15000 });
+        expect(posted[0].url).toBe("https://svc.example/api/RefundGenerate/?nocache=1727260000123");
+        expect(posted[0].body).toBe('{"CorrelationID":"0f8fad5b-d9cb-469f-a165-70867728950e"}');
+        expect(posted[0].headers).toEqual({ "Content-Type": "text/plain", "X-Signature": messageSignature(posted[0].body, SIGNER) });
+        expect(posted[0].opts).toEqual({ timeoutMs: 15000 });
+        expect(out).toEqual({ kind: "answer", status: 200, value: { ok: false, message: "Held." } });
+    });
+
+    it("refuses to post without a correlation, and resolves a dead network as a transport outcome", async () => {
+        const { posted, transport } = recording(async () => wire(200, "{}"));
+        await expect(client(transport).refund("  ", { timeoutMs: 1000 })).rejects.toThrow(TypeError);
+        expect(posted).toHaveLength(0);
+        const dead: WireTransport = { post: async () => { throw new TypeError("Failed to fetch"); } };
+        const out = await client(dead).refund("c-1", { timeoutMs: 1000 });
+        expect(out.kind).toBe("transport");
+    });
+});
+
 describe("createGenerateClient: the outcome", () => {
     it("answer: a streamed generate's result, with every progress line passed on", async () => {
         const body = '{"type":"progress","stage":"Reading your data","stageId":"read"}\n' + RESULT_LINE;

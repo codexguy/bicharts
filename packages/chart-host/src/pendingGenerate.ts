@@ -281,11 +281,12 @@ export function latePickupKeepsMarker(outcome: "found" | "not-yet" | "hard-error
 }
 
 /**
- * When the 15-minute poll runs out ("window-closed"), the marker STAYS for the next mount's late
- * pickup, as long as it carries a correlation. A definitive refusal ("hard-error") still clears it.
+ * When the 15-minute poll runs out ("window-closed"), or stops because no check could reach the
+ * service ("unreachable"), the marker STAYS for the next mount's late pickup, as long as it carries a
+ * correlation. A definitive refusal ("hard-error") or a final answer still clears it.
  */
 export function pollGiveUpKeepsMarker(outcome: string, m: PendingGenerateMarker | null | undefined): boolean {
-    return outcome === "window-closed" && !!m && !isBlindMarker(m);
+    return (outcome === "window-closed" || outcome === "unreachable") && !!m && !isBlindMarker(m);
 }
 
 /** Milliseconds left in the recovery window from `nowMs`, floored at 0. */
@@ -295,13 +296,15 @@ export function pendingRecoveryRemainingMs(m: PendingGenerateMarker, nowMs: numb
 
 /**
  * Whether a transport failure on a generate should hand off to the recovery poll (true) or fall back
- * to the ordinary retry (false). The discriminator is whether the service ACCEPTED the request: a
- * streaming endpoint commits its 200 headers the moment it starts, so headers-received plus a later
- * failure means the generate is running server-side and a retry would make a SECOND chart. No
- * headers means the service never saw it, and retrying is the right move.
+ * to the ordinary retry (false). A REAL GENERATE ALWAYS RECOVERS (2026-10-04). "No response headers"
+ * used to mean "the service never saw it", and behind a buffering proxy it never did: the proxy held
+ * the headers and the heartbeats while the service finished and charged (seen in production: every
+ * pre-header loss in a week had reached the server). A retry made a second chart; a
+ * poll by correlation costs nothing, and the server now says when nothing was received.
+ * `headersReceived` stays in the signature and decides nothing.
  */
-export function transportFailureShouldRecover(headersReceived: boolean, genNew: boolean): boolean {
-    return headersReceived && genNew;
+export function transportFailureShouldRecover(_headersReceived: boolean, genNew: boolean): boolean {
+    return genNew;
 }
 
 /**
@@ -339,4 +342,69 @@ export function recoveryAnswerIsCancelled(r: { isGenerationCancelled?: boolean |
 export function generationCancelledMessage(serverMessage: string | null | undefined): string {
     const s = String(serverMessage ?? "").trim();
     return s !== "" ? s : GENERATION_CANCELLED_MESSAGE;
+}
+
+/**
+ * THE RECOVERY POLL'S FINAL ANSWERS (2026-10-04). A server that knows the generation ended without a
+ * chart says so with `isPollFinal` and names the ending in `pollOutcome`; isVersionNotFound rides
+ * beside it for older hosts, so this is read FIRST. null = not final. A final answer with an outcome
+ * this build does not know reads as "failed": it is final, and it claims nothing about charges.
+ */
+export type RecoveryFinalOutcome = "cancelled" | "failed" | "not-received";
+
+export function recoveryFinalOutcome(r: { isPollFinal?: boolean | null; pollOutcome?: string | null; isGenerationCancelled?: boolean | null; isVersionNotFound?: boolean | null; errorCode?: string | null } | null | undefined): RecoveryFinalOutcome | null {
+    if (!r) return null;
+    const o = String(r.pollOutcome ?? "").trim().toLowerCase();
+    if (r.isGenerationCancelled === true || (r.isPollFinal === true && o === "cancelled")) return "cancelled";
+    if (r.isPollFinal === true) return o === "not-received" ? "not-received" : "failed";
+    // A body read by a parser that predates the two fields still carries the final answer's own CODE,
+    // and three codes are final by definition. Only those three: any other code beside a not-found is
+    // the generation's own refusal, which only the flag can tell from "not yet".
+    if (r.isPollFinal == null && r.isVersionNotFound === true) {
+        const c = String(r.errorCode ?? "").trim().toUpperCase();
+        if (c === "GENERATION_NOT_RECEIVED") return "not-received";
+        if (c === "GENERATION_FAILED") return "failed";
+        if (c === "GENERATION_CANCELLED") return "cancelled";
+    }
+    return null;
+}
+
+/** Did the server PROVE nothing was charged? Only a cancel and a request it never received do; a
+ *  failed generation's charge is its own, and a host claims nothing about it. */
+export function recoveryProvesNothingCharged(o: string | null | undefined): boolean {
+    return o === "cancelled" || o === "not-received";
+}
+
+/** Does a recovery that ended this way send the refund? Only when it ended with NOTHING PAINTED and
+ *  nothing proven - the window closed, the poll itself was refused, or the service could not be
+ *  reached. The server holds the refund until the row exists and declines a painted chart (recover,
+ *  then refund). Never for a final answer. */
+export function recoveryGiveUpRefunds(outcome: string): boolean {
+    return outcome === "window-closed" || outcome === "hard-error" || outcome === "unreachable";
+}
+
+/** Polls in a row that could not reach the service, with no answer yet, that end the recovery as
+ *  "unreachable" rather than waiting out the window (~32 s on the shared cadence). */
+export const PENDING_RECOVERY_UNREACHABLE_POLLS = 3;
+
+export function recoveryLooksUnreachable(transportFailuresInARow: number, everAnswered: boolean): boolean {
+    return !everAnswered && transportFailuresInARow >= PENDING_RECOVERY_UNREACHABLE_POLLS;
+}
+
+/** The server's words for the final answers, for a server that sent none and for a host that
+ *  localises by code. */
+export const GENERATION_NOT_RECEIVED_MESSAGE =
+    "The charting service has no record of that request, so nothing was generated and nothing was charged. Generate again.";
+export const GENERATION_FAILED_MESSAGE =
+    "That chart didn't finish on the server, so there's nothing to show. Generate again.";
+/** Neither the generate's answer nor any check reached us. Claims nothing about a charge: behind a
+ *  proxy the generate may have arrived when the checks did not. */
+export const RECOVERY_UNREACHABLE_MESSAGE =
+    "We couldn't reach the charting service to check on your chart - it may be offline, or blocked on this network. Try again in a moment.";
+
+/** The sentence for a final answer: the server's own when it sent one, else the same words. */
+export function recoveryFinalMessage(o: RecoveryFinalOutcome, serverMessage: string | null | undefined): string {
+    const s = String(serverMessage ?? "").trim();
+    if (s !== "") return s;
+    return o === "cancelled" ? GENERATION_CANCELLED_MESSAGE : o === "not-received" ? GENERATION_NOT_RECEIVED_MESSAGE : GENERATION_FAILED_MESSAGE;
 }
