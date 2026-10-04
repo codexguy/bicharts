@@ -95,6 +95,11 @@ export const OPTIONS_VOCABULARY = Object.freeze({
     flipIntervalMs: entry({ timing: "live", default: "", min: 0, max: FLIP_INTERVAL_MAX_MS }),
     /** Which way a face turns, for any chart that turns between faces: side to side, or top to bottom. */
     flipDirection: entry({ timing: "live", default: FLIP_DIRECTION_DEFAULT, values: ["horizontal", "vertical"] }),
+    /**
+     * Hover drop lines on a 3D chart. BLANK - "the chart's own" - is the default: off, unless the request
+     * that made the chart asked for them. "on" / "off" is a reader's choice and wins either way.
+     */
+    hoverDropLines: entry({ timing: "live", default: "", values: ["", "on", "off"] }),
     // ---- the next generated chart ----
     levelOfDetail: entry({ timing: "next-generate", default: "", values: ["", "High", "Medium", "Low"], wire: "clientHints" }),
     favorLimitTo: entry({ timing: "next-generate", default: "", values: ["", "latest", "top / greatest", "bottom / smallest", "most common", "outliers"], wire: "clientHints" }),

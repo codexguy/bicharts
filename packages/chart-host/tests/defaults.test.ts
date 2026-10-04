@@ -218,6 +218,22 @@ describe("resolveOptions — host fields pass through by identity", () => {
         expect(resolveOptions({ flipIntervalMs: 999999 }).flipIntervalMs).toBe(999999);
     });
 
+    it("hoverDropLines: on/off when a reader says so, otherwise UNSET - the chart's own default", () => {
+        // Unset is not "off". The 3D scatter's default is off, except where the request itself asked
+        // for drop lines, and only the chart knows that - so a host that was never told a value must
+        // hand over nothing, exactly as flipIntervalMs does.
+        expect(resolveOptions({}).hoverDropLines).toBeUndefined();
+        expect(resolveOptions({ hoverDropLines: "" }).hoverDropLines).toBeUndefined();
+        expect(resolveOptions({ hoverDropLines: null }).hoverDropLines).toBeUndefined();
+        expect(resolveOptions({ hoverDropLines: "junk" }).hoverDropLines).toBeUndefined();
+        expect(resolveOptions({ hoverDropLines: true }).hoverDropLines).toBe(true);
+        expect(resolveOptions({ hoverDropLines: false }).hoverDropLines).toBe(false);
+        expect(resolveOptions({ hoverDropLines: "on" }).hoverDropLines).toBe(true);
+        expect(resolveOptions({ hoverDropLines: "OFF" }).hoverDropLines).toBe(false);
+        expect(resolveOptions({ hoverDropLines: "true" }).hoverDropLines).toBe(true);
+        expect(resolveOptions({ hoverDropLines: "0" }).hoverDropLines).toBe(false);
+    });
+
 
     // flipMode answers WHERE the controls live, which turned out to be a different question
     // from whether the cards move together. The back-compat rule is the interesting part: a

@@ -521,6 +521,11 @@ export interface RenderOptions {
     // Which way a face turns - see FlipDirection. resolveOptions always fills it; a chart reads it
     // for the turn it animates and nothing else.
     flipDirection?: FlipDirection;
+    // Hover drop lines on a 3D chart: hovering a point runs a line from it to each back wall, so its
+    // three values read off the gridlines there. true / false when a reader set it; UNSET (undefined)
+    // means the chart's own default - off, unless the request that made the chart asked for them -
+    // which is why resolveOptions never fills it.
+    hoverDropLines?: boolean;
     // Explicit fill behind each card. Blank/undefined = the chart decides, which is what every
     // deck does today (normally the visual background, so cards read as part of the canvas).
     // A live-restyle knob like the colour-scale endpoints: changing it re-renders, never

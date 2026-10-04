@@ -42,6 +42,7 @@ describe("the options vocabulary is internally consistent", () => {
             "aggregation", "colorScaleLow", "colorScaleHigh", "palette", "maxMapPoints", "pageSize", "valueAxisBaseline",
             "seasonalMarkers", "animAutoPlay", "animPlaySpeedMs", "animLoopDelaySec", "animStopAtEnd", "animMaxIdealFrames",
             "animTimelineStyle", "filtersDuringPlay", "flipMode", "flipIntervalMs", "flipDirection",
+            "hoverDropLines",
         ]);
     });
 });

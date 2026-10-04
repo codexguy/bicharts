@@ -214,5 +214,14 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // `options.cardBackgroundColor || <its own choice>` and "" would satisfy a truthiness
         // test in some hands while painting nothing in others.
         cardBackgroundColor: p.cardBackgroundColor || undefined,
+        // A reader's on / off, or UNSET - never filled with false, for the flipIntervalMs reason: the
+        // default is the chart's (on only where its request asked for drop lines), and a host that
+        // turned unset into false would make that default unreachable. Pane choices arrive as text.
+        hoverDropLines: ((): boolean | undefined => {
+            const v = p.hoverDropLines;
+            if (typeof v === "boolean") return v;
+            const s = v == null ? "" : String(v).trim().toLowerCase();
+            return s === "on" || s === "true" || s === "1" ? true : s === "off" || s === "false" || s === "0" ? false : undefined;
+        })(),
     };
 }
