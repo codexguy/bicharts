@@ -10,6 +10,7 @@
 // payload space. Host-side and additive: no generated chart has to know annotations exist.
 
 import { CONTROL_CLASS, MARK_CLASS, ROW_IDX_ATTR } from "./contract";
+import { clipWindowOf } from "./fitDom";
 
 export interface MarkAnnotation {
     /** The column holding the key (with `value`). */
@@ -68,27 +69,6 @@ function shapeTest(mark: Element | null): (x: number, y: number) => boolean {
     };
 }
 
-/** The screen window one element's own clip-path opens (userSpaceOnUse), or null: none, or it won't measure. */
-function clipWindow(el: Element): Box | null {
-    try {
-        const m = /url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(el.getAttribute("clip-path") || "");
-        const cp = m ? el.ownerDocument.getElementById(m[1]) : null;
-        const ctm = cp ? (el as unknown as SVGGraphicsElement).getScreenCTM?.() : null;
-        if (!cp || !ctm || cp.getAttribute("clipPathUnits") === "objectBoundingBox") return null;
-        let w: Box | null = null;
-        for (const k of Array.from(cp.children)) {
-            const bb = (k as SVGGraphicsElement).getBBox?.();
-            if (!bb || !(bb.width > 0) || !(bb.height > 0)) continue;
-            for (const [x, y] of [[bb.x, bb.y], [bb.x + bb.width, bb.y + bb.height], [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y]]) {
-                const sx = ctm.a * x + ctm.c * y + ctm.e, sy = ctm.b * x + ctm.d * y + ctm.f;
-                w = w ? { l: Math.min(w.l, sx), t: Math.min(w.t, sy), r: Math.max(w.r, sx), b: Math.max(w.b, sy) } : { l: sx, t: sy, r: sx, b: sy };
-            }
-        }
-        return w && w.r > w.l && w.b > w.t ? w : null;
-    } catch {
-        return null;
-    }
-}
 const parseIdxs = (s: string | null) => (s || "").split(",").map(x => parseInt(x, 10)).filter(n => Number.isFinite(n));
 
 export interface AnnotationLayer {
@@ -163,7 +143,7 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             const svg = m.closest("svg");
             if (svg) { const s = svg.getBoundingClientRect(); if (s.width > 0 && s.height > 0) v = cut(v, box(s)); }
             for (let el: Element | null = m.parentElement; v && el && el !== svg && el !== container; el = el.parentElement) {
-                if (!clipOf.has(el)) clipOf.set(el, clipWindow(el));
+                if (!clipOf.has(el)) { const w = clipWindowOf(el); clipOf.set(el, w && box(w)); }
                 const w = clipOf.get(el);
                 if (w) v = cut(v, w);
             }

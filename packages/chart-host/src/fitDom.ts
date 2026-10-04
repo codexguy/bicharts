@@ -94,43 +94,35 @@ export function svgInkReach(svg: SVGSVGElement): { right: number; bottom: number
 */
 type ClipWindow = { right: number; bottom: number };
 
+/** The window ONE element's own clip-path attribute opens, in screen coordinates - or null: no clip, a clip in
+ *  objectBoundingBox units, or one that won't measure. Shared by the frame fit (right/bottom) and the note badges
+ *  (the whole window). The clipPath is looked up within the element's own svg. */
+export function clipWindowOf(el: Element): { left: number; top: number; right: number; bottom: number } | null {
+    try {
+        const m = /url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(el.getAttribute("clip-path") || "");
+        const cp = m ? (el.closest("svg") ?? el.ownerDocument).querySelector(`clipPath[id="${m[1].replace(/"/g, '\\"')}"]`) : null;
+        const ctm = cp ? (el as unknown as SVGGraphicsElement).getScreenCTM?.() : null;
+        if (!cp || !ctm || cp.getAttribute("clipPathUnits") === "objectBoundingBox") return null;
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (let i = 0; i < cp.children.length; i++) {
+            const bb = (cp.children[i] as SVGGraphicsElement).getBBox?.();
+            if (!bb || !(bb.width > 0) || !(bb.height > 0)) continue;
+            for (const [x, y] of [[bb.x, bb.y], [bb.x + bb.width, bb.y], [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]]) {
+                const sx = ctm.a * x + ctm.c * y + ctm.e, sy = ctm.b * x + ctm.d * y + ctm.f;
+                l = Math.min(l, sx); t = Math.min(t, sy); r = Math.max(r, sx); b = Math.max(b, sy);
+            }
+        }
+        return isFinite(r) && isFinite(b) ? { left: l, top: t, right: r, bottom: b } : null;
+    } catch {
+        return null;
+    }
+}
+
 function clipWindowReader(svg: SVGSVGElement): (el: Element) => ClipWindow | null {
     const own = new Map<Element, ClipWindow | null>();
-    const byId = (id: string): Element | null => {
-        try {
-            return svg.querySelector(`clipPath[id="${id.replace(/"/g, '\\"')}"]`);
-        } catch {
-            return null;
-        }
-    };
-    // The window one element's OWN clip-path attribute opens, in screen coordinates.
     const windowOf = (el: Element): ClipWindow | null => {
-        if (own.has(el)) return own.get(el)!;
-        let win: ClipWindow | null = null;
-        try {
-            const ref = el.getAttribute("clip-path") || "";
-            const m = /url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(ref);
-            const cp = m ? byId(m[1]) : null;
-            const ctm = cp ? (el as unknown as SVGGraphicsElement).getScreenCTM?.() : null;
-            if (cp && ctm && cp.getAttribute("clipPathUnits") !== "objectBoundingBox") {
-                let r = -Infinity, b = -Infinity;
-                for (let i = 0; i < cp.children.length; i++) {
-                    const bb = (cp.children[i] as SVGGraphicsElement).getBBox?.();
-                    if (!bb || !(bb.width > 0) || !(bb.height > 0)) continue;
-                    for (const [x, y] of [[bb.x, bb.y], [bb.x + bb.width, bb.y],
-                                          [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]]) {
-                        const sx = ctm.a * x + ctm.c * y + ctm.e, sy = ctm.b * x + ctm.d * y + ctm.f;
-                        if (sx > r) r = sx;
-                        if (sy > b) b = sy;
-                    }
-                }
-                if (isFinite(r) && isFinite(b)) win = { right: r, bottom: b };
-            }
-        } catch {
-            win = null;
-        }
-        own.set(el, win);
-        return win;
+        if (!own.has(el)) own.set(el, clipWindowOf(el));
+        return own.get(el)!;
     };
     return (el: Element) => {
         let acc: ClipWindow | null = null;
