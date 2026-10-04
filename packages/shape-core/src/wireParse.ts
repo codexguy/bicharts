@@ -97,6 +97,14 @@ export interface ParsedGenerateResponse {
     /** Whose generation a fetch by correlation served; "" when the server did not say. */
     servedCorrelationId: string;
     /**
+     * A recovery poll's FINAL answer (2026-10-04): no chart is coming for that correlation, ever. Present
+     * only when the server sent a boolean, so a body from an older server reads exactly as before.
+     * isVersionNotFound rides beside it; a host reads this first (chart-host recoveryFinalOutcome).
+     */
+    isPollFinal?: boolean;
+    /** Which final answer: "cancelled", "failed" or "not-received". Present only when sent. */
+    pollOutcome?: string;
+    /**
      * The account's thumbnail override - an account-level "include thumbnails" setting, which a
      * host counts as the reader's consent to upload a new chart's first rendering. Unlike the flags
      * above it has THREE states: true or false when the server sent a boolean, and ABSENT when it
@@ -153,6 +161,7 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     const dest = pointColumns(data, "destPoint");
     if (Object.keys(dest).length) point.dest = dest;
     const retryable = f("retryable");
+    const pollFinal = f("isPollFinal");
     return {
         errorMessage: str(f("errorMessage")),
         errorCode: str(f("errorCode")),
@@ -186,6 +195,8 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
         isGenerationCancelled: flag(f("isGenerationCancelled")),
         retryAfterSeconds: typeof retry === "number" && Number.isFinite(retry) ? retry : null,
         servedCorrelationId: str(f("servedCorrelationId")),
+        ...(typeof pollFinal === "boolean" ? { isPollFinal: pollFinal } : {}),
+        ...(str(f("pollOutcome")) !== "" ? { pollOutcome: str(f("pollOutcome")) } : {}),
         ...(typeof thumbnailOverride === "boolean" ? { overrideThumbnailUpload: thumbnailOverride } : {}),
         ...(typeof thumbnailForced === "boolean" ? { forceThumbnailUpload: thumbnailForced } : {}),
     };

@@ -373,7 +373,10 @@ export {
     pendingRecoveryRemainingMs, transportFailureShouldRecover,
     TRANSPORT_LOST_CHECKING_MESSAGE, GENERATION_CANCELLED_MESSAGE,
     recoveryAnswerIsCancelled, generationCancelledMessage,
-    type PendingGenerateMarker, type PendingRecoveryDecision, type LatePickupAction,
+    recoveryFinalOutcome, recoveryProvesNothingCharged, recoveryGiveUpRefunds, recoveryLooksUnreachable,
+    recoveryFinalMessage, PENDING_RECOVERY_UNREACHABLE_POLLS, GENERATION_NOT_RECEIVED_MESSAGE,
+    GENERATION_FAILED_MESSAGE, RECOVERY_UNREACHABLE_MESSAGE,
+    type PendingGenerateMarker, type PendingRecoveryDecision, type LatePickupAction, type RecoveryFinalOutcome,
 } from "./pendingGenerate";
 // Comment-blind code reading: a host deciding what a chart needs from its source must not count a word
 // that only appears in a comment (requiredD3Plugins reads through it).

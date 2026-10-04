@@ -955,6 +955,12 @@ export type LLMRequestCodeResult =
         // stops polling, shows errorMessage (which says so in words) and lets the reader
         // generate again. See chart-host `recoveryAnswerIsCancelled`.
         isGenerationCancelled?: boolean,
+        // A recovery poll's FINAL answer (2026-10-04): nothing is coming for that correlation, ever -
+        // pollOutcome says which ending ("cancelled", "failed" in the generation's own errorMessage
+        // and errorCode, or "not-received": nothing ran, nothing was charged). isVersionNotFound is
+        // set beside it for older clients. See chart-host `recoveryFinalOutcome`.
+        isPollFinal?: boolean,
+        pollOutcome?: string | null,
         // The correlation id of the generation this response actually SERVED (2026-08-26).
         // Set on a correlation-keyed recovery fetch so the client can prove the chart it is
         // about to paint is its own before painting it - the check that would have stopped the
