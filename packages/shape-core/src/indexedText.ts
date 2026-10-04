@@ -500,8 +500,11 @@ export function classifyNumericValueNature(i: {
     const ratio = nonblank > 0 ? distinct / nonblank : 0;  // uniqueness (continuity backbone)
     const fractional = dataType === "Decimal" || prec > 0;
 
-    // (a) Identifiers are NOMINAL regardless of cardinality or role.
-    if (isIdentifierName(name)) return "Categorical";
+    // (a) Identifiers are NOMINAL regardless of cardinality - unless the host AGGREGATED the column into a
+    //     measure ("Count of OrderID", an ID column dropped in a value well, "Contagem de ID do Pedido"): the
+    //     host summed or counted it, so what arrives is a quantity whatever the name ends in. Stamped
+    //     Categorical, it counted as no number at all and a year column stood in for it (2026-10-04).
+    if (!isMeasure && isIdentifierName(name)) return "Categorical";
 
     // (b) Ordered numeric AXIS: an ordinal-friendly name at axis scale, or a
     //     value range that reads as calendar years / a small 0..N level scale,
