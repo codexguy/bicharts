@@ -352,12 +352,21 @@ export function generationCancelledMessage(serverMessage: string | null | undefi
  */
 export type RecoveryFinalOutcome = "cancelled" | "failed" | "not-received";
 
-export function recoveryFinalOutcome(r: { isPollFinal?: boolean | null; pollOutcome?: string | null; isGenerationCancelled?: boolean | null } | null | undefined): RecoveryFinalOutcome | null {
+export function recoveryFinalOutcome(r: { isPollFinal?: boolean | null; pollOutcome?: string | null; isGenerationCancelled?: boolean | null; isVersionNotFound?: boolean | null; errorCode?: string | null } | null | undefined): RecoveryFinalOutcome | null {
     if (!r) return null;
     const o = String(r.pollOutcome ?? "").trim().toLowerCase();
     if (r.isGenerationCancelled === true || (r.isPollFinal === true && o === "cancelled")) return "cancelled";
-    if (r.isPollFinal !== true) return null;
-    return o === "not-received" ? "not-received" : "failed";
+    if (r.isPollFinal === true) return o === "not-received" ? "not-received" : "failed";
+    // A body read by a parser that predates the two fields still carries the final answer's own CODE,
+    // and three codes are final by definition. Only those three: any other code beside a not-found is
+    // the generation's own refusal, which only the flag can tell from "not yet".
+    if (r.isPollFinal == null && r.isVersionNotFound === true) {
+        const c = String(r.errorCode ?? "").trim().toUpperCase();
+        if (c === "GENERATION_NOT_RECEIVED") return "not-received";
+        if (c === "GENERATION_FAILED") return "failed";
+        if (c === "GENERATION_CANCELLED") return "cancelled";
+    }
+    return null;
 }
 
 /** Did the server PROVE nothing was charged? Only a cancel and a request it never received do; a

@@ -456,6 +456,16 @@ describe("the recovery poll's final answers", () => {
         expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "something-new" })).toBe("failed");
         // An outcome without the final flag is not final.
         expect(m.recoveryFinalOutcome({ ...nf, pollOutcome: "not-received" })).toBeNull();
+        // A parser that predates the flags still hands over the code: the three final codes are final by
+        // definition; any other code beside a not-found (the generation's own refusal, or VERSION_NOT_FOUND)
+        // is not, and an explicit isPollFinal:false always wins.
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_NOT_RECEIVED" })).toBe("not-received");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_FAILED" })).toBe("failed");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_CANCELLED" })).toBe("cancelled");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "FREEMIUM_COLUMN_CAP" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "VERSION_NOT_FOUND" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: false, errorCode: "GENERATION_NOT_RECEIVED" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ isVersionNotFound: false, errorCode: "GENERATION_NOT_RECEIVED" })).toBeNull();
     });
 
     it("only a cancel and a request never received prove nothing was charged", async () => {
