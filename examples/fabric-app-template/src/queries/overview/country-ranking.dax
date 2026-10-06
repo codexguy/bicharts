@@ -1,0 +1,7 @@
+EVALUATE
+SUMMARIZECOLUMNS(
+    DimCountry[CountryCode],
+    DimCountry[Country],
+    "Revenue per Capita", [Revenue per Capita]
+)
+ORDER BY [Revenue per Capita] DESC

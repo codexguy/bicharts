@@ -1,0 +1,19 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "description": "Countries ranked by revenue per capita",
+  "mark": { "type": "bar", "cursor": "pointer" },
+  "encoding": {
+    "y": {
+      "field": "Country",
+      "type": "nominal",
+      "sort": { "field": "RevenuePerCapita", "order": "descending" },
+      "axis": { "title": null }
+    },
+    "x": { "field": "RevenuePerCapita", "type": "quantitative", "title": "Revenue per capita" },
+    "detail": { "field": "CountryCode", "type": "nominal" },
+    "tooltip": [
+      { "field": "Country", "type": "nominal" },
+      { "field": "RevenuePerCapita", "type": "quantitative", "title": "Revenue per capita", "format": "$,.2f" }
+    ]
+  }
+}

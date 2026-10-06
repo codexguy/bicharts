@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { resolve, join, extname } from "node:path";
+import { resolve, join, extname, sep } from "node:path";
 
 // Repo-level licensing guard. This exists because a real leak got as far as npm:
 // shape-core/src/indexedText.ts still carried the CLOSED-SOURCE header from the
@@ -30,6 +30,14 @@ const FORBIDDEN: Array<[RegExp, string]> = [
     [/confidential/i, "asserts confidentiality over published source"],
 ];
 
+const ALL_RIGHTS = FORBIDDEN[0][0];
+
+// Folders that hold a third party's template under its own licence rather than this repo's: the
+// Fabric Apps example is Microsoft's MIT-licensed Rayfin data app template with charts added. Its
+// LICENSE says so, and the README says which files are whose.
+const THIRD_PARTY_MIT = ["examples/fabric-app-template"].map(d => d.split("/").join(sep));
+const MIT_HEADER = /Copyright \(c\) Microsoft Corporation\.\s+All rights reserved\.\s*\n\s*\/\/\s*Licensed under the MIT license/;
+
 const TEXT_EXT = new Set([".ts", ".tsx", ".mjs", ".js", ".json", ".md", ".yml", ".yaml"]);
 const SKIP_DIR = new Set(["node_modules", "dist", ".git", ".vite"]);
 
@@ -58,13 +66,26 @@ describe("licensing — the repo says one thing about rights, everywhere", () =>
             // This test file necessarily contains the forbidden phrases as patterns.
             if (f === __filename) continue;
             const txt = readFileSync(f, "utf8");
+            const thirdParty = THIRD_PARTY_MIT.find(d => f.startsWith(join(ROOT, d) + sep));
             for (const [re, why] of FORBIDDEN) {
                 const m = txt.match(re);
+                // Microsoft's MIT header reads "All rights reserved." and then "Licensed under the MIT
+                // license" - an MIT grant, not a reservation. Excused only in a folder that ships that MIT
+                // licence, and only beside the MIT line; every other phrase still counts there.
+                if (m && thirdParty && re === ALL_RIGHTS && MIT_HEADER.test(txt)) continue;
                 if (m) hits.push(`${f.slice(ROOT.length + 1)}: "${m[0]}" — ${why}`);
             }
         }
         expect(hits, `Apache-2.0 is the licence of this repo; these files disagree:\n${hits.join("\n")}`)
             .toEqual([]);
+    });
+
+    it("a third-party template folder ships the MIT licence its headers name", () => {
+        for (const d of THIRD_PARTY_MIT) {
+            const license = readFileSync(join(ROOT, d, "LICENSE"), "utf8");
+            expect(license, `${d}/LICENSE`).toMatch(/MIT License/);
+            expect(license, `${d}/LICENSE`).toMatch(/Copyright \(c\) Microsoft Corporation/);
+        }
     });
 
     for (const pkg of PKGS) {

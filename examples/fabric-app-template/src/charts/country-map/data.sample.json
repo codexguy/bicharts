@@ -1,0 +1,567 @@
+{
+  "columns": [
+    {
+      "name": "CountryCode",
+      "dataType": "String",
+      "isMeasure": false,
+      "sortedDirection": "asc",
+      "modalShare": 0.025,
+      "minGroupCount": 1,
+      "isTemporal": false,
+      "blankCount": 0,
+      "distinctCount": 40,
+      "valueNature": "Categorical",
+      "avgValue": null,
+      "avgLength": 3,
+      "lowValue": null,
+      "highValue": null,
+      "medianValue": null,
+      "numericPrecision": 0,
+      "topCategories": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "formatSignature": "ALL_UPPER_FIXED_3",
+      "isFreeText": true,
+      "geoKind": "country-iso3",
+      "geoMatchPct": 100,
+      "dominantGeoRegion": "asia",
+      "dominantGeoRegionPct": 35,
+      "geoRegionCount": 6,
+      "categoricalPairStats": [
+        {
+          "otherColumn": "Country",
+          "fillPct": 3,
+          "determinesOther": true,
+          "minCellCount": 1,
+          "distinctCombinations": 40
+        }
+      ],
+      "modelDesc": "ISO 3166-1 alpha-3 country code. Primary key."
+    },
+    {
+      "name": "Country",
+      "dataType": "String",
+      "isMeasure": false,
+      "sortedDirection": "none",
+      "modalShare": 0.025,
+      "minGroupCount": 1,
+      "isTemporal": false,
+      "blankCount": 0,
+      "distinctCount": 40,
+      "valueNature": "Categorical",
+      "avgValue": null,
+      "avgLength": 8,
+      "lowValue": null,
+      "highValue": null,
+      "medianValue": null,
+      "numericPrecision": 0,
+      "topCategories": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "formatSignature": "TITLE_CASE_WORDS",
+      "isFreeText": true,
+      "geoKind": "country-name",
+      "geoMatchPct": 100,
+      "dominantGeoRegion": "asia",
+      "dominantGeoRegionPct": 35,
+      "geoRegionCount": 6,
+      "categoricalPairStats": [
+        {
+          "otherColumn": "CountryCode",
+          "fillPct": 3,
+          "determinesOther": true,
+          "minCellCount": 1,
+          "distinctCombinations": 40
+        }
+      ],
+      "modelDesc": "Country name in English."
+    },
+    {
+      "name": "RevenuePerCapita",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "discourageAggregationAcrossGroups": true,
+      "sortedDirection": "none",
+      "isTemporal": false,
+      "blankCount": 0,
+      "distinctCount": 40,
+      "valueNature": "Continuous",
+      "avgValue": 10.893692203191522,
+      "avgLength": 17.525,
+      "lowValue": 0.2596654474068258,
+      "highValue": 59.791131725699614,
+      "medianValue": 5.773243445059187,
+      "numericPrecision": 17,
+      "skewness": 1.8636551035082713,
+      "stdDev": 13.785802534981304,
+      "sum": 435.74768812766087,
+      "topCategories": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "quantiles": {
+        "p05": 0.49309226888504903,
+        "p25": 1.3012089202477854,
+        "p75": 13.071406548939283,
+        "p95": 41.50601778988072
+      },
+      "additivity": "intensive_rate",
+      "relativeDispersion": 5.304,
+      "nonBlankGroups": [
+        {
+          "otherColumn": "CountryCode",
+          "nonBlankGroupCount": 40
+        },
+        {
+          "otherColumn": "Country",
+          "nonBlankGroupCount": 40
+        }
+      ],
+      "groupDiscrimination": [
+        {
+          "otherColumn": "CountryCode",
+          "eta2": 1
+        },
+        {
+          "otherColumn": "Country",
+          "eta2": 1
+        }
+      ],
+      "maxAbsMeasureCorrelation": 0.204,
+      "modelDesc": "Revenue in USD per inhabitant for the selected period."
+    },
+    {
+      "name": "ReturnRate",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "discourageAggregationAcrossGroups": true,
+      "sortedDirection": "none",
+      "isTemporal": false,
+      "blankCount": 0,
+      "distinctCount": 40,
+      "valueNature": "Ordinal",
+      "avgValue": 0.06477968514999376,
+      "avgLength": 19.075,
+      "lowValue": 0.029321484815134007,
+      "highValue": 0.11665378510441846,
+      "medianValue": 0.06345640776022687,
+      "numericPrecision": 18,
+      "skewness": 0.3839940485039684,
+      "stdDev": 0.01971038212049331,
+      "sum": 2.5911874059997504,
+      "topCategories": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "quantiles": {
+        "p05": 0.03246680094989613,
+        "p25": 0.04922564600655346,
+        "p75": 0.07681640048208542,
+        "p95": 0.0949259140816544
+      },
+      "additivity": "intensive_rate",
+      "relativeDispersion": 0.836,
+      "nonBlankGroups": [
+        {
+          "otherColumn": "CountryCode",
+          "nonBlankGroupCount": 40
+        },
+        {
+          "otherColumn": "Country",
+          "nonBlankGroupCount": 40
+        }
+      ],
+      "groupDiscrimination": [
+        {
+          "otherColumn": "CountryCode",
+          "eta2": 1
+        },
+        {
+          "otherColumn": "Country",
+          "eta2": 1
+        }
+      ],
+      "maxAbsMeasureCorrelation": 0.204,
+      "modelDesc": "Share of orders returned (Returns / Orders)."
+    },
+    {
+      "name": "__rowIdx__",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "modelDesc": ""
+    },
+    {
+      "name": "__geoIso__",
+      "dataType": "String",
+      "isMeasure": false,
+      "modelDesc": ""
+    }
+  ],
+  "rows": [
+    [
+      "ARE",
+      "United Arab Emirates",
+      41.50601778988072,
+      0.03584491587417703,
+      0,
+      "ARE"
+    ],
+    [
+      "ARG",
+      "Argentina",
+      2.2913138726934448,
+      0.06902922405105812,
+      1,
+      "ARG"
+    ],
+    [
+      "AUS",
+      "Australia",
+      18.848482408422925,
+      0.06797913017473406,
+      2,
+      "AUS"
+    ],
+    [
+      "BRA",
+      "Brazil",
+      2.462527064498661,
+      0.07681640048208542,
+      3,
+      "BRA"
+    ],
+    [
+      "CAN",
+      "Canada",
+      11.253527232106551,
+      0.06496591286558649,
+      4,
+      "CAN"
+    ],
+    [
+      "CHE",
+      "Switzerland",
+      33.66171869992854,
+      0.045631948375977595,
+      5,
+      "CHE"
+    ],
+    [
+      "CHL",
+      "Chile",
+      5.361919106308385,
+      0.037921402058699726,
+      6,
+      "CHL"
+    ],
+    [
+      "CHN",
+      "China",
+      1.0474510623232274,
+      0.03924669024301777,
+      7,
+      "CHN"
+    ],
+    [
+      "COL",
+      "Colombia",
+      2.174758450236735,
+      0.05998219341156228,
+      8,
+      "COL"
+    ],
+    [
+      "DEU",
+      "Germany",
+      12.569936296335419,
+      0.11665378510441846,
+      9,
+      "DEU"
+    ],
+    [
+      "EGY",
+      "Egypt",
+      0.5476817032749693,
+      0.07541435598583827,
+      10,
+      "EGY"
+    ],
+    [
+      "ESP",
+      "Spain",
+      7.675173475527923,
+      0.0609270747980803,
+      11,
+      "ESP"
+    ],
+    [
+      "FRA",
+      "France",
+      9.2272778713605,
+      0.06559014864564501,
+      12,
+      "FRA"
+    ],
+    [
+      "GBR",
+      "United Kingdom",
+      13.071406548939283,
+      0.08317829161093063,
+      13,
+      "GBR"
+    ],
+    [
+      "IDN",
+      "Indonesia",
+      0.49309226888504903,
+      0.08006694403603716,
+      14,
+      "IDN"
+    ],
+    [
+      "IND",
+      "India",
+      0.5911764095106984,
+      0.09444683358372755,
+      15,
+      "IND"
+    ],
+    [
+      "IRL",
+      "Ireland",
+      45.86830768271859,
+      0.07121714003805765,
+      16,
+      "IRL"
+    ],
+    [
+      "ISR",
+      "Israel",
+      19.200941590906762,
+      0.05586099022781125,
+      17,
+      "ISR"
+    ],
+    [
+      "ITA",
+      "Italy",
+      6.184567783809989,
+      0.05170996109953725,
+      18,
+      "ITA"
+    ],
+    [
+      "JPN",
+      "Japan",
+      6.3559978532991375,
+      0.029321484815134007,
+      19,
+      "JPN"
+    ],
+    [
+      "KEN",
+      "Kenya",
+      0.4988150198620392,
+      0.06560354729278521,
+      20,
+      "KEN"
+    ],
+    [
+      "KOR",
+      "South Korea",
+      8.297149833003044,
+      0.04541165878355462,
+      21,
+      "KOR"
+    ],
+    [
+      "MAR",
+      "Morocco",
+      0.8757137449417343,
+      0.061946902654867256,
+      22,
+      "MAR"
+    ],
+    [
+      "MEX",
+      "Mexico",
+      2.578453388244357,
+      0.048302835296519776,
+      23,
+      "MEX"
+    ],
+    [
+      "MYS",
+      "Malaysia",
+      3.1159897349128243,
+      0.04922564600655346,
+      24,
+      "MYS"
+    ],
+    [
+      "NGA",
+      "Nigeria",
+      0.2596654474068258,
+      0.0949259140816544,
+      25,
+      "NGA"
+    ],
+    [
+      "NLD",
+      "Netherlands",
+      20.539925728857558,
+      0.0994647757220094,
+      26,
+      "NLD"
+    ],
+    [
+      "NOR",
+      "Norway",
+      30.938039372098746,
+      0.07073782062978363,
+      27,
+      "NOR"
+    ],
+    [
+      "NZL",
+      "New Zealand",
+      13.836172322949972,
+      0.05795565587194979,
+      28,
+      "NZL"
+    ],
+    [
+      "PER",
+      "Peru",
+      1.8330949334752804,
+      0.0435437539410075,
+      29,
+      "PER"
+    ],
+    [
+      "PHL",
+      "Philippines",
+      0.6395014905226101,
+      0.09189215283979821,
+      30,
+      "PHL"
+    ],
+    [
+      "POL",
+      "Poland",
+      4.757537176255618,
+      0.058277144498533544,
+      31,
+      "POL"
+    ],
+    [
+      "SAU",
+      "Saudi Arabia",
+      8.619904597731482,
+      0.051662231774298094,
+      32,
+      "SAU"
+    ],
+    [
+      "SGP",
+      "Singapore",
+      59.791131725699614,
+      0.03246680094989613,
+      33,
+      "SGP"
+    ],
+    [
+      "SWE",
+      "Sweden",
+      22.049791772171602,
+      0.08537738859971333,
+      34,
+      "SWE"
+    ],
+    [
+      "THA",
+      "Thailand",
+      1.3012089202477854,
+      0.055604716728746936,
+      35,
+      "THA"
+    ],
+    [
+      "TUR",
+      "Türkiye",
+      2.0417181274172,
+      0.08690432577145273,
+      36,
+      "TUR"
+    ],
+    [
+      "USA",
+      "United States",
+      10.55218000334085,
+      0.0661074555008245,
+      37,
+      "USA"
+    ],
+    [
+      "VNM",
+      "Vietnam",
+      1.040651486081938,
+      0.05960891911736291,
+      38,
+      "VNM"
+    ],
+    [
+      "ZAF",
+      "South Africa",
+      1.7877681314724223,
+      0.08436293245632229,
+      39,
+      "ZAF"
+    ]
+  ],
+  "geoUnmatched": {
+    "count": 0,
+    "examples": []
+  },
+  "dateCellsAreUtcDays": true,
+  "meta": {
+    "hostContract": "1.13.0",
+    "chart": "Bivariate World Choropleth",
+    "width": 800,
+    "height": 420
+  }
+}

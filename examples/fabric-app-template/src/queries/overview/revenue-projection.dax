@@ -1,0 +1,7 @@
+EVALUATE
+SUMMARIZECOLUMNS(
+    DimDate[MonthStart],
+    "Revenue", [Revenue],
+    "Revenue Target", [Revenue Target]
+)
+ORDER BY DimDate[MonthStart]

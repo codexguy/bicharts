@@ -1,0 +1,13 @@
+EVALUATE
+SUMMARIZECOLUMNS(
+    DimOriginCountry[OriginCountryCode],
+    DimOriginCountry[OriginCountry],
+    DimOriginCountry[OriginLatitude],
+    DimOriginCountry[OriginLongitude],
+    DimDestinationCountry[DestinationCountryCode],
+    DimDestinationCountry[DestinationCountry],
+    DimDestinationCountry[DestinationLatitude],
+    DimDestinationCountry[DestinationLongitude],
+    "Units Shipped", [Units Shipped]
+)
+ORDER BY [Units Shipped] DESC
