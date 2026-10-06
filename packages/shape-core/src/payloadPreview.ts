@@ -42,6 +42,8 @@ export const PREVIEW_OMITTED_FIELDS: readonly string[] = Object.freeze([
     // exactly the same consequence.
     "freemiumKey",
     "linkNonce",
+    // A signed-in account's access token: a bearer credential like the two above.
+    "accessToken",
     // Identity rather than entitlement, and still not the reader's business: clientId is a
     // per-install id the server hashes into a rate-limit key, instanceKey identifies the
     // workbook's chart slot, and correlationId ties a support conversation to a log row. None

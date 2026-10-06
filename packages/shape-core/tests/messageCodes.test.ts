@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
     parseGenerateResponse, parseQualifyResponse, parseReviewVerdict, readGenerateStream,
     progressStageOf, answerIsRetryable, PROGRESS_STAGE_IDS, FREEMIUM_ATTEMPT_SPENT, CLIENT_SECRET_MISMATCH,
-    FREEMIUM_COLUMN_CAP,
+    FREEMIUM_COLUMN_CAP, OAUTH_TOKEN_EXPIRED, OAUTH_SIGNED_OUT,
 } from "../src/index";
 import type { WireResponse } from "../src/index";
 
@@ -136,6 +136,12 @@ describe("the codes a host branches on", () => {
         expect([FREEMIUM_ATTEMPT_SPENT, CLIENT_SECRET_MISMATCH, FREEMIUM_COLUMN_CAP])
             .toEqual(["FREEMIUM_ATTEMPT_SPENT", "CLIENT_SECRET_MISMATCH", "FREEMIUM_COLUMN_CAP"]);
         expect([...PROGRESS_STAGE_IDS]).toEqual(["working", "analyze", "generate", "refine", "review"]);
+    });
+
+    it("the sign-in codes are the server's spelling, and a parsed answer carries them as its errorCode", () => {
+        expect([OAUTH_TOKEN_EXPIRED, OAUTH_SIGNED_OUT]).toEqual(["OAUTH_TOKEN_EXPIRED", "OAUTH_SIGNED_OUT"]);
+        expect(parseGenerateResponse({ errorMessage: "x", errorCode: OAUTH_SIGNED_OUT }).errorCode).toBe(OAUTH_SIGNED_OUT);
+        expect(parseQualifyResponse({ ErrorMessage: "x", ErrorCode: OAUTH_TOKEN_EXPIRED }).errorCode).toBe(OAUTH_TOKEN_EXPIRED);
     });
 
     it("answerIsRetryable reads only the flag", () => {

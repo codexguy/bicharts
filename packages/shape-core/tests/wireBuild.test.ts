@@ -127,6 +127,40 @@ describe("credentialFields - one credential, and a linked session's nonce wins",
     });
 });
 
+describe("credentialFields - a signed-in account's access token travels with an empty triple", () => {
+    const TRIPLE = { licensee: "Contoso", licenseKey: "K".repeat(22), secretKey: "s3cret" };
+
+    it("a live token replaces the triple, which is not even read", () => {
+        let asked = 0;
+        const f = credentialFields({ triple: () => { asked++; return TRIPLE; }, accessToken: () => "  bat_abc  " });
+        expect(f.request).toEqual({ licenseKey: "", licensee: "", secretKey: "", freemiumKey: "" });
+        expect(f.accessToken).toBe("bat_abc");
+        expect(asked).toBe(0);
+    });
+
+    it("no token right now sends the triple, and the field reads \"\"", () => {
+        for (const t of [null, "", "   "]) {
+            const f = credentialFields({ triple: () => TRIPLE, accessToken: () => t });
+            expect(f.request.licenseKey).toBe("K".repeat(22));
+            expect(f.accessToken).toBe("");
+        }
+    });
+
+    it("a source with no token member sends no token field, exactly as before", () => {
+        expect(credentialFields({ triple: () => TRIPLE }).accessToken).toBeNull();
+        expect(credentialFields({ triple: () => TRIPLE, accessToken: null }).accessToken).toBeNull();
+        expect(credentialFields({ triple: () => TRIPLE }).request)
+            .toEqual({ licenseKey: "K".repeat(22), licensee: "Contoso", secretKey: "s3cret", freemiumKey: "" });
+    });
+
+    it("a live link nonce outranks a token: one credential travels", () => {
+        const f = credentialFields({ triple: () => TRIPLE, linkNonce: () => "n", accessToken: () => "bat_abc" });
+        expect(f.linkNonce).toBe("n");
+        expect(f.accessToken).toBeNull();
+        expect(f.request.licenseKey).toBe("");
+    });
+});
+
 // Moved from the Power BI visual with every expected value unchanged; the visual's own copy of these
 // cases now runs against this function through its re-export.
 describe("resolveFetchVersion - a fetch asks for a real version and can never bill", () => {

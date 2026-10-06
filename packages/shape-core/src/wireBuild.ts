@@ -23,6 +23,12 @@ export interface CredentialFields {
      * linked session sends no such field. The host places it; it sits at a different key in each.
      */
     linkNonce: string | null;
+    /**
+     * The signed-in account's access token as the wire carries it (the request's `accessToken`):
+     * trimmed, "" when the host signs in this way but has no token right now. Null when the source
+     * has no `accessToken` member, and null whenever a live link nonce travels instead.
+     */
+    accessToken: string | null;
 }
 
 /**
@@ -37,10 +43,17 @@ export interface CredentialFields {
  * What each value holds is the source's own: a host that resolves a mode (licensed or free tier) or
  * trims what a reader typed does that in its source. The free-tier key rides beside either, "" when
  * the source has none.
+ *
+ * A SIGNED-IN ACCOUNT'S ACCESS TOKEN follows the same rule for the same reason: the server reads the
+ * token only when the triple is empty, so a live token travels with an EMPTY triple, never beside a
+ * key. A live nonce outranks it (a source offering both has two sessions, and the nonce is the one
+ * this rule already sends). Which of a key and a token a host prefers is decided in its source: a
+ * host that holds a key returns no token.
  */
 export function credentialFields(source: CredentialSource): CredentialFields {
     const linkNonce = source.linkNonce ? (source.linkNonce() ?? "").trim() : null;
-    const t = linkNonce ? { licensee: "", licenseKey: "", secretKey: "" } : source.triple();
+    const accessToken = linkNonce ? null : (source.accessToken ? (source.accessToken() ?? "").trim() : null);
+    const t = linkNonce || accessToken ? { licensee: "", licenseKey: "", secretKey: "" } : source.triple();
     return {
         request: {
             licenseKey: t.licenseKey,
@@ -49,6 +62,7 @@ export function credentialFields(source: CredentialSource): CredentialFields {
             freemiumKey: source.freemiumKey?.() ?? "",
         },
         linkNonce,
+        accessToken,
     };
 }
 

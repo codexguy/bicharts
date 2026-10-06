@@ -283,7 +283,7 @@ export type {
 // licence answer, the retry flag.
 export {
     PROGRESS_STAGE_IDS, progressStageOf, FREEMIUM_ATTEMPT_SPENT, CLIENT_SECRET_MISMATCH, FREEMIUM_COLUMN_CAP,
-    answerIsRetryable,
+    OAUTH_TOKEN_EXPIRED, OAUTH_SIGNED_OUT, answerIsRetryable,
 } from "./messageCodes";
 export type { ProgressStageId } from "./messageCodes";
 // BUILDING A GENERATE REQUEST (2026-09-25): the concerns every host applies by the same rule, each a

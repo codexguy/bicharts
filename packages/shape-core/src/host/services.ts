@@ -85,6 +85,9 @@ export interface CredentialTriple {
  * Optional members, each from the host matrix:
  * - `linkNonce`: a host that signs in by a linked session rather than a typed key. Today the
  *   Excel add-in only; absent elsewhere.
+ * - `accessToken`: a host that signs its user in through the browser and holds an access token
+ *   for the person's account. Today the MCP server only, and only when no key is configured: which
+ *   credential a host prefers is the host's decision, so a host that holds a key offers no token.
  * - `freemiumKey`: a host with a free tier minted per install. Today the Power BI visual only;
  *   the add-in and the MCP server have no free tier by decision, and a page with no
  *   credentials has none either.
@@ -96,6 +99,7 @@ export interface CredentialTriple {
 export interface CredentialSource {
     triple(): CredentialTriple;
     linkNonce?: (() => string | null) | null;
+    accessToken?: (() => string | null) | null;
     freemiumKey?: (() => string | null) | null;
     instanceKey?: (() => string | null) | null;
 }

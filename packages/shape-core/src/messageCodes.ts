@@ -46,6 +46,15 @@ export const CLIENT_SECRET_MISMATCH = "CLIENT_SECRET_MISMATCH";
 /** The free tier's field cap: a wall that spent nothing (the historical `refusalCode`, kept). */
 export const FREEMIUM_COLUMN_CAP = "FREEMIUM_COLUMN_CAP";
 
+/** A signed-in account's access token is past its expiry while its sign-in is still alive. A host
+ *  that signs in through the browser refreshes the token silently and sends the request once more;
+ *  nothing ran and nothing was charged. */
+export const OAUTH_TOKEN_EXPIRED = "OAUTH_TOKEN_EXPIRED";
+
+/** The sign-in behind an access token is gone - revoked from the account page, expired, or unknown.
+ *  A host forgets the tokens it holds and asks the person to sign in again, once. */
+export const OAUTH_SIGNED_OUT = "OAUTH_SIGNED_OUT";
+
 /**
  * May the same request, sent again, answer differently? The server's `retryable` flag when it sent
  * one; null when it did not (a success, or a server older than the flag) - the host then decides as

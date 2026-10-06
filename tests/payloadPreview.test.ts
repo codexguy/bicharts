@@ -115,7 +115,7 @@ describe("payloadPreview", () => {
         // payloads the hosts actually build. If a host renames one, this fails and the omit list
         // is updated in the same change rather than silently leaking under the new name.
         expect([...PREVIEW_OMITTED_FIELDS].sort()).toEqual([
-            "clientId", "correlationId", "freemiumKey", "instanceKey",
+            "accessToken", "clientId", "correlationId", "freemiumKey", "instanceKey",
             "licenseKey", "licensee", "linkNonce", "secretKey",
         ]);
     });
