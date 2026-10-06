@@ -145,6 +145,39 @@ group.onChange(sel => console.log(sel.sourceId, sel.rows));  // SOURCE row indic
 group.clear();
 ```
 
+## Reader options
+
+Everything a reader can tune lives in `options` - the `options` prop on `<BicChart>`, the
+`options` you hand `createChartHost`, or a later `setOptions`. The full set, with each option's
+default, bounds and whether it repaints the chart on screen, is exported as `OPTIONS_VOCABULARY`;
+`LIVE_OPTION_KEYS` lists the ones that apply without a new chart.
+
+**Card decks and carousels.** A chart that pages through several faces (a flippable multi-card
+deck, a rotating carousel) reads these on every draw, so they all restyle live:
+
+| Option | Values | Unset means |
+| --- | --- | --- |
+| `cardBackgroundColor` | any CSS color | the chart's own fill: a deck uses the page, a carousel a light tint |
+| `flipIntervalMs` | `0` (manual only), or 500-120000 ms | the chart's own: manual for a deck, 5 s for a carousel |
+| `flipDirection` | `"horizontal"`, `"vertical"` | `"horizontal"` (side to side) |
+| `flipMode` | `"both"`, `"all"`, `"single"` (the deck only; a carousel has its own arrows) | `"both"` |
+
+```tsx
+<BicChart id="kpis" code={code} d3={d3}
+          options={{ width, height, cardBackgroundColor: "#f4c7b8", flipIntervalMs: 4000 }} />
+```
+
+The fill is the only thing you set: the chart still chooses its text colors, and they are its
+job to keep readable on a dark card.
+
+**Clearing an option.** `setOptions` merges into what the chart already has, and so does a
+changed `options` prop - a key you simply drop keeps its last value. To hand an option back to
+the chart's own default, pass it explicitly as `undefined`:
+
+```js
+host.setOptions({ cardBackgroundColor: undefined, flipIntervalMs: undefined });
+```
+
 ## Sizing is yours
 
 `width`/`height` have **no defaults**. A chart draws once at whatever it is handed and does not

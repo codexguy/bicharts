@@ -96,6 +96,12 @@ export const OPTIONS_VOCABULARY = Object.freeze({
     /** Which way a face turns, for any chart that turns between faces: side to side, or top to bottom. */
     flipDirection: entry({ timing: "live", default: FLIP_DIRECTION_DEFAULT, values: ["horizontal", "vertical"] }),
     /**
+     * The fill behind each card of a card deck and each face of a carousel. BLANK - "the chart's own" -
+     * is the default, and it differs by chart: a deck uses the page so its cards read as part of it, a
+     * carousel tints its faces so each reads as a surface. A color is a reader's choice.
+     */
+    cardBackgroundColor: entry({ timing: "live", default: "" }),
+    /**
      * Hover drop lines on a 3D chart. BLANK - "the chart's own" - is the default: off, unless the request
      * that made the chart asked for them. "on" / "off" is a reader's choice and wins either way.
      */
