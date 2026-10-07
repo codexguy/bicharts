@@ -21,6 +21,7 @@ export {
     GEO_POINT_PRECISIONS,
     MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS, ROW_IDX_ATTR, LIFT_SELECTED_CLASS, CONTROL_CLASS,
     NO_ROW_MARKS_ATTR,
+    SELECTION_RULE_ATTR, SELECTION_RULE_CLICKED_MARKS, MARK_KEY_ATTR, CONTAINER_SLOT_CLICKED_MARKS,
     SNAPSHOT_SVG_ATTR,
     XFILTER_REFRESH_EVENT,
     CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
@@ -83,7 +84,7 @@ export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./date
 // host applies, or the two paths disagree about what a valid chart artifact is.
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
     sessionViewStateProvider, noopViewStateProvider, assembleD3, D3_PLUGIN_PACKAGES,
-    type ChartHost, type ChartHostConfig, type RenderFn } from "./host";
+    type ChartHost, type ChartHostConfig, type RenderFn, type SelectionPaintReport } from "./host";
 // NOTES ON MARKS: badges the host draws on a key's mark after every render (ChartHostConfig.annotations).
 export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
 // READERS' NOTES, IN-CHART CONTROLS AS PAGE STATE, PAGE FILTERS (2026-10-02): their TYPES here, so a generated
@@ -102,6 +103,8 @@ export type { Filter, FilterScope, FilterOptions, FilterKey, FilterChangeReason,
     VegaInteractionEvent, PageView } from "./filterScope";
 export {
     createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
+    selectionRuleOf, markKeyOf, planSelectionPaint, nextClickedMarks, sameRowSet,
+    type SelectionRule, type ClickedMarks, type SelectionPaintMark, type SelectionPaintMode, type SelectionPaintPlan,
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,
     type MarkResolver, type MarkResolverEnv, type GlyphCenter, type SelectionGlyphStyle, type SelectionModifiers,
 } from "./selection";

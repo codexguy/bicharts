@@ -19,7 +19,7 @@
 // (contract v1.1 candidate, replay-gated) — deliberately not invented here.
 import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS,
     XFILTER_REFRESH_EVENT, CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
-    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
+    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_CLICKED_MARKS, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
     MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, LIFT_SELECTED_CLASS,
     chartOwnsTimeline, periodTickSuppressesFeedback,
     HOST_CONTRACT_VERSION, type ViewStateProvider } from "./contract";
@@ -29,7 +29,17 @@ import { stripJsComments } from "./codeComments";
 // which every consumer then paid for even to draw a bar chart (GAP-11). geoLazy holds the
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
-import { createMarkResolver, isInsideControl, nextSelection } from "./selection";
+import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, markKeyOf, planSelectionPaint,
+    nextClickedMarks, type ClickedMarks, type SelectionRule, type SelectionPaintMode } from "./selection";
+
+/** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
+export interface SelectionPaintReport {
+    rule: SelectionRule;
+    mode: SelectionPaintMode;
+    lit: number;
+    marks: number;
+    selection: number;
+}
 import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
@@ -180,6 +190,13 @@ export interface ChartHostConfig {
      * a radius off it. It declines on anything that is not that shape.
      */
     onValuePlacementCensus?: (census: ValuePlacementCensus) => void;
+    /**
+     * HOW A DECLARED SELECTION RULE LIT THE MARKS. Called on every selection paint of a chart that
+     * declares a rule other than the default (SELECTION_RULE_ATTR), never for one that declares none.
+     * `mode` "fallback-any-row" means no clicked or exactly-matching mark was found for the selection,
+     * so the default rule lit the chart for that paint: worth a log line.
+     */
+    onSelectionPaint?: (report: SelectionPaintReport) => void;
     /** This chart declares time keyframes: frame one is allowed to be empty, so no blank verdict
      *  is issued for it. */
     animated?: boolean;
@@ -643,6 +660,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // mark) rather than read off a clicked mark or handed in by the host. Only a selection the
     // chart owns is the chart's to undo - see the empty-click branch in onClick.
     let selectionFromChart = false;
+    // The marks the reader clicked, for a chart that declared "clicked-marks". Parked on the
+    // CONTAINER (CONTAINER_SLOT_CLICKED_MARKS), so a host re-created on the same element keeps it.
+    const clickedMarks = (): ClickedMarks | null => (container as any)[CONTAINER_SLOT_CLICKED_MARKS] ?? null;
+    const setClickedMarks = (c: ClickedMarks | null) => { try { (container as any)[CONTAINER_SLOT_CLICKED_MARKS] = c; } catch { /* frozen element */ } };
     const subs = new Set<(rowIdxs: number[], source: string) => void>();
 
     // ---- Selection affordance ------------------------------------------------
@@ -732,6 +753,26 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (active && tickStillDrawn) activeTickEl.classList?.add(ACTIVE_TICK_CLASS);
             const wanted = new Set(sel ?? []);
             const marks = container.querySelectorAll(`.${MARK_CLASS}[${ROW_IDX_ATTR}], .${LEGEND_MARK_CLASS}[${ROW_IDX_ATTR}]`);
+            // A CHART THAT DECLARED A RULE (contract 1.14.0) is painted through the shared plan:
+            // only the marks the reader clicked light. The default below is untouched.
+            const rule = selectionRuleOf(container);
+            if (rule !== "any-row") {
+                const list = Array.from(marks);
+                const plan = planSelectionPaint(
+                    list.map(m => ({ key: markKeyOf(m), rows: parseRowIdxs(m.getAttribute(ROW_IDX_ATTR)) })),
+                    active ? wanted : [], rule, clickedMarks());
+                list.forEach((m, i) => m.classList?.[plan.on[i] ? "add" : "remove"](MARK_SELECTED_CLASS));
+                // What this paint lit becomes the clicked set, so a Ctrl-click after a restored
+                // selection adds to the word already lit rather than starting over.
+                setClickedMarks(plan.keys.length ? { keys: plan.keys, selection: Array.from(wanted) } : null);
+                if (active) {
+                    try {
+                        config.onSelectionPaint?.({ rule, mode: plan.mode, lit: plan.on.filter(Boolean).length,
+                            marks: list.length, selection: wanted.size });
+                    } catch { /* a report must never break a paint */ }
+                }
+                return;
+            }
             for (const m of Array.from(marks)) {
                 // A mark represents SEVERAL rows (a legend swatch, an aggregated slice);
                 // it counts as selected when ANY of its rows is in the selection, which is
@@ -859,6 +900,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         const multi = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
         const next = nextSelection(current, rows, { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey });
         const toggledOff = !multi && next.length === 0;
+        // Which mark was clicked: what a chart that declared "clicked-marks" lights. Kept for every
+        // chart; one that declared nothing never reads it.
+        setClickedMarks(nextClickedMarks(clickedMarks(), current, markKeyOf(el), next,
+            { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey }));
         notify(next, "user", toggledOff ? null : tick);
     };
     container.addEventListener(XFILTER_REFRESH_EVENT, onXf);
@@ -1137,6 +1182,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             clear() {
                 const s = (container as any)[CONTAINER_SLOT_XF_CLEAR];
                 if (typeof s === "function") { try { s(); } catch { /* chart already clear */ } }
+                setClickedMarks(null);
                 // Always settle the host's own state, even when the chart owns the clear:
                 // a chart that clears WITHOUT dispatching would otherwise leave the host
                 // (and every subscriber) believing the old selection is still live.

@@ -267,6 +267,17 @@ would show its selected lines at 38%, which the eye reads as dimmed. Such a char
 painted at full opacity. Undeclared charts are unchanged, so alpha used as an encoding (a depth
 cue, a hierarchy level) is never flattened by a fix meant for another chart.
 
+**Which marks count as selected.** By default a mark is selected when *any* of the rows in its
+`data-row-idx` list is selected, which is what lights a legend swatch together with its series. A
+chart whose marks share rows declares the other rule by stamping
+`data-lch-sel-rule="clicked-marks"` on an element it draws (its own `<svg>`): then exactly the
+marks the reader clicked are selected and every other mark is dimmed, Ctrl/Cmd/Shift-click adds or
+removes a mark, and a selection set from outside lights the marks whose rows equal it. A mark is
+named by `data-mark-key` when it carries one, else by its row list. A word cloud is the case it was
+made for: every word shares a comment with many others, so the default lit most of the cloud on one
+click. The cross-filter sent out is the same under both rules. `onSelectionPaint` reports how each
+paint of a declaring chart decided, including when no mark matched and the default was used.
+
 ## Architecture — three layers, and why it matters if you contribute
 
 Read this before adding code. The package has **three** concerns, and they are independent.

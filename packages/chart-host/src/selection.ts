@@ -14,7 +14,10 @@
 // whether at all, stays the host's: the glyph setting, the flow-chart suppression,
 // the theme colours and any other renderer's centres.
 
-import { CONTROL_CLASS, MARK_CLASS, MARK_SELECTED_CLASS } from "./contract";
+import {
+    CONTROL_CLASS, MARK_CLASS, MARK_SELECTED_CLASS, MARK_KEY_ATTR, ROW_IDX_ATTR,
+    SELECTION_RULE_ATTR, SELECTION_RULE_CLICKED_MARKS,
+} from "./contract";
 
 /**
  * The rows a mark names: its data-row-idx read as a comma list of non-negative whole
@@ -66,6 +69,120 @@ export function nextSelection(current: Iterable<number> | null | undefined, rowI
     }
     const same = cur.length === rowIdxs.length && rowIdxs.every(r => cur.includes(r));
     return same ? [] : rowIdxs.slice();
+}
+
+/**
+ * HOW A SELECTION LIGHTS A CHART'S OWN MARKS (see SELECTION_RULE_ATTR in contract.ts).
+ * "any-row": a mark is lit when any of its rows is selected - the default, and what every chart
+ * that declares nothing gets. "clicked-marks": the marks the reader clicked are lit and every other
+ * mark is dimmed - for a chart whose marks share rows, where any-row lights most of the chart.
+ */
+export type SelectionRule = "any-row" | "clicked-marks";
+
+/** The rule the chart in `container` declared, read off any element it drew; "any-row" when none. */
+export function selectionRuleOf(container: Element | null | undefined): SelectionRule {
+    try {
+        const el = container?.querySelector?.(`[${SELECTION_RULE_ATTR}]`);
+        return el?.getAttribute(SELECTION_RULE_ATTR) === SELECTION_RULE_CLICKED_MARKS ? "clicked-marks" : "any-row";
+    } catch { return "any-row"; }
+}
+
+/**
+ * A mark's identity under "clicked-marks": its MARK_KEY_ATTR when it carries one, else its
+ * data-row-idx list (prefixed, so a key can never be mistaken for a row list).
+ */
+export function markKeyOf(el: Element | null | undefined): string {
+    if (!el) return "";
+    const k = el.getAttribute(MARK_KEY_ATTR);
+    if (k != null && k !== "") return k;
+    return "rows:" + (el.getAttribute(ROW_IDX_ATTR) || "").replace(/\s+/g, "");
+}
+
+/** The marks the reader clicked under "clicked-marks", and the selection those clicks left. */
+export interface ClickedMarks {
+    keys: string[];
+    selection: number[];
+}
+
+/** One mark as the paint plan sees it. */
+export interface SelectionPaintMark {
+    key: string;
+    rows: readonly number[];
+}
+
+/**
+ * Which marks a paint lit, and how it decided.
+ *   none             - nothing is selected;
+ *   any-row          - the default rule;
+ *   clicked          - the clicked marks (their keys were recorded for this very selection);
+ *   exact            - no click recorded for this selection: the marks whose rows equal it;
+ *   fallback-any-row - neither found a mark, so any-row decided this paint. A host logs it.
+ */
+export type SelectionPaintMode = "none" | "any-row" | "clicked" | "exact" | "fallback-any-row";
+
+export interface SelectionPaintPlan {
+    /** One flag per mark, in the order given: true when the mark is drawn selected. */
+    on: boolean[];
+    mode: SelectionPaintMode;
+    /** The keys of the marks lit by "clicked" or "exact": the clicked set to keep. Empty otherwise. */
+    keys: string[];
+}
+
+const toSet = (s: Iterable<number> | null | undefined): Set<number> => new Set(Array.from(s ?? []));
+
+/** True when the two hold the same rows, ignoring order and repeats. */
+export function sameRowSet(a: Iterable<number> | null | undefined, b: Iterable<number> | null | undefined): boolean {
+    const A = toSet(a), B = toSet(b);
+    if (A.size !== B.size) return false;
+    for (const r of A) if (!B.has(r)) return false;
+    return true;
+}
+
+/**
+ * THE ONE PAINT RULE every host applies to its marks: which of `marks` are drawn selected under
+ * `selection`. Under "any-row" a mark is lit when any of its rows is selected. Under
+ * "clicked-marks" it is lit when its key is in `clicked` - but only when `clicked` was recorded for
+ * this same selection, because a selection changed from elsewhere makes those keys stale; failing
+ * that, the marks whose rows equal the selection; failing that, any-row, reported as a fallback.
+ */
+export function planSelectionPaint(
+    marks: readonly SelectionPaintMark[],
+    selection: Iterable<number> | null | undefined,
+    rule: SelectionRule,
+    clicked: ClickedMarks | null | undefined,
+): SelectionPaintPlan {
+    const sel = toSet(selection);
+    if (sel.size === 0) return { on: marks.map(() => false), mode: "none", keys: [] };
+    const anyRow = () => marks.map(m => m.rows.some(r => sel.has(r)));
+    if (rule !== "clicked-marks") return { on: anyRow(), mode: "any-row", keys: [] };
+    if (clicked && clicked.keys.length && sameRowSet(clicked.selection, sel)) {
+        const want = new Set(clicked.keys);
+        const on = marks.map(m => m.rows.length > 0 && want.has(m.key));
+        if (on.some(Boolean)) return { on, mode: "clicked", keys: marks.filter((_, i) => on[i]).map(m => m.key) };
+    }
+    const exact = marks.map(m => m.rows.length > 0 && sameRowSet(m.rows, sel));
+    if (exact.some(Boolean)) return { on: exact, mode: "exact", keys: marks.filter((_, i) => exact[i]).map(m => m.key) };
+    return { on: anyRow(), mode: "fallback-any-row", keys: [] };
+}
+
+/**
+ * The clicked set a click leaves under "clicked-marks". `prev` is the set held before the click and
+ * `current` the selection then; `next` is the selection the click leaves (nextSelection's answer).
+ * A plain click makes the clicked mark the whole set; Ctrl/Cmd/Shift adds it or takes it off. A held
+ * set recorded for a different selection is stale and starts over. An empty selection holds no set.
+ */
+export function nextClickedMarks(
+    prev: ClickedMarks | null | undefined,
+    current: Iterable<number> | null | undefined,
+    key: string,
+    next: readonly number[],
+    mods: SelectionModifiers = {},
+): ClickedMarks | null {
+    if (!next.length) return null;
+    if (!(mods.ctrl || mods.shift)) return { keys: [key], selection: next.slice() };
+    const held = prev && sameRowSet(prev.selection, current) ? prev.keys : [];
+    const keys = held.includes(key) ? held.filter(k => k !== key) : [...held, key];
+    return { keys, selection: next.slice() };
 }
 
 /**

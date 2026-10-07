@@ -21,7 +21,14 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.13.0";
+export const HOST_CONTRACT_VERSION = "1.14.0";
+// 1.14.0 (2026-10-07): A DECLARED SELECTION RULE. SELECTION_RULE_ATTR on an element the chart draws,
+// with the value SELECTION_RULE_CLICKED_MARKS, says a selection lights exactly the marks the reader
+// clicked (named by MARK_KEY_ATTR, else by their data-row-idx) and dims every other mark, even one
+// whose rows all lie inside the selection. For a chart whose marks share rows, like a word cloud
+// where every word shares a comment with many others, the default any-row rule lights most of the
+// chart on one click. The cross-filter is unchanged; only the chart's own highlight follows the
+// rule. Additive: a chart without the attribute is painted exactly as before.
 // 1.13.0 (2026-09-29): NO ROW MARKS, DECLARED. NO_ROW_MARKS_ATTR on an element the chart draws says
 // the chart, by design, draws no per-row data marks (a what-if predictor draws one model, not one mark
 // per row), so a render with rows and no `.d3-mark` is not blank. Placed in the chart's WORKING path,
@@ -131,6 +138,24 @@ export const CONTROL_CLASS = "lch-control";
 // frame-scoped for animated charts.
 export const ROW_IDX_ATTR = "data-row-idx";
 
+// HOW A SELECTION LIGHTS THE CHART'S OWN MARKS. By default a mark is drawn selected when ANY of the
+// rows in its data-row-idx list is selected: a legend swatch and its series light together, and a
+// bar lights when a click elsewhere selects any of its rows. A chart whose marks SHARE rows declares
+// the other rule by stamping SELECTION_RULE_ATTR="clicked-marks" on an element it creates (its own
+// <svg> is the natural place; any element inside the container counts):
+//   - while a selection exists, exactly the marks the reader clicked are drawn selected, and every
+//     other mark is dimmed, even one whose rows all lie inside the selection;
+//   - a mark's identity is its MARK_KEY_ATTR (a stable per-mark name, such as the word itself), or
+//     its data-row-idx list when it carries none;
+//   - Ctrl/Cmd/Shift-click adds that mark to the clicked set or takes it off; a clear empties it;
+//   - a selection the reader did not click here (restored, or handed in by the host) lights the
+//     marks whose rows EQUAL the selection exactly, and when no mark does, falls back to any-row.
+// The cross-filter sent out is the same under both rules: only this chart's highlight differs.
+// See planSelectionPaint in selection.ts, which every host paints through.
+export const SELECTION_RULE_ATTR = "data-lch-sel-rule";
+export const SELECTION_RULE_CLICKED_MARKS = "clicked-marks";
+export const MARK_KEY_ATTR = "data-mark-key";
+
 // A DECLARATION, not a mark: present on any element the chart drew, it says this chart draws no
 // per-row data marks by design, so zero marks against a full table is its normal picture rather than
 // a blank render. The chart stamps it in its working path (after its has-rows check), never in its
@@ -159,6 +184,11 @@ export const CONTAINER_SLOT_INITIAL_XF_MARK = "__llmInitialXfMark"; // a mark to
 // host, so the element is where a session's resting state belongs. See HOST_CONTRACT_VERSION
 // 1.5.0 and the store install in createChartHost.
 export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
+
+// The marks lit under a declared "clicked-marks" rule and the selection they were lit for (a
+// ClickedMarks), parked on the container by the HOST for the same reason as the view-state above:
+// a host that re-creates itself on the same element keeps which word the reader clicked.
+export const CONTAINER_SLOT_CLICKED_MARKS = "__lchClickedMarks";
 
 // VIEW-ONLY view-state keys (contract 1.11.0): how the reader is LOOKING at the chart, not a
 // setting of it. `camera` is the D3 3D chart's orbit; `llmZoom` is a Mermaid diagram's zoom and
