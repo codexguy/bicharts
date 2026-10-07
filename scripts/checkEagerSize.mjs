@@ -51,9 +51,16 @@ import { resolve, dirname, join } from "node:path";
 // 4.5 KB), measured first, with a duplicated clip-window reader shared rather than copied. No
 // geometry is in the closure. The rule still holds: closure (~703 KB) + the smallest map asset
 // (223 KB) is ~926 KB, far above 710, so a statically imported map still trips this check.
+//
+// 710 -> 720 KB, deliberately, as ordinary growth, measured first. With the clipped-text census
+// the closure stood at ~709 KB, one short of the line. A chart's declared selection rule
+// (selectionRuleOf, planSelectionPaint, nextClickedMarks and the host's paint and click wiring)
+// adds ~4 KB: it runs on every selection paint, so it cannot sit behind a dynamic import. No
+// geometry is in the closure. The rule still holds: closure (~713 KB) + the smallest map asset
+// (223 KB) is ~936 KB, far above 720, so a statically imported map still trips this check.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 710);
+const limitKB = Number(process.argv[3] ?? 720);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //
