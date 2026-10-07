@@ -473,7 +473,7 @@ export type LLMClientHints =
          */
         favorProjection?: string,
         /**
-         * The order the "What fits?" list comes back in (server rev 493, item 846): "fit" ranks by how
+         * The order the "What fits?" list comes back in (older servers ignore it and use their default): "fit" ranks by how
          * well each type suits the data, "variety" by the picker's selection order, which favors newer
          * and less-common types. Read on qualify only. Absent means the server's own default, and a
          * server that predates the field ignores it. Build it with `qualifyOrderField`.
