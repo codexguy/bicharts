@@ -34,6 +34,7 @@ import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
 import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
+import { censusClippedText, type ClippedTextCensus } from "./clippedText";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
 import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
@@ -162,6 +163,12 @@ export interface ChartHostConfig {
      * own skew is measured on the raw column while the ramp encodes an aggregate.
      */
     onColourSpreadCensus?: (census: ColourSpreadCensus) => void;
+    /**
+     * IS ANY TEXT CUT OFF BY THE FRAME? Runs after every render, counts only, and never moves anything: a title
+     * drawn above its own origin is clipped without anything throwing, so only a measurement against the SVG box
+     * sees it. A host without layout reports `laidOut: false`, which is not a pass.
+     */
+    onClippedTextCensus?: (census: ClippedTextCensus) => void;
     /**
      * IS EACH DOT DRAWN AT ITS VALUE? Runs after every render, counts only.
      *
@@ -956,6 +963,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // guessing when the fills are not a ramp.
         if (config.onColourSpreadCensus) {
             try { config.onColourSpreadCensus(censusColourSpread(container, doc)); }
+            catch { /* a census must never break a render */ }
+        }
+        if (config.onClippedTextCensus) {
+            try { config.onClippedTextCensus(censusClippedText(container)); }
             catch { /* a census must never break a render */ }
         }
         // AND IS EACH DOT AT ITS VALUE? Same contract again; it needs the rows, because the

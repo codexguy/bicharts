@@ -291,6 +291,7 @@ export { censusHitBands, hitBandFlag, MIN_HIT_BAND_PX, type HitBandCensus } from
 // hand-rolled ramp is not a special case. It also sees what no code check can: whether a scale
 // washes out depends on the DATA, and the shape's own Skewness is measured on the raw column
 // while the ramp encodes an AGGREGATE - 2.04 against 5.00 on the chart that raised this.
+export { censusClippedText, clippedTextFlag, CLIP_TOLERANCE_PX, type ClippedTextCensus, type ClippedText } from "./clippedText";
 export { censusColourSpread, colourSpreadFlag, SAME_SHADE_DELTA_E, MIN_RAMP_FILLS,
     type ColourSpreadCensus } from "./colourSpread";
 // IS EACH DOT DRAWN AT ITS VALUE? A force layout pushes a beeswarm's dots along both axes, so on a
