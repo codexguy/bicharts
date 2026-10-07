@@ -1,17 +1,9 @@
 /**
  * Freemium entitlement walls a host can ANTICIPATE, in the server's own words.
  *
- * Added 2026-09-17, from a review of production requests.
- *
- * A first-time freemium reader behind a corporate proxy bound twenty fields against a cap of
- * twelve. The server did everything right: it refused at the routing boundary in 31 ms, charged
- * nothing, handed the rate-limit slot back, and composed a sentence naming exactly how many fields
- * to drop. The response never came back through the proxy, so what the reader actually read was
- * "We couldn't reach the charting service - it may be offline, or blocked on this network", and
- * they left inside a second.
- *
- * The question never needed the wire. The bound column count and the freemium state are both in
- * the host's hand before the request is built.
+ * The question never needs the wire: the bound column count and the freemium state are both in
+ * the host's hand before the request is built, so a host can say so before a refusal has to
+ * travel back through a network that may swallow it.
  *
  * TWO RULES THIS MODULE EXISTS TO KEEP:
  *
