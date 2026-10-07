@@ -304,8 +304,11 @@ export type { SchemaIdentityColumn } from "./schemaIdentity";
 export {
     SEV_INFO, SEV_WARNING, SEV_ERROR, SEV_USER_PRESENTED, CLIENT_EVENT_KINDS, isEventLogCode, eventLogLine,
     TELEMETRY_TIMEOUT_MS, TELEMETRY_TIMEOUT_DEV_MS,
+    // WHY A CHART DREW, AND WHETHER ANYONE CLICKED IT: the draw reasons, their Location form, the
+    // classifier for a host that infers its reason, and the once-per-session gates.
+    DRAW_REASONS, drawLocation, classifyDraw, createDrawLedger,
 } from "./telemetry";
-export type { ClientMessage } from "./telemetry";
+export type { ClientMessage, DrawReason, DrawFacts, DrawLedger } from "./telemetry";
 // SENDING IT (2026-09-25): the encode, sign and post of both telemetry channels, over the host's
 // transport - never a throw, a failure only ever reported to the host. See telemetryClient.ts.
 export { createTelemetryClient } from "./telemetryClient";

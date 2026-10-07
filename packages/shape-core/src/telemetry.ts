@@ -63,7 +63,99 @@ export const CLIENT_EVENT_KINDS = Object.freeze({
     RENDER_ERROR: "render-error",
     VIEW: "view",
     VIEW_VERDICT: "view-verdict",
+    /** A later draw of a chart version this session already reported, for a reason not yet said. */
+    REDRAW: "redraw",
+    /** The reader selected something in a chart version, said once per version per session. */
+    INTERACT: "interact",
 } as const);
+
+/**
+ * WHY A CHART WAS DRAWN. Each value names the event that caused the draw:
+ * - `open`: a saved chart drawn when the document or report opened.
+ * - `generate`: a new version arriving.
+ * - `version`: a switch to another saved version.
+ * - `rebind`: the chart pointed at other data.
+ * - `data`: the data under it changed (an edit, a refresh, a filter from elsewhere).
+ * - `sample`: an example chart shown.
+ * - `fix`: a review's correction redrawn.
+ * - `resize`: the frame changed size.
+ * - `other`: a redraw with none of those causes.
+ * A draw-row only says a chart drew. The reason says whether a reader came back, the data moved, or
+ * the frame changed size, and a view count that cannot tell those apart overcounts.
+ */
+export const DRAW_REASONS = Object.freeze(
+    ["open", "generate", "version", "rebind", "data", "sample", "fix", "resize", "other"] as const);
+export type DrawReason = (typeof DRAW_REASONS)[number];
+
+/**
+ * The render row's Location for a draw: `draw:<reason>`, after the host's own Location when it has one
+ * (`excel-view;draw:open`). The reason rides Location because that field is kept per render row; the
+ * behaviour flags are kept once per chart version, so a reason sent there after the first draw is lost.
+ */
+export function drawLocation(reason: DrawReason, base?: string | null): string {
+    return base ? `${base};draw:${reason}` : `draw:${reason}`;
+}
+
+/** What a host knows about one draw, and about the draw before it in this session (null on the first). */
+export interface DrawFacts {
+    /** The reason when the caller knows it (a review fix, an example); it wins over everything below. */
+    hint?: DrawReason | null;
+    /** The draw shows a version that was generated just now. */
+    generated: boolean;
+    outputHash: string;
+    /** Changes whenever new data arrives under the chart; equal across draws of the same data. */
+    dataSignature: string;
+    /** The frame's size, as any string that changes when the size does. */
+    viewport: string;
+    previous: { outputHash: string; dataSignature: string; viewport: string } | null;
+}
+
+/**
+ * The reason for a draw a host has to infer. Checked in order: the caller's hint; a new version;
+ * the session's first draw; another version than the last draw; new data; a new frame size. Anything
+ * else is `other`. A host whose every draw call knows its reason passes that reason and never calls this.
+ */
+export function classifyDraw(f: DrawFacts): DrawReason {
+    if (f.hint) return f.hint;
+    if (f.generated) return "generate";
+    if (!f.previous) return "open";
+    if (f.outputHash !== f.previous.outputHash) return "version";
+    if (f.dataSignature !== f.previous.dataSignature) return "data";
+    if (f.viewport !== f.previous.viewport) return "resize";
+    return "other";
+}
+
+/**
+ * The once-per-session gates for the two signals. A chart version's reason is said once (a slicer
+ * dragged across fifty values is one `data`, not fifty rows), and its first selection is said once:
+ * the question is whether a chart was clicked at all, never how often, and a count of gestures is a
+ * trace of one reader. Nothing about what was selected is ever sent.
+ */
+export interface DrawLedger {
+    /** True the first time this (version, reason) is seen this session. */
+    firstDraw(outputHash: string, reason: DrawReason): boolean;
+    /** True the first time this version is selected in this session. */
+    firstInteract(outputHash: string): boolean;
+}
+
+export function createDrawLedger(): DrawLedger {
+    const draws = new Set<string>();
+    const clicked = new Set<string>();
+    return {
+        firstDraw(outputHash, reason) {
+            if (!outputHash) return false;
+            const key = `${outputHash}|${reason}`;
+            if (draws.has(key)) return false;
+            draws.add(key);
+            return true;
+        },
+        firstInteract(outputHash) {
+            if (!outputHash || clicked.has(outputHash)) return false;
+            clicked.add(outputHash);
+            return true;
+        },
+    };
+}
 
 /**
  * Can this code name an event counter? The service splits the line on "|" and keys the counter on
