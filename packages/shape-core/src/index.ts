@@ -290,10 +290,10 @@ export type { ProgressStageId } from "./messageCodes";
 // function returning the fields it owns - the host places them where it always did.
 export {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
-    retryFields, leafCardinalityField, shortlistIsStale, offeredShortlistFor,
+    retryFields, leafCardinalityField, qualifyOrderOf, qualifyOrderField, QUALIFY_ORDER_LABELS, shortlistIsStale, offeredShortlistFor,
 } from "./wireBuild";
 export type {
-    ViewportFields, CredentialFields, FetchRequest, FetchFields, CapabilityFields, RetryFields,
+    ViewportFields, CredentialFields, FetchRequest, FetchFields, CapabilityFields, RetryFields, QualifyOrder,
 } from "./wireBuild";
 // ARE THESE THE SAME FIELDS? (2026-09-25): the schema identity a host compares column sets by in
 // memory - name, role and type family per column. Never a persisted fingerprint; see schemaIdentity.ts.

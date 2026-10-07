@@ -267,6 +267,32 @@ export function leafCardinalityField(count: number | null | undefined): { leafCa
     return count && count > 0 ? { leafCardinality: Math.round(count) } : {};
 }
 
+/** The order of the "what fits" list: by how well each type suits the data, or by the picker's selection order. */
+export type QualifyOrder = "fit" | "variety";
+
+/** The two orders' reader-facing names, for any host's control. */
+export const QUALIFY_ORDER_LABELS: Readonly<Record<QualifyOrder, string>> = {
+    fit: "Best fit",
+    variety: "Something different",
+};
+
+/** A stored or typed order read back: one of the two the server knows (case and padding ignored), else null. */
+export function qualifyOrderOf(raw: unknown): QualifyOrder | null {
+    if (typeof raw !== "string") return null;
+    const v = raw.trim().toLowerCase();
+    return v === "fit" || v === "variety" ? v : null;
+}
+
+/**
+ * THE ORDER A "WHAT FITS" REQUEST ASKS FOR - the client hints' `qualifyOrder`. Sent only when the reader
+ * has chosen one: an unmade choice sends no field, so the server's own default applies, and a server
+ * that predates the field ignores it. Spread where the host builds its hints.
+ */
+export function qualifyOrderField(raw: unknown): { qualifyOrder?: QualifyOrder } {
+    const o = qualifyOrderOf(raw);
+    return o ? { qualifyOrder: o } : {};
+}
+
 /**
  * IS A CAPTURED "WHAT FITS" LIST STALE? True when the list was captured for one schema and the
  * request now describes another - the reader changed the fields since they looked, so the list is not

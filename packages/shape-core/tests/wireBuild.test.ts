@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
-    retryFields, leafCardinalityField, shortlistIsStale, offeredShortlistFor,
+    retryFields, leafCardinalityField, shortlistIsStale, offeredShortlistFor, qualifyOrderOf, qualifyOrderField, QUALIFY_ORDER_LABELS,
     type ViewportSource, type CredentialSource, type RendererId,
 } from "../src/index";
 
@@ -386,5 +386,25 @@ describe("offeredShortlistFor - the list the reader chose from, and how long ago
 
     it("there is no age cap - ten minutes of study still counts", () => {
         expect(offeredShortlistFor(LIST, { capturedFor: 7, now: 7, atMs: 1, nowMs: 600_001 }).shortlist!.ageMs).toBe(600_000);
+    });
+});
+
+describe("qualifyOrderField - the what-fits list's order, stated once for every host (item 901)", () => {
+    it("reads the two orders the server knows and nothing else", () => {
+        expect(qualifyOrderOf("fit")).toBe("fit");
+        expect(qualifyOrderOf("variety")).toBe("variety");
+        expect(qualifyOrderOf(" Variety ")).toBe("variety");
+        for (const v of ["", "random", null, undefined, 3, {}]) expect(qualifyOrderOf(v), String(v)).toBeNull();
+    });
+
+    it("states the choice as clientHints.qualifyOrder, and an unmade choice as no field at all", () => {
+        expect(qualifyOrderField("variety")).toEqual({ qualifyOrder: "variety" });
+        expect(qualifyOrderField("fit")).toEqual({ qualifyOrder: "fit" });
+        expect(qualifyOrderField("")).toEqual({});
+        expect(JSON.stringify({ a: 1, ...qualifyOrderField(undefined), b: 2 })).toBe('{"a":1,"b":2}');
+    });
+
+    it("labels both orders once", () => {
+        expect(QUALIFY_ORDER_LABELS).toEqual({ fit: "Best fit", variety: "Something different" });
     });
 });
