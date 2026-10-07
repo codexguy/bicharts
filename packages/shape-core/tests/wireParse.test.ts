@@ -183,7 +183,7 @@ const QUALIFY = {
     errorMessage: null,
     charts: [
         { name: "Bar chart", description: "Bars.", rank: 1, score: 100, renderer: "D3", language: "JavaScript",
-          recommended: true, isPreview: null, viaProjectionKey: null, viaProjection: null, detailNote: null },
+          recommended: true, isPreview: null, alsoWorthALook: true, viaProjectionKey: null, viaProjection: null, detailNote: null },
         { name: "Scatter plot", description: null, rank: null, score: null, renderer: null, language: null,
           recommended: false, isPreview: true, viaProjectionKey: "sum-region", viaProjection: "Sum by Region",
           detailNote: "shows every observation" },
@@ -205,9 +205,9 @@ describe("parseQualifyResponse", () => {
         expect(p.noFitSummary).toBe("");
         expect(p.charts).toEqual([
             { name: "Bar chart", description: "Bars.", rank: 1, score: 100, renderer: "D3", language: "JavaScript",
-              isPreview: false, recommended: true, viaProjection: undefined, viaProjectionKey: undefined, detailNote: undefined },
+              isPreview: false, alsoWorthALook: true, recommended: true, viaProjection: undefined, viaProjectionKey: undefined, detailNote: undefined },
             { name: "Scatter plot", description: "", rank: undefined, score: undefined, renderer: undefined, language: undefined,
-              isPreview: true, recommended: false, viaProjection: "Sum by Region", viaProjectionKey: "sum-region",
+              isPreview: true, alsoWorthALook: false, recommended: false, viaProjection: "Sum by Region", viaProjectionKey: "sum-region",
               detailNote: "shows every observation" },
         ]);
         expect(p.refused).toEqual([

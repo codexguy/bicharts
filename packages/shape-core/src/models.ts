@@ -823,6 +823,9 @@ export type LLMQualifyResult =
             // other - the difference is only that the list says so. Absent on older
             // servers, and an unbadged list is the correct degradation.
             isPreview?: boolean,
+            // One of the "also worth a look" picks (servers from rev 499): a fit below the top few, drawn by selection
+            // weight so an agent offering choices can show something different. A hint, never a gate. Absent = not marked.
+            alsoWorthALook?: boolean,
             // Why this type moved, in the reader's own terms, when a level-of-detail
             // preference is set. A short sentence - "shows every observation; you asked
             // for a summary". The demoted type STAYS in the list carrying its reason and

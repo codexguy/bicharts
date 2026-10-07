@@ -193,6 +193,7 @@ export {
     type QualifyFilterRow, type QualifyFilterGroup, type QualifyFilterView,
     type QualifyFilterNoteKind,
 } from "./qualifyFilter";
+export { qualifyTableRows, type QualifyTableRow, type QualifyTableSource } from "./qualifyTable";
 
 // What a click on a mark AMOUNTS to (2026-08-25). The dimming already tells the reader WHICH
 // marks they picked; in a host with no cross-filter to answer into — Excel, MCP, React — that

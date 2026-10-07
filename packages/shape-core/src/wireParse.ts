@@ -216,6 +216,8 @@ export interface ParsedQualifyChart {
     language: string | undefined;
     /** True only when the server said so: a newer, less proven type. */
     isPreview: boolean;
+    /** True only when the server said so: one of the "also worth a look" picks below the top fits, drawn for variety. A hint, never a gate. */
+    alsoWorthALook: boolean;
     /** False = a required channel is poorly served; undefined = unassessed, never a demotion. */
     recommended: boolean | undefined;
     /** Non-empty when the type qualifies only against an aggregated projection. */
@@ -272,6 +274,7 @@ export function parseQualifyResponse(data: unknown): ParsedQualifyResponse {
                 renderer: textOrUndefined(f("renderer")),
                 language: textOrUndefined(f("language")),
                 isPreview: flag(f("isPreview")),
+                alsoWorthALook: flag(f("alsoWorthALook")),
                 recommended: typeof recommended === "boolean" ? recommended : undefined,
                 viaProjection: textOrUndefined(f("viaProjection")),
                 viaProjectionKey: textOrUndefined(f("viaProjectionKey")),
