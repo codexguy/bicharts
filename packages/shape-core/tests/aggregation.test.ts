@@ -249,3 +249,21 @@ describe("a token joined by a separator is still a token", () => {
         expect(nameLooksIntensiveRate("Sum of Storage"), "storage contains age").toBe(false);
     });
 });
+
+// PER CAPITA (2026-10-08). `capita` was in neither list, so a world-indicators table's
+// `Sum of GDPPerCapita` and `Sum of CO2TonsPerCapita` read as summable amounts while their
+// neighbours `GiniIndex` and `InternetUsersPct` read as rates. A total of per-capita figures
+// across countries is meaningless. `expectancy` was looked at and deliberately left out.
+describe("a per-capita figure is a rate", () => {
+    it("reads capita as a whole word, camel-glued or spaced", () => {
+        expect(nameLooksIntensiveRate("Sum of GDPPerCapita")).toBe(true);
+        expect(nameLooksIntensiveRate("CO2TonsPerCapita")).toBe(true);
+        expect(nameLooksIntensiveRate("Revenue per Capita")).toBe(true);
+        expect(defaultAggregation({ name: "Sum of GDPPerCapita", isMeasure: true })).not.toBe("sum");
+    });
+
+    it("leaves Capital and LifeExpectancy alone", () => {
+        expect(nameLooksIntensiveRate("Sum of CapitalExpenditure"), "capital is not capita").toBe(false);
+        expect(nameLooksIntensiveRate("Sum of LifeExpectancy"), "expectancy is a separate decision").toBe(false);
+    });
+});

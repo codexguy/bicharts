@@ -210,7 +210,7 @@ const ENGLISH_INTENSIVE = new Set([
     "median", "stddev", "variance", "gpa", "percentile", "quantile", "efficiency", "accuracy",
     "probability", "multiplier", "coefficient", "correlation", "occupancy", "age", "bmi", "temperature",
     "density", "pressure", "humidity", "ph", "velocity", "speed", "elevation", "altitude", "latency",
-    "throughput", "bandwidth", "iops", "ppm", "ppb", "dpmo", "bps",
+    "throughput", "bandwidth", "iops", "ppm", "ppb", "dpmo", "bps", "capita",
 ]);
 
 describe("every flat vocabulary's language claim agrees with the Tier 1 list", () => {

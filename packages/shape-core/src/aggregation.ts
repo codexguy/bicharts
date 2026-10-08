@@ -104,6 +104,9 @@ export const INTENSIVE_WORD_TOKENS: readonly string[] = [
     // opportunities, basis points. Each is a ratio wearing a count's clothes, and a SUM of
     // them is meaningless - pooling 111 parts' ppm into a single pooled bar is what named them.
     "ppm", "ppb", "dpmo", "bps",
+    // PER-CAPITA figures: a total of GDP per capita across countries is meaningless. Word-only -
+    // the camel split makes `GDPPerCapita` read `GDP Per Capita`, and `Capital` is another word.
+    "capita",
     // ── THE SAME QUANTITIES IN THE LANGUAGES A MODEL IS AUTHORED IN (2026-09-12).
     // Every token above is an English word, so a Dutch model's `Sum of Temperatuur` resolved
     // ADDITIVE and nothing warned that a temperature was being totalled — the same gap that was
