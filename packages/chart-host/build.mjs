@@ -77,6 +77,8 @@ const result = await build({
         page: join(here, "src/page.ts"),
         // The selection card's chrome, for a host that mounts a card; off the main entry (its eager budget).
         card: join(here, "src/card.ts"),
+        // The renderer adapter interface and the D3 binding; nothing in the core consumes them yet (off the main entry).
+        adapters: join(here, "src/adapters/index.ts"),
     },
     bundle: true,
     splitting: true,

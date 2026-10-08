@@ -108,6 +108,12 @@ export {
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,
     type MarkResolver, type MarkResolverEnv, type GlyphCenter, type SelectionGlyphStyle, type SelectionModifiers,
 } from "./selection";
+// THE RENDERER ADAPTER (the seam between the renderer-neutral core and one renderer's binding): the types only,
+// which cost nothing at run time. The D3 binding and NULL_ADAPTER are "@bicharts/chart-host/adapters".
+export type {
+    AdapterEvent, AdapterHit, AdapterId, AdapterScene, MarkHandle, MarkInfo, MarkRole, PaintRequest, RendererAdapter,
+    RowTable,
+} from "./adapters/types";
 // Deterministic charts for shapes with exactly one defensible answer: a single value, a
 // single categorical column, a single numeric column. Returns null for everything else, so
 // a host can ask BEFORE paying for a generation and fall through the moment the answer
