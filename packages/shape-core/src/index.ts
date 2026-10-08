@@ -219,8 +219,9 @@ export type { DecimalSeparator } from "./numberText";
 // THE INGEST FRONT DOOR — many source shapes, one measured result. Adapters no longer need
 // to hand-build columns and feed addRow themselves; a decoder translates what the source
 // already knows into descriptors, and the shared core does the rest. Also published as the
-// "@bicharts/shape-core/ingest" subpath for consumers who want only this.
-export { ingest, engineTypeForSqlType } from "./ingest";
+// "@bicharts/shape-core/ingest" subpath for consumers who want only this. `parseCsvRows` is the CSV
+// decoder's own parse, for a host that reads CSV for anything else and must count the same rows.
+export { ingest, engineTypeForSqlType, parseCsvRows } from "./ingest";
 export type {
     DataSource, IngestOptions, IngestResult, ColumnDescriptor, SqlColumnMeta, EngineDataType,
 } from "./ingest";

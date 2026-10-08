@@ -331,6 +331,39 @@ function namesFromObjects(rows: Record<string, any>[], scanLimit: number): strin
 }
 
 /**
+ * Parse CSV text into rows of cells, the header first - the CSV decoder's own parse, exported so a host
+ * that reads CSV for any other purpose counts the same rows.
+ *
+ * A ROW WHOSE VALUE IS BLANK IS A ROW. Papa's `skipEmptyLines` drops any row that parses to one empty
+ * cell, and in a one-column CSV that is not only an empty line but also a quoted blank value, `""` - how
+ * a one-column CSV writes a blank. A lone text column with a blank in it measured one row short of what a
+ * host reading the same table through its own data API counts. So the raw text of each row decides: a line
+ * with nothing on it at all (the trailing newline, a blank line between rows) is not a row, as pandas
+ * reads it; a line holding `""` is.
+ */
+export function parseCsvRows(text: string): { rows: string[][]; errors: Papa.ParseError[] } {
+    const src = String(text ?? "").replace(/^\uFEFF/, "");
+    const rows: string[][] = [];
+    const errors: Papa.ParseError[] = [];
+    let prev = 0;
+    Papa.parse<string[]>(src, {
+        skipEmptyLines: false,
+        step: (r) => {
+            const end = r.meta.cursor;
+            const raw = src.slice(prev, end);
+            prev = end;
+            if (r.errors?.length) errors.push(...r.errors);
+            const row = r.data;
+            if (row.length === 1 && row[0] === "" && raw.replace(/[\r\n]/g, "") === "") return;
+            rows.push(row);
+        },
+    });
+    // Papa's step mode reports nothing at all for an empty input; the whole-text parse names why.
+    if (!rows.length && !errors.length) errors.push(...Papa.parse<string[]>(src, { skipEmptyLines: true }).errors);
+    return { rows, errors };
+}
+
+/**
  * Turn a data source into a measured shape plus directly bindable rows.
  *
  * The result is meant to be destructured and handed straight to a renderer:
@@ -342,11 +375,11 @@ function namesFromObjects(rows: Record<string, any>[], scanLimit: number): strin
 export function ingest(source: DataSource, opts: IngestOptions = {}): IngestResult {
     switch (source.kind) {
         case "csv": {
-            const parsed = Papa.parse<string[]>(source.text, { skipEmptyLines: true });
-            if (parsed.errors?.length && parsed.data.length === 0) {
+            const parsed = parseCsvRows(source.text);
+            if (parsed.errors.length && parsed.rows.length === 0) {
                 throw new Error(`ingest: CSV parse failed - ${parsed.errors[0].message}`);
             }
-            const grid = parsed.data as string[][];
+            const grid = parsed.rows;
             if (grid.length < 2) {
                 throw new Error("ingest: CSV needs a header line plus at least one data row.");
             }
