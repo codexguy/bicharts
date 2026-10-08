@@ -44,6 +44,11 @@
       "import": "./dist/page.mjs",
       "default": "./dist/page.mjs"
     },
+    "./card": {
+      "types": "./dist/types/card.d.ts",
+      "import": "./dist/card.mjs",
+      "default": "./dist/card.mjs"
+    },
     "./dax": {
       "types": "./dist/types/dax.d.ts",
       "import": "./dist/dax.mjs",

@@ -75,6 +75,8 @@ const result = await build({
         dax: join(here, "src/dax.ts"),
         // The page's filters, controls and notes for a host without React; off the main entry (its eager budget).
         page: join(here, "src/page.ts"),
+        // The selection card's chrome, for a host that mounts a card; off the main entry (its eager budget).
+        card: join(here, "src/card.ts"),
     },
     bundle: true,
     splitting: true,

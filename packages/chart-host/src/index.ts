@@ -208,10 +208,9 @@ export {
     computeSelectionCard, normaliseAggregation,
     type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
 } from "./selectionCard";
-// The chrome around it: where the card opens (at the click, inside the frame), pinning with an
-// oldest-out limit, dismissal (its close control, an empty selection, Esc), and the compact card a
-// small tile gets. One implementation for every host that mounts a card, so they cannot disagree.
-export { createSelectionCards, type SelectionCards, type SelectionCardsDeps } from "./selectionCardChrome";
+// The chrome around it (where the card opens, pinning, dismissal, the compact card) is
+// "@bicharts/chart-host/card", not this entry: only a host that mounts a card loads it, and this
+// entry's eager closure - every host loads it - is budgeted (scripts/checkEagerSize.mjs).
 
 // A date, printed the way its SOURCE prints it (2026-09-09). The payload's date cells are ISO
 // instants by contract, and anything that shows one to a reader has to undo that — the selection

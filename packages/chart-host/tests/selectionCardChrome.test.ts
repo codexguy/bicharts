@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createSelectionCards, type SelectionCards, type SelectionCardsDeps } from "../src/index";
+import { createSelectionCards, type SelectionCards, type SelectionCardsDeps } from "../src/card";
 
 // THE CARD IS THE ANSWER A CLICK GETS, so these tests are mostly about the moments it must NOT
 // appear or must NOT linger. A card that shows up correctly is easy; a card that survives the
