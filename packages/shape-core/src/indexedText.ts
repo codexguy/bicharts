@@ -1541,36 +1541,15 @@ export class IndexedText implements IValueCollection {
             const topcatEntries = Array.from(vals.entries()).sort((a, b) => b[1] - a[1]);
             col.topCategories = topcatEntries.slice(0, 10).map(e => e[1]);
             if (!col.isMeasure && topcatEntries.length > 0) {
-                // String dataType: derive a format-signature from the raw
-                // top values (pre-obfuscation) and ship THAT instead of the
-                // values themselves. Replaces the old class-preserving
-                // obfuscation approach — the LLM gets the format-class
-                // signal (ID-like / Title Case / email / etc.) explicitly
-                // named, can't hardcode an obfuscated literal as a runtime
-                // filter (image-bug 2026-05-26 closed by construction), and
-                // the wire is smaller. See formatDetector.ts for the
-                // catalog and threshold.
+                // String dataType: the format signature and the free-text flag are set below
+                // this gate (they ship at every tier), and topCategoryValues is intentionally NOT
+                // set for Strings.
                 //
                 // Non-String dataTypes (Boolean / Integer / Decimal /
                 // DateTime) ship raw top values — those carry true
                 // semantic value (true/false, 0/1, ISO dates) that the
                 // LLM needs verbatim and that aren't private.
-                if (col.dataType === "String") {
-                    // Use ALL distinct values (not just top-5) for the
-                    // classifier — a longer sample makes the dominant-
-                    // signature decision more robust against stragglers.
-                    const allDistinct = topcatEntries.map(e => e[0]);
-                    col.formatSignature = detectFormatSignature(allDistinct);
-                    // isFreeText (Layer C): the values are WORDS — a word-like format
-                    // signature (outside the id/machine/date/boolean set) with a
-                    // non-trivial average length (>= 3 chars filters 1-2 char codes a
-                    // short-label classifier may label OTHER). Word clouds need words.
-                    const nonWordFmt = /^(UUID|EMAIL_LIKE|URL_LIKE|PHONE_LIKE|NUMERIC_ID|HEX_ID|OPAQUE_ID_ALPHANUMERIC|DATE_STR|BOOLEAN)$/;
-                    if (col.formatSignature && !nonWordFmt.test(col.formatSignature)
-                        && (col.avgLength === undefined || col.avgLength >= 3))
-                        col.isFreeText = true;
-                    // topCategoryValues intentionally NOT set for Strings.
-                } else {
+                if (col.dataType !== "String") {
                     col.topCategoryValues = topcatEntries.slice(0, 5).map(e => e[0]);
                 }
 
@@ -1621,6 +1600,33 @@ export class IndexedText implements IValueCollection {
             }
         }
 
+        // FORMAT SIGNATURE AND FREE TEXT — UNCONDITIONAL, for the reason the geo block below is:
+        // an enum and a boolean, opaque to every source value, so they ship at every tier. Inside the pl>=20 gate, a lower tier sent a String column with no
+        // hint of what its values ARE.
+        //
+        // String dataType: derive a format-signature from the raw values (pre-obfuscation) and
+        // ship THAT instead of the values themselves. Replaces the old class-preserving
+        // obfuscation approach — the LLM gets the format-class signal (ID-like / Title Case /
+        // email / etc.) explicitly named, can't hardcode an obfuscated literal as a runtime
+        // filter (image-bug 2026-05-26 closed by construction), and the wire is smaller. See
+        // formatDetector.ts for the catalog and threshold.
+        if (!col.isMeasure && col.dataType === "String" && vals.size > 0) {
+            // Use ALL distinct values (not just top-5) for the classifier — a longer sample makes
+            // the dominant-signature decision more robust against stragglers.
+            const allDistinct = Array.from(vals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+            col.formatSignature = detectFormatSignature(allDistinct);
+            // isFreeText (Layer C): the values are WORDS — a word-like format signature (outside
+            // the id/machine/date/boolean set) with a non-trivial average length (>= 3 chars
+            // filters 1-2 char codes a short-label classifier may label OTHER). Word clouds need
+            // words. The length is measured here rather than read from avgLength, which stays a
+            // level-20 statistic.
+            const avgLen = nonblank > 0 ? datalen / nonblank : undefined;
+            const nonWordFmt = /^(UUID|EMAIL_LIKE|URL_LIKE|PHONE_LIKE|NUMERIC_ID|HEX_ID|OPAQUE_ID_ALPHANUMERIC|DATE_STR|BOOLEAN)$/;
+            if (col.formatSignature && !nonWordFmt.test(col.formatSignature)
+                && (avgLen === undefined || avgLen >= 3))
+                col.isFreeText = true;
+        }
+
         // GEO detection — UNCONDITIONAL, outside the pl>=20 gate above, and the history of
         // this placement is worth its length. The block was WRITTEN as unconditional (its
         // original comment said so) but LIVED inside the gate, so at privacy levels 0 and 10
@@ -1661,9 +1667,18 @@ export class IndexedText implements IValueCollection {
     }
 
     private updateColumnStats10(pl: number, col: LLMColumnWithValue, nonblank: number, vals: Map<string, number>, prec: number, maxval: any, minval: any) {
+        // VALUENATURE AND DISTINCTCOUNT SHIP AT EVERY TIER. Both are opaque
+        // to every source value - an enum and a count - so by the standing shape-signal rule (the one
+        // the geo block in updateColumnStats20 follows) the tier has no business withholding them, and
+        // withholding them cost real charts: a report that sent no count could not have Funnel / Waterfall / Radar
+        // offered for stages the reader HAD bound, and the server's tier-blind fallback
+        // could only guess the nature. blankCount stays a level-10 statistic.
+        const blanks = this._rows.length - nonblank;
         if (pl >= 10) {
-            col.blankCount = this._rows.length - nonblank;
-            col.distinctCount = vals.size + (col.blankCount != 0 ? 1 : 0);
+            col.blankCount = blanks;
+        }
+        {
+            col.distinctCount = vals.size + (blanks != 0 ? 1 : 0);
             col.valueNature = "Categorical";
 
             if (nonblank > 0) {

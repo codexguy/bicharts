@@ -175,7 +175,10 @@ describe("geo signals ship at every privacy tier", () => {
         const { stats } = scan([col("Country", "String"), col("Revenue", "Decimal", true)],
             COUNTRY_ROWS, "10");
         const c = stats.find(s => s.name === "Country")!;
-        expect(c.formatSignature).toBeUndefined();
+        // formatSignature used to be asserted absent here. It is an enum no source value survives
+        // into, so by this same rule it now ships at every tier (opaqueSignalsEveryTier.test.ts);
+        // the per-column statistics stay gated.
+        expect(c.avgLength).toBeUndefined();
         expect((c as any).safeDistinctValues).toBeUndefined();
         const r = stats.find(s => s.name === "Revenue")!;
         expect(r.avgValue).toBeUndefined();
