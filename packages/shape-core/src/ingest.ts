@@ -29,7 +29,7 @@ import Papa from "papaparse";
 import { IndexedText, isIdentifierName } from "./indexedText";
 import { parseDateStable } from "./util";
 import { readTextDateColumn, type TextDateColumn } from "./textDate";
-import { detectDecimalSeparator, isNumberText, parseNumberText, type DecimalSeparator } from "./numberText";
+import { detectDecimalSeparator, foldNumerals, isNumberText, parseNumberText, type DecimalSeparator } from "./numberText";
 import type { LLMColumnWithValue } from "./models";
 
 /** Engine value types. Anything a decoder cannot map confidently becomes "String". */
@@ -161,7 +161,7 @@ function inferDataType(samples: any[], decimal: DecimalSeparator = ".", textDate
         const v = String(raw).trim();
         if (v === "") continue;
         nonblank++;
-        if (INT_RE.test(v)) { ints++; nums++; continue; }
+        if (INT_RE.test(foldNumerals(v))) { ints++; nums++; continue; }
         if (isNumberText(v, decimal)) { nums++; continue; }
         if ((ISO_DATE_RE.test(v) || SLASH_DATE_RE.test(v)) && !isNaN(Date.parse(v))) { dates++; continue; }
     }
@@ -195,7 +195,7 @@ function convert(v: any, dataType: string, decimal: DecimalSeparator = ".", text
     const s = String(v).trim();
     if (s === "") return null;
     switch (dataType) {
-        case "Integer": return INT_RE.test(s) ? parseInt(s, 10) : null;
+        case "Integer": { const f = foldNumerals(s); return INT_RE.test(f) ? parseInt(f, 10) : null; }
         case "Decimal": return parseNumberText(s, decimal);
         // parseDateStable, not Date.parse: a zone-less date-TIME and every non-ISO spelling
         // are LOCAL to Date.parse, so the same text became a different instant on every

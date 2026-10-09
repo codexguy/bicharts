@@ -35,6 +35,7 @@
 // instants on every machine.
 
 import { normalizeMonthKey, readMonthWords } from "./monthNames";
+import { foldNumerals } from "./numberText";
 
 export type TextDateOrder = "ymd" | "dmy" | "mdy";
 export type TextDateForm = "numeric" | "named" | "cjk";
@@ -120,6 +121,8 @@ function scan(raw: string): Scan | "iso" | null {
     // Bidi marks ride inside right-to-left locales' dates and mean nothing.
     let s = raw.replace(/[\u200e\u200f\u061c]/g, "").replace(/\s+/g, " ").trim();
     if (s === "") return null;
+    // Digits of another script are digits (Arabic-Indic, Persian, Thai, full-width).
+    s = foldNumerals(s);
 
     let clock: Clock | null = null;
     const t = TIME_TAIL.exec(s);

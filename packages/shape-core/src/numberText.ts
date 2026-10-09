@@ -19,6 +19,53 @@
 
 export type DecimalSeparator = "." | ",";
 
+// NUMERALS OF OTHER SCRIPTS (2026-10-08). A spreadsheet in an Arabic, Persian, Hindi or Thai locale
+// writes its digits in that script (`١٢٫٥`, `۱۲٫۵`, `१२.५`, `๑๒.๕`), and a Japanese one often in the
+// full-width forms (`１２．５`). They are the same numbers as `12.5`, and the parser read none of them:
+// the digit class of a pattern is ASCII only, so every such column was text. Folding them to ASCII digits first makes the one
+// reader below read all of them, and nothing else changes: a column in ASCII digits is returned
+// untouched (the fast path is one test for a non-ASCII character).
+//
+// The Arabic decimal separator `٫` (U+066B) is a dot and the Arabic thousands separator `٬` (U+066C) a
+// comma, which is what they ARE, so the separator rules in the header are unchanged. The full-width dot
+// and comma ride with the full-width digits. Only the decimal digit sets of the major scripts are
+// folded; a character this table does not know is left alone, and the value stays text.
+const NUMERAL_ZEROS = [
+    0x0660,   // Arabic-Indic
+    0x06F0,   // Extended Arabic-Indic (Persian, Urdu)
+    0x0966,   // Devanagari
+    0x09E6,   // Bengali
+    0x0A66,   // Gurmukhi
+    0x0AE6,   // Gujarati
+    0x0B66,   // Odia
+    0x0BE6,   // Tamil
+    0x0C66,   // Telugu
+    0x0CE6,   // Kannada
+    0x0D66,   // Malayalam
+    0x0E50,   // Thai
+    0x0ED0,   // Lao
+    0x0F20,   // Tibetan
+    0x1040,   // Myanmar
+    0x17E0,   // Khmer
+    0xFF10,   // Full-width
+];
+const NUMERAL_RE = new RegExp(
+    "[" + NUMERAL_ZEROS.map(z => String.fromCharCode(z) + "-" + String.fromCharCode(z + 9)).join("") + "\\u066B\\u066C\\uFF0C\\uFF0E]", "g");
+const NON_ASCII = /[^\x00-\x7F]/;
+
+/** The text with every digit of another script written as an ASCII digit, and the Arabic and
+ *  full-width decimal and thousands marks as `.` and `,`. ASCII text is returned as it came. */
+export function foldNumerals(text: string): string {
+    if (!NON_ASCII.test(text)) return text;
+    return text.replace(NUMERAL_RE, ch => {
+        const cp = ch.charCodeAt(0);
+        if (cp === 0x066B || cp === 0xFF0E) return ".";
+        if (cp === 0x066C || cp === 0xFF0C) return ",";
+        for (const z of NUMERAL_ZEROS) if (cp >= z && cp <= z + 9) return String(cp - z);
+        return ch;
+    });
+}
+
 /** The runtime's decimal separator for a culture, reduced to the two this parser reads. Anything
  *  unparseable, or a separator that is neither (the Arabic `٫`), reads as the dot. */
 export function decimalSeparatorOf(locale: string | null | undefined): DecimalSeparator {
@@ -59,7 +106,7 @@ export function detectDecimalSeparator(samples: ReadonlyArray<unknown>, locale?:
     let dot = 0, comma = 0;
     for (const raw of samples) {
         if (typeof raw !== "string") continue;
-        const v = raw.trim();
+        const v = foldNumerals(raw.trim());
         if (v === "" || AMBIGUOUS.test(v)) continue;
         if (DOT_EVIDENCE.some(re => re.test(v))) dot++;
         else if (COMMA_EVIDENCE.some(re => re.test(v))) comma++;
@@ -71,7 +118,7 @@ export function detectDecimalSeparator(samples: ReadonlyArray<unknown>, locale?:
 
 /** The number a text value spells under the column's separator, or null when it spells none. */
 export function parseNumberText(text: string, decimal: DecimalSeparator): number | null {
-    const s = String(text ?? "").trim();
+    const s = foldNumerals(String(text ?? "").trim());
     if (s === "") return null;
     if (decimal === ",") {
         if (!COMMA_NUMBER.test(s)) return null;
