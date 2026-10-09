@@ -438,4 +438,5 @@ export type {
     HostServices, MarkerStore, PreferenceSource, HostTheme, ThemeSource, ThumbnailConsent, SnapshotTarget,
     WireSigner, WireTransport, WireResponse, CredentialTriple, CredentialSource,
     ViewportSource, Clock, DiagnosticEntry, DiagnosticsSink, RendererId,
+    ViewStateKeyPolicy, ViewStateService,
 } from "./host/services";

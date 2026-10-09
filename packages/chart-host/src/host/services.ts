@@ -17,7 +17,7 @@
 // reason GeoPointPrecision is declared in contract.ts). The two declarations are held identical
 // by a test in this package that assigns each one to the other in both directions.
 
-import type { RenderOptions } from "../contract";
+import type { RenderOptions, ViewStateProvider } from "../contract";
 
 // ---- The wire-level services, restated (see above; kept identical to shape-core's) ----
 
@@ -152,6 +152,73 @@ export interface SnapshotTarget {
 }
 
 /**
+ * How one key of the view-state bag lives and dies. A chart reads and writes its resting state
+ * (a sort, a frame, a 3D camera) through `options.uiState` / `options.setUiState`; the host
+ * decides what each key is allowed to outlive. A key that is not named in a service's `policy`
+ * is the chart's own, and follows `ViewStateService.chartKeys`.
+ */
+export interface ViewStateKeyPolicy {
+    /**
+     * `"viewing"`: kept for this viewing only (it survives a redraw, never reaches the durable
+     * store, and a durable store that happens to hold it is not believed). `"durable"`: kept in
+     * the viewing store AND the durable store, so it survives a close and reopen.
+     */
+    lifetime: "viewing" | "durable";
+    /**
+     * Drop the key when the chart on screen is a different version from the one the key was set
+     * on. A 3D camera is aimed at one chart's axes; the next chart has no use for it.
+     */
+    dropOnNewVersion: boolean;
+    /**
+     * Drop the key when the bag is read at the start of a fresh viewing (a page opened, a file
+     * opened) instead of in the viewing that wrote it. A manual "stop" on an animation belongs
+     * to the viewing that made it, though the durable store may hold it.
+     */
+    dropOnFreshViewing: boolean;
+    /**
+     * A preference that must read true for this key to reach the durable store. When it reads
+     * anything else, the key still lives in the viewing store (the reader keeps their view while
+     * the page is open) and stays out of the durable one. An unset preference reads as off.
+     */
+    durableWhen?: string;
+}
+
+/**
+ * Where a host keeps a chart's resting view-state, and what each key may outlive. "Render"
+ * lifetime is the absence of a store: anything not saved dies with the redraw.
+ *
+ * `viewing` is required; `durable` is optional, and a host that has none (a static preview, a
+ * server-side render) is saying it cannot remember across a close. Every member besides the two
+ * stores is a rule the shared view-state functions apply; the stores themselves stay dumb.
+ */
+export interface ViewStateService {
+    /** Survives a redraw (a resize, a cross-filter, a settings change). A page switch or a reopen starts clean. */
+    viewing: ViewStateProvider;
+    /** Survives close and reopen (a report file, a workbook). Absent or null: this host cannot. */
+    durable?: ViewStateProvider | null;
+    /** The keys the HOST writes or scopes, by name. */
+    policy: Readonly<Record<string, ViewStateKeyPolicy>>;
+    /**
+     * The rule for every key not named in `policy`: the ones the chart's own code writes.
+     * Absent: they are the chart's to keep (durable, and they survive a new version and a fresh
+     * viewing), because the chart validates what it reads. A host that forgets everything when
+     * the chart changes sets `dropOnNewVersion` here.
+     */
+    chartKeys?: ViewStateKeyPolicy | null;
+    /**
+     * The key under which the bag records the chart version it was last read for, so a version
+     * change is noticed even by a host that never saw the swap. Absent: the host applies the
+     * version rule itself, at the swap.
+     */
+    versionKey?: string | null;
+    /**
+     * The most characters of JSON the durable store accepts. A larger write is refused whole:
+     * nothing is saved, in either store, so the next read sees the state before it. Absent: no limit.
+     */
+    durableMaxChars?: number | null;
+}
+
+/**
  * The whole services object a host constructs and passes to shared logic.
  *
  * Required members are the ones every host that sends requests provides today, so their
@@ -167,6 +234,9 @@ export interface SnapshotTarget {
  * - theme: visual, add-in; a web page when it reads the browser's scheme; not the MCP server.
  * - thumbnails and snapshot: visual, add-in; not the MCP server (no DOM) or a demo page.
  * - diagnostics: visual, add-in; not the MCP server (stdio) or a demo page.
+ * - viewState: visual, add-in and a web page that passes a provider; the MCP preview passes an
+ *   explicit no-op service. A host can remember across a close exactly when `viewState.durable`
+ *   is present (see `viewStateIsDurable` in "@bicharts/chart-host/view-state").
  */
 export interface HostServices {
     signer: WireSigner;
@@ -181,4 +251,5 @@ export interface HostServices {
     thumbnails?: ThumbnailConsent | null;
     snapshot?: SnapshotTarget | null;
     diagnostics?: DiagnosticsSink | null;
+    viewState?: ViewStateService | null;
 }
