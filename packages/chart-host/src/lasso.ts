@@ -83,16 +83,10 @@ const MARKISH = `.${MARK_CLASS}[${ROW_IDX_ATTR}]:not([${ROW_IDX_ATTR}=""]), .${L
 
 /** RenderOptions.lasso. `capable` is the capability the server sent with this chart (absent means not
  *  capable); `enabled` is the reader's setting (default on); both must hold. */
-export interface LassoSetting {
-    enabled?: boolean;
-    rowCap?: number;
-    actions?: string[];
-    capable?: boolean;
-}
+export type LassoSetting = NonNullable<RenderOptions["lasso"]>;
 
 /** The lasso setting on a render's options. */
-const settingOf = (o: RenderOptions | null | undefined): LassoSetting | undefined =>
-    (o as { lasso?: LassoSetting } | null | undefined)?.lasso;
+const settingOf = (o: RenderOptions | null | undefined): LassoSetting | undefined => o?.lasso;
 
 /** "on" installs a surface. The others say why not; only "over-cap" shows a caption. */
 export type LassoVerdict = "on" | "not-capable" | "disabled" | "over-cap";

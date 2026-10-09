@@ -30,7 +30,7 @@ import { stripJsComments } from "./codeComments";
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, markKeyOf, planSelectionPaint,
-    nextClickedMarks, trackPress, clickWasDrag, clearPress, validRowSet,
+    nextClickedMarks, trackPress, clickWasDrag, clearPress, validRowSet, sameRowSet,
     type ClickedMarks, type SelectionRule, type SelectionPaintMode } from "./selection";
 
 /** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
@@ -52,6 +52,7 @@ import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
+import { installLasso, type LassoHandle } from "./lasso";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -833,6 +834,45 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         root: container, doc,
         log: () => { /* diagnostics are the visual's concern; the resolution logic is shared */ },
     });
+    // A READER'S CLEAR on empty canvas: the click below, and the lasso's own empty click and Escape. Click on empty
+    // canvas CLEARS, the way every BI tool behaves. Without this a selection is a one-way door: the React demo could
+    // filter to one city and had no gesture to get back ("how can I go back to nothing selected?").
+    const clearFromGesture = () => {
+        if (current && current.length) {
+            // THE CHART CLEARS ITSELF WHEN IT OWNS THE SELECTION (2026-09-15). `clear()`
+            // beside this handler has always called the container's __llmXfClear slot
+            // first; the CLICK path never did, so it published an empty selection while
+            // the chart went on drawing the filter it had set. Measured through 0.5.101
+            // in Chromium: zoomed on Sales, a real click on an empty corner fired
+            // selection.onChange([], 'user') with the breadcrumb still reading
+            // All > Sales. Every chart that owns its own selection drifts the same way -
+            // a zoomable Sunburst's focus, an animated chart's period on its scrubber.
+            //
+            // The slot zooms the chart back out and publishes its own clear through
+            // llm-xfilter-refresh, which onXf already turns into notify([]). So notify
+            // only when the chart did NOT settle it: a chart that clears without
+            // dispatching would otherwise leave the host believing the old selection is
+            // live - the same reason clear() settles unconditionally.
+            //
+            // ONLY WHEN THE CHART PUBLISHED THIS SELECTION. The slot does more than clear:
+            // an animated chart's returns the scrubber to "All periods". A reader paused on
+            // one period who clicked a BAR and then empty canvas asked to drop the bar, not
+            // the period they were reading - measured in Chromium, the unconditional call
+            // jumped that chart to All. A selection read off a clicked mark, or handed in by
+            // the host, is not the chart's to undo; it clears exactly as it did before.
+            const slot = (container as any)[CONTAINER_SLOT_XF_CLEAR];
+            if (selectionFromChart && typeof slot === "function") {
+                try { slot(); } catch { /* chart already clear */ }
+            }
+            if (current && current.length) notify([], "user");
+        }
+    };
+
+    // THE HOST LASSO (lasso.ts), installed after every render and torn down before the next, because a render
+    // clears the container and the lasso's surface goes with it. It selects through notify, so it shares the
+    // dim, the subscribers and the clear slot with a mark click instead of keeping a selection of its own.
+    let lasso: LassoHandle | null = null;
+    const disposeLasso = () => { const l = lasso; lasso = null; try { l?.destroy(); } catch { /* it drew nothing that matters now */ } };
     const clickSel = `.${MARK_CLASS}[${ROW_IDX_ATTR}], .${LEGEND_MARK_CLASS}[${ROW_IDX_ATTR}], .${AXIS_FILTER_CLASS}[${ROW_IDX_ATTR}]`;
     const onClick = (e: any) => {
         // A DRAG IS NOT A CLICK (2026-10-09). The click that ends a press which moved 5px or more is
@@ -863,37 +903,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         if (!el) el = resolver.penetrateOverlayAt(e?.clientX, e?.clientY, clickSel);
         if (!el) el = resolver.resolveByGeometry(e?.clientX, e?.clientY, clickSel);
         if (!el) {
-            // Click on empty canvas CLEARS, the way every BI tool behaves. Without this
-            // a selection is a one-way door: the React demo could filter to one city and
-            // had no gesture to get back ("how can I go back to nothing selected?").
-            if (current && current.length) {
-                // THE CHART CLEARS ITSELF WHEN IT OWNS THE SELECTION (2026-09-15). `clear()`
-                // beside this handler has always called the container's __llmXfClear slot
-                // first; the CLICK path never did, so it published an empty selection while
-                // the chart went on drawing the filter it had set. Measured through 0.5.101
-                // in Chromium: zoomed on Sales, a real click on an empty corner fired
-                // selection.onChange([], 'user') with the breadcrumb still reading
-                // All > Sales. Every chart that owns its own selection drifts the same way -
-                // a zoomable Sunburst's focus, an animated chart's period on its scrubber.
-                //
-                // The slot zooms the chart back out and publishes its own clear through
-                // llm-xfilter-refresh, which onXf already turns into notify([]). So notify
-                // only when the chart did NOT settle it: a chart that clears without
-                // dispatching would otherwise leave the host believing the old selection is
-                // live - the same reason clear() settles unconditionally.
-                //
-                // ONLY WHEN THE CHART PUBLISHED THIS SELECTION. The slot does more than clear:
-                // an animated chart's returns the scrubber to "All periods". A reader paused on
-                // one period who clicked a BAR and then empty canvas asked to drop the bar, not
-                // the period they were reading - measured in Chromium, the unconditional call
-                // jumped that chart to All. A selection read off a clicked mark, or handed in by
-                // the host, is not the chart's to undo; it clears exactly as it did before.
-                const slot = (container as any)[CONTAINER_SLOT_XF_CLEAR];
-                if (selectionFromChart && typeof slot === "function") {
-                    try { slot(); } catch { /* chart already clear */ }
-                }
-                if (current && current.length) notify([], "user");
-            }
+            clearFromGesture();
             return;
         }
         const rows = parseRowIdxs(el.getAttribute(ROW_IDX_ATTR));
@@ -1047,6 +1057,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         }
         // NOTES ON MARKS, after the fit: the badges sit on the marks where they finally are.
         try { drawAnnotations(); } catch { /* a badge must never break a render that already succeeded */ }
+        // THE LASSO, last: it reads the marks' boxes and covers the plot, so it goes on once everything else has
+        // measured and moved the chart. A chart that is not capable, a reader who switched it off, and a chart over
+        // the row cap each get nothing here (the last gets its caption); and a lasso kept from before is re-applied
+        // and announced to the chart without being published.
+        try {
+            lasso = installLasso({
+                container, options: () => resolved, rows: data.rows ? data.rows.length : 0,
+                select: rows => notify(rows, "user", null, true),
+                clearSelection: clearFromGesture,
+            });
+        } catch { /* a lasso that cannot install is a chart without one, never a render that failed */ }
     };
 
     // ONE FAILURE BODY for both lanes, for the same reason the passes above are one function:
@@ -1077,6 +1098,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // runs — which is also the moment the old chart's DOM stops existing.
             const seq = ++renderSeq;
             stopAnim();                          // contract: stop the old timer before repaint
+            disposeLasso();                      // its surface is about to go; its listeners must go with it
             container.innerHTML = "";            // the host owns clearing between renders
             if (!renderFn) {
                 if (!config.code) throw new Error("createChartHost: provide code or renderFn");
@@ -1197,6 +1219,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 const s = (container as any)[CONTAINER_SLOT_XF_CLEAR];
                 if (typeof s === "function") { try { s(); } catch { /* chart already clear */ } }
                 setClickedMarks(null);
+                // A selection cleared from outside leaves no lasso drawn around it. Not published again: the clear below is.
+                lasso?.clear({ publish: false, source: "host" });
                 // Always settle the host's own state, even when the chart owns the clear:
                 // a chart that clears WITHOUT dispatching would otherwise leave the host
                 // (and every subscriber) believing the old selection is still live.
@@ -1212,7 +1236,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 // "this selection came from OUTSIDE, do not publish it back". Without it a
                 // pair of mutually-linked charts each republish what the other just sent and
                 // the dashboard fights itself.
-                notify(Array.isArray(rowIdxs) ? rowIdxs.slice() : [], "host");
+                const rows = Array.isArray(rowIdxs) ? rowIdxs.slice() : [];
+                // A selection handed in that is not the lasso's rows is no longer what the outline describes. The
+                // same rows repainted (a group re-deriving the origin's own selection) leave it where it is.
+                if (lasso && lasso.rows().length && !sameRowSet(rows, lasso.rows())) lasso.clear({ publish: false, source: "host" });
+                notify(rows, "host");
             },
             get current() { return current; },
         },
@@ -1226,6 +1254,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             container.removeEventListener("click", onClick);
             untrackPress();
             clearPress(container);
+            disposeLasso();
             subs.clear();
             annotationLayer.destroy();
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM

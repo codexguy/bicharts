@@ -21,7 +21,17 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.15.0";
+export const HOST_CONTRACT_VERSION = "1.16.0";
+// 1.16.0 (2026-10-09): THE HOST LASSO, A ROW-SET SELECTION, AND A DRAG IS NOT A CLICK. RenderOptions gains
+// lasso { capable, enabled, rowCap, actions }: the host draws one lasso/rectangle gesture over a chart whose
+// server-sent capability says it may (capable) and whose reader has not switched it off (enabled, default on),
+// below LASSO_ROW_CAP rows in view, and tells the chart with a DOM event on its container (llm-lasso). The
+// cross-filter event llm-xfilter-refresh gains a third detail form, { rows, source }: a selection the chart
+// computed, as row indices with no element to point at (XfilterRefreshDetail). And the host now ignores the
+// click that ends a press which moved 5px or more, so a drag released over a mark no longer selects it and
+// one released on empty canvas no longer clears the selection. Additive: a chart that sends neither form
+// and a host that sends no lasso option behave exactly as before, and a host that predates the rows form
+// does nothing with it, so the chart's own drawing still works and only the cross-filter is missing.
 // 1.15.0 (2026-10-09): WHETHER EVERY ROW ARRIVED. RenderOptions gains dataComplete, rowsWithheld and
 // rowsFilteredOut, host facts about the rows it handed over. dataComplete is false when rows the reader did
 // not choose to remove never reached the chart (a row cap, a stalled load, a host memory ceiling, a query
@@ -622,6 +632,20 @@ export interface RenderOptions {
      * take the reader's gesture with it: the helper swallows anything this raises.
      */
     onControlChange?: (e: ChartControlChange) => void;
+    /**
+     * THE HOST LASSO (contract 1.16.0): whether this chart gets the gesture that draws around marks and selects the
+     * ones inside, and what the host does when it ends. A chart never draws the gesture; it hears it as an
+     * `llm-lasso` event on its container.
+     *   capable  - the capability the SERVER sent with this chart (the chart's type declares that it has no drag
+     *              gesture of its own and that a lasso means something for it). ABSENT MEANS NOT CAPABLE: no host
+     *              holds a list of chart types, so a chart saved before the capability existed has none.
+     *   enabled  - the reader's setting; on unless it is exactly false. Both must hold for a surface to be drawn.
+     *   rowCap   - the most rows in view that still get a lasso; above it the whole lasso is off and a caption says
+     *              so. Absent is LASSO_ROW_CAP (provisional).
+     *   actions  - what the host runs on release, in order, by name. Absent is ["select"]; a name the host does
+     *              not know is skipped, so a list can be sent ahead of the build that understands it.
+     */
+    lasso?: { enabled?: boolean; rowCap?: number; actions?: string[]; capable?: boolean };
 }
 
 /** One reader gesture on a chart's own control. */

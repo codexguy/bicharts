@@ -105,6 +105,9 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // Control gestures (1.10.0). Passed straight through like onSelect: the host owns what a gesture MEANS,
         // and a host that supplies nothing leaves every control behaving exactly as before.
         onControlChange: p.onControlChange,
+        // The host lasso setting (1.16.0): the host's own facts and choices - what the server sent, what the reader
+        // chose - passed through untouched. lasso.ts reads it as untrusted, so there is nothing to clamp here.
+        lasso: p.lasso,
 
         // ---- live-restyle knobs: `raw || undefined` / `.toString() || undefined` ----
         colorScaleLow: p.colorScaleLow || undefined,

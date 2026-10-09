@@ -73,4 +73,11 @@ describe("host contract version stamp", () => {
         const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
         expect(maj > 1 || (maj === 1 && min >= 15)).toBe(true);
     });
+
+    it("the lasso option, the row-set form of the cross-filter event and the drag guard are announced by the version that adds them (1.16.0)", () => {
+        // A host that reads the stamp learns that options.lasso can be sent and that a chart's llm-xfilter-refresh
+        // may carry { rows, source }; a chart generated against an older stamp must not assume either.
+        const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(maj > 1 || (maj === 1 && min >= 16)).toBe(true);
+    });
 });

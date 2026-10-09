@@ -271,10 +271,17 @@ export function gestureWasDrag(
  *  adapter, the visual's bridge) reads the one record. */
 export const CONTAINER_SLOT_PRESS_AT = "__lchPressAt";
 
+/** A press on record: where it began, and whether the pointer has been 5px or more from there since. */
+interface PressRecord extends PressPoint { dragged?: boolean }
+const pressRecord = (container: Element | null | undefined): PressRecord | null => {
+    const p = (container as any)?.[CONTAINER_SLOT_PRESS_AT];
+    return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p as PressRecord : null;
+};
+
 /** The recorded press on `container`, or null when there is none. */
 export function pressOf(container: Element | null | undefined): PressPoint | null {
-    const p = (container as any)?.[CONTAINER_SLOT_PRESS_AT];
-    return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
+    const p = pressRecord(container);
+    return p ? { x: p.x, y: p.y } : null;
 }
 
 /** Forget the recorded press: the click it led to has been read. */
@@ -284,20 +291,42 @@ export function clearPress(container: Element | null | undefined): void {
 
 /**
  * Record where the pointer goes down on `container`, in the CAPTURE phase so a renderer that stops
- * propagation on its own handlers still leaves its origin. Returns the function that removes the listener.
+ * propagation on its own handlers still leaves its origin, and whether it then travels 5px or more
+ * before it comes up. The travel is what makes a drag that ends where it began (a lasso closed on its
+ * own start, a brush returned to its origin) still a drag: the click it leaves has moved nowhere.
+ * Returns the function that stops all of it.
  */
 export function trackPress(container: HTMLElement): () => void {
+    const doc = container.ownerDocument;
+    let stopWatching: (() => void) | null = null;
+    const endWatch = () => { stopWatching?.(); stopWatching = null; };
     const onDown = (e: any) => {
+        endWatch();
         const x = Number(e?.clientX), y = Number(e?.clientY);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-        try { (container as any)[CONTAINER_SLOT_PRESS_AT] = { x, y }; } catch { /* frozen element */ }
+        const rec: PressRecord = { x, y, dragged: false };
+        try { (container as any)[CONTAINER_SLOT_PRESS_AT] = rec; } catch { return; /* frozen element */ }
+        // The page's pointer, until it comes up: a captured pointer's events reach the document from wherever
+        // it is, and the container sees none of them once it has left. Read-only and cheap.
+        const onMove = (m: any) => {
+            if (!rec.dragged && gestureWasDrag(rec, { x: Number(m?.clientX), y: Number(m?.clientY) })) rec.dragged = true;
+        };
+        doc.addEventListener("pointermove", onMove, true);
+        doc.addEventListener("pointerup", endWatch, true);
+        doc.addEventListener("pointercancel", endWatch, true);
+        stopWatching = () => {
+            doc.removeEventListener("pointermove", onMove, true);
+            doc.removeEventListener("pointerup", endWatch, true);
+            doc.removeEventListener("pointercancel", endWatch, true);
+        };
     };
     container.addEventListener("pointerdown", onDown, true);
-    return () => container.removeEventListener("pointerdown", onDown, true);
+    return () => { container.removeEventListener("pointerdown", onDown, true); endWatch(); };
 }
 
 /**
- * True when `click` ended a press that moved DRAG_NOT_CLICK_PX or more. Reads the press, never writes it.
+ * True when `click` ended a press whose pointer travelled DRAG_NOT_CLICK_PX or more, on the way or by where
+ * the click landed. Reads the press, never writes it.
  *
  * A click a pointer made carries detail >= 1. A keyboard or scripted click carries detail 0 and no
  * pointer position, so it is compared with nothing: the press on record may be one that never produced a
@@ -305,9 +334,11 @@ export function trackPress(container: HTMLElement): () => void {
  */
 export function clickWasDrag(container: Element | null | undefined, click: { clientX?: number; clientY?: number; detail?: number } | null | undefined): boolean {
     if (!click || !(Number(click.detail) > 0)) return false;
+    const rec = pressRecord(container);
+    if (rec?.dragged) return true;
     const x = Number(click.clientX), y = Number(click.clientY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    return gestureWasDrag(pressOf(container), { x, y });
+    return gestureWasDrag(rec, { x, y });
 }
 
 export interface MarkResolverEnv {

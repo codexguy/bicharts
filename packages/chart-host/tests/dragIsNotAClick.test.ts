@@ -101,6 +101,61 @@ describe("a click that ends a drag is not a mark click", () => {
         expect(seen.at(-1)).toEqual([1]);
     });
 
+    // The pointer moves that happen between the press and the release, on the document: a captured pointer's
+    // events reach it from wherever the pointer is.
+    const move = (x: number, y: number) =>
+        document.body.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: x, clientY: y }));
+    const release = (x: number, y: number) =>
+        document.body.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: x, clientY: y }));
+
+    it("a drag that comes back to where it began is still a drag (a closed loop, a brush returned to its start)", () => {
+        host();
+        press(q(".backdrop"), 100, 100);
+        move(140, 100);
+        move(140, 140);
+        move(100, 100);
+        release(100, 100);
+        click(mark(1), 100, 100);
+        expect(seen).toEqual([]);
+    });
+
+    it("moves that never reach 5px leave a click a click", () => {
+        host();
+        press(mark(1), 100, 100);
+        move(103, 102);
+        move(98, 99);
+        release(99, 100);
+        click(mark(1), 99, 100);
+        expect(seen.at(-1)).toEqual([1]);
+    });
+
+    it("travel is read from the press that made the click: a later press starts again", () => {
+        host();
+        press(q(".backdrop"), 100, 100);
+        move(150, 100);
+        release(150, 100);
+        click(mark(1), 150, 100);                  // the drag's click: ignored
+        press(mark(2), 150, 100);
+        release(150, 100);
+        click(mark(2), 150, 100);                  // a fresh click that went nowhere
+        expect(seen.at(-1)).toEqual([2]);
+    });
+
+    it("a pointer move on the page with no press down is not recorded", () => {
+        host();
+        move(500, 500);
+        click(mark(0), 0, 0);
+        expect(seen.at(-1)).toEqual([0]);
+    });
+
+    it("destroy stops reading the pointer", () => {
+        const h = host();
+        press(q(".backdrop"), 100, 100);
+        h.destroy();
+        move(300, 300);
+        expect(pressOf(container)).toBeNull();
+    });
+
     it("a drag on the vertical axis alone counts too", () => {
         host();
         press(q(".backdrop"), 100, 100);
