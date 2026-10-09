@@ -104,6 +104,8 @@ export type { Filter, FilterScope, FilterOptions, FilterKey, FilterChangeReason,
     VegaInteractionEvent, PageView } from "./filterScope";
 export {
     createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
+    DRAG_NOT_CLICK_PX, gestureWasDrag, trackPress, pressOf, clearPress, clickWasDrag, CONTAINER_SLOT_PRESS_AT,
+    type PressPoint,
     selectionRuleOf, markKeyOf, planSelectionPaint, nextClickedMarks, sameRowSet,
     type SelectionRule, type ClickedMarks, type SelectionPaintMark, type SelectionPaintMode, type SelectionPaintPlan,
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,

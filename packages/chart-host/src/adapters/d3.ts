@@ -10,7 +10,7 @@ import { AXIS_FILTER_CLASS, LEGEND_MARK_CLASS, MARK_CLASS, ROW_IDX_ATTR } from "
 import { censusHitBands, hitBandFlag } from "../hitBands";
 import { ensureCrossfilterHitTargets } from "../hitTargets";
 import {
-    collectD3GlyphCenters, createMarkResolver, isInsideControl, markKeyOf, rowIdxsFromMark, selectionRuleOf,
+    clickWasDrag, collectD3GlyphCenters, createMarkResolver, isInsideControl, markKeyOf, rowIdxsFromMark, selectionRuleOf,
 } from "../selection";
 import type { AdapterEvent, AdapterHit, AdapterScene, MarkInfo, MarkRole, RendererAdapter } from "./types";
 
@@ -41,6 +41,11 @@ export function createD3Adapter(): RendererAdapter<Element> {
             if (isInsideControl(e?.target, scene.container)) return { kind: "control" };
             const x = event.clientX ?? e?.clientX;
             const y = event.clientY ?? e?.clientY;
+            // The click that ends a drag is the tail of a gesture the chart owns: it resolves nothing and clears
+            // nothing (a drag released on empty canvas is not an empty click). Reads the press the host recorded.
+            if (clickWasDrag(scene.container, { clientX: x, clientY: y, detail: e?.detail })) {
+                return { kind: "ignored", reason: "a drag, not a click" };
+            }
             const resolver = createMarkResolver({
                 root: scene.container, doc: scene.doc, log: (tag, data) => scene.log(tag, data),
             });

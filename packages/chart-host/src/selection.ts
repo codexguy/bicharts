@@ -201,6 +201,76 @@ export function isInsideControl(target: EventTarget | Node | null | undefined, c
     return false;
 }
 
+// ---- A DRAG IS NOT A CLICK -------------------------------------------------------------------
+//
+// A browser fires `click` after every press-move-release, on the nearest common ancestor of the two
+// targets. The click delegation reads that click as a click on whatever lies under the RELEASE point:
+// a drag released over a mark selected the mark, and a drag released on empty canvas cleared the
+// reader's selection. Any gesture of the chart's own - a brush, an orbit, a lasso - ends in one.
+//
+// So the host records where the pointer went down, and a click whose press was this far away is not a
+// click on the data. Per axis, like the visual's own test of the same name: a trackpad wobbles a pixel
+// or two on a genuine click, and a threshold of zero would swallow those.
+
+/** Movement between press and release, in px on either axis, at which a gesture is a drag. */
+export const DRAG_NOT_CLICK_PX = 5;
+
+/** A pointer position in client px. */
+export interface PressPoint { x: number; y: number }
+
+/** True when the pointer travelled far enough between press and release to be a drag. */
+export function gestureWasDrag(
+    down: PressPoint | null | undefined,
+    up: PressPoint,
+    thresholdPx: number = DRAG_NOT_CLICK_PX,
+): boolean {
+    if (!down) return false;                     // no press recorded - treat as a click
+    return Math.abs(up.x - down.x) >= thresholdPx || Math.abs(up.y - down.y) >= thresholdPx;
+}
+
+/** Where the press is parked: on the CONTAINER, so every reader (the host's click handler, a renderer
+ *  adapter, the visual's bridge) reads the one record. */
+export const CONTAINER_SLOT_PRESS_AT = "__lchPressAt";
+
+/** The recorded press on `container`, or null when there is none. */
+export function pressOf(container: Element | null | undefined): PressPoint | null {
+    const p = (container as any)?.[CONTAINER_SLOT_PRESS_AT];
+    return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
+}
+
+/** Forget the recorded press: the click it led to has been read. */
+export function clearPress(container: Element | null | undefined): void {
+    try { if (container) (container as any)[CONTAINER_SLOT_PRESS_AT] = null; } catch { /* frozen element */ }
+}
+
+/**
+ * Record where the pointer goes down on `container`, in the CAPTURE phase so a renderer that stops
+ * propagation on its own handlers still leaves its origin. Returns the function that removes the listener.
+ */
+export function trackPress(container: HTMLElement): () => void {
+    const onDown = (e: any) => {
+        const x = Number(e?.clientX), y = Number(e?.clientY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        try { (container as any)[CONTAINER_SLOT_PRESS_AT] = { x, y }; } catch { /* frozen element */ }
+    };
+    container.addEventListener("pointerdown", onDown, true);
+    return () => container.removeEventListener("pointerdown", onDown, true);
+}
+
+/**
+ * True when `click` ended a press that moved DRAG_NOT_CLICK_PX or more. Reads the press, never writes it.
+ *
+ * A click a pointer made carries detail >= 1. A keyboard or scripted click carries detail 0 and no
+ * pointer position, so it is compared with nothing: the press on record may be one that never produced a
+ * click (released outside the chart), and a stale press must not turn a later keyboard click into a drag.
+ */
+export function clickWasDrag(container: Element | null | undefined, click: { clientX?: number; clientY?: number; detail?: number } | null | undefined): boolean {
+    if (!click || !(Number(click.detail) > 0)) return false;
+    const x = Number(click.clientX), y = Number(click.clientY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    return gestureWasDrag(pressOf(container), { x, y });
+}
+
 export interface MarkResolverEnv {
     root: HTMLElement;                              // the chart container (hit scope)
     doc: Document;                                  // owner document (elementsFromPoint)

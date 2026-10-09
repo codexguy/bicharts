@@ -30,7 +30,8 @@ import { stripJsComments } from "./codeComments";
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, markKeyOf, planSelectionPaint,
-    nextClickedMarks, type ClickedMarks, type SelectionRule, type SelectionPaintMode } from "./selection";
+    nextClickedMarks, trackPress, clickWasDrag, clearPress,
+    type ClickedMarks, type SelectionRule, type SelectionPaintMode } from "./selection";
 
 /** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
 export interface SelectionPaintReport {
@@ -830,6 +831,14 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     });
     const clickSel = `.${MARK_CLASS}[${ROW_IDX_ATTR}], .${LEGEND_MARK_CLASS}[${ROW_IDX_ATTR}], .${AXIS_FILTER_CLASS}[${ROW_IDX_ATTR}]`;
     const onClick = (e: any) => {
+        // A DRAG IS NOT A CLICK (2026-10-09). The click that ends a press which moved 5px or more is
+        // the tail of a gesture the chart owns - a brush, an orbit, a lasso - and it lands wherever
+        // the pointer was released. Read as a click it selected the mark under the release point, or,
+        // released on empty canvas, cleared the selection the gesture had just made. Read first and
+        // spent here, so the press on record is always the one this click belongs to.
+        const wasDrag = clickWasDrag(container, e);
+        clearPress(container);
+        if (wasDrag) return;
         // A chart that dispatched for THIS gesture has already been handled by onXf, which
         // runs first (the chart's own handler sits on the tick; this one on the container).
         if (Date.now() - xfAt < XF_ECHO_MS) return;
@@ -907,6 +916,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         notify(next, "user", toggledOff ? null : tick);
     };
     container.addEventListener(XFILTER_REFRESH_EVENT, onXf);
+    const untrackPress = trackPress(container);
     container.addEventListener("click", onClick);
     container.classList?.add(HOST_CONTAINER_CLASS);
     ensureAffordanceStyles();
@@ -1210,6 +1220,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             stopAnim();
             container.removeEventListener(XFILTER_REFRESH_EVENT, onXf);
             container.removeEventListener("click", onClick);
+            untrackPress();
+            clearPress(container);
             subs.clear();
             annotationLayer.destroy();
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
