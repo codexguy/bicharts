@@ -12,10 +12,16 @@
 // THE ORDER OF `a/b/yyyy` IS A COLUMN'S, DECIDED IN THIS ORDER:
 //   1. the VALUES, when any can: a first field over 12 is a day, a second field over 12 is a month;
 //      values that claim both orders are not one date column at all;
-//   2. the LOCALE the caller names, when the values cannot: month first for the United States family,
-//      day first for the rest of the world (`monthFirstLocale`);
-//   3. with no locale at all, DAY first here. `ingest` names its default locale (`en`, month first)
-//      before it asks, so a caller that says nothing keeps the reading it always had.
+//   2. for a DOTTED date (`05.03.2024`, `5. 3. 2024`, `05.03.2024.`), DAY first whatever the locale:
+//      the dot is the day-first countries' separator (German, Russian, Polish, Czech, Finnish, Turkish
+//      and most of the east of Europe), and no country that writes month first writes it with dots, so
+//      a locale (or the lack of one) says nothing about it. Only the VALUES can overrule: a second
+//      field over 12 is a month, and the column is read that way;
+//   3. the LOCALE the caller names, when the values cannot and the separator is a slash or a dash:
+//      month first for the United States family, day first for the rest of the world
+//      (`monthFirstLocale`);
+//   4. with no locale at all, DAY first here. `ingest` names its default locale (`en`, month first)
+//      before it asks, so a caller that says nothing keeps the reading it always had for those.
 // A year that comes first, a month written in words, and the CJK markers carry their own order.
 //
 // WHAT IT WILL NOT READ, on purpose:
@@ -45,7 +51,8 @@ export interface TextDateColumn {
     form: TextDateForm;
     /** The order the date's fields are written in. */
     order: TextDateOrder;
-    /** How the order was settled: by the shape, by a value that decided it, or by the locale. */
+    /** How the order was settled: by the shape (a year first, the CJK markers, a dotted date), by a
+     *  value that decided it, or by the locale. */
     orderFrom: "shape" | "values" | "locale";
     /**
      * A strptime / d3.timeParse specifier for the column's shape (`%d.%m.%Y`, `%Y. %m. %d.`,
@@ -266,6 +273,7 @@ export function readTextDateColumn(values: Iterable<unknown>, opts: { locale?: s
         if (firstOver12 > 0 && secondOver12 > 0) return null;
         if (firstOver12 > 0) { order = "dmy"; orderFrom = "values"; }
         else if (secondOver12 > 0) { order = "mdy"; orderFrom = "values"; }
+        else if (first.sep.trim() === ".") { order = "dmy"; orderFrom = "shape"; }
         else { order = monthFirstLocale(opts.locale) ? "mdy" : "dmy"; orderFrom = "locale"; }
     }
 

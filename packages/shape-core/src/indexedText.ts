@@ -149,7 +149,9 @@ function isYyyymmdd(v: number): boolean {
 //       field over 12 is a month), and by the host locale otherwise - en-US reads month
 //       first, the rest of the world day first. A column can be a date (answer 1) whose order
 //       stays undecided by its values (answer 2); the locale breaks that tie, because that is
-//       what a human reading the same column would do.
+//       what a human reading the same column would do. EXCEPT a dotted date (`05.03.2024`):
+//       the dot is the day-first countries' separator, so the locale has nothing to add and
+//       the column reads day first whoever asks.
 //
 // The result is a strptime / d3.timeParse specifier ("%d/%m/%Y") rather than an enum, because
 // that one vocabulary is read verbatim by d3.timeParse AND by Python's strptime and pandas
@@ -162,8 +164,9 @@ const DMY_OR_MDY_RE = /^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{4})(?:[ T](\d{2}):(\d{2
 export interface TextDateDetection {
     /** strptime / d3.timeParse specifier, e.g. "%d/%m/%Y". */
     pattern: string;
-    /** How the day/month order was settled: by a value that decided it, or by the locale. */
-    orderFrom: "iso" | "values" | "locale";
+    /** How the day/month order was settled: by the shape alone (`iso`: a year first; `shape`: a dotted
+     *  date, which is day first), by a value that decided it, or by the locale. */
+    orderFrom: "iso" | "shape" | "values" | "locale";
 }
 
 // Examines the distinct values of one column. Returns null unless at least 80% of the
@@ -185,7 +188,7 @@ export function detectTextDatePattern(values: Iterable<string>, locale?: string)
     if (legacyShaped > 0 || sample.length < 2) return null;
     const col = readTextDateColumn(sample, { locale, floor: 0.8 });
     if (!col || !col.pattern || col.form === "named") return null;
-    return { pattern: col.pattern, orderFrom: col.orderFrom === "shape" ? "iso" : col.orderFrom };
+    return { pattern: col.pattern, orderFrom: col.orderFrom === "shape" ? (col.order === "ymd" ? "iso" : "shape") : col.orderFrom };
 }
 
 function detectLegacyTextDatePattern(
@@ -263,6 +266,7 @@ function detectLegacyTextDatePattern(
     let orderFrom: TextDateDetection["orderFrom"];
     if (firstOver12 > 0) { dayFirst = true; orderFrom = "values"; }
     else if (secondOver12 > 0) { dayFirst = false; orderFrom = "values"; }
+    else if (dmSep === ".") { dayFirst = true; orderFrom = "shape"; }
     else { dayFirst = !monthFirstLocale(locale); orderFrom = "locale"; }
     const date = dayFirst ? `%d${dmSep}%m${dmSep}%Y` : `%m${dmSep}%d${dmSep}%Y`;
     if (dmWithTime === dmyOrMdy) {

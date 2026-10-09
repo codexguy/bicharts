@@ -77,7 +77,8 @@ export type LLMColumnWithValue =
         // so a single field serves every renderer. Day/month ORDER is resolved from the
         // values when any value decides it (a first field over 12 is a day), and from
         // the host locale otherwise (en-US reads month-first; the rest of the world
-        // day-first). A pattern, never a value: it is opaque to every source cell and
+        // day-first), except a dotted date ("05.03.2024"), which is day-first in every
+        // locale. A pattern, never a value: it is opaque to every source cell and
         // ships at EVERY privacy tier. Absent on DateTime columns (they need no
         // parsing), on measures, on period strings ("2024-Q1"), and on older clients.
         temporalTextPattern?: string,
