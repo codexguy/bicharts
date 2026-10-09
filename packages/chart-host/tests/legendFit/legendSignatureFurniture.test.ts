@@ -7,8 +7,8 @@ import { findSignatureLegendGroups } from "../../src/legendFit/legendReconcileDo
 // The legend signature (a mark-free <g> holding >= 2 same-size swatch + adjacent text pairs) also fits
 // the geo-zoom helper's d-pad: seven 17 px buttons of one size, each with a glyph beside it. The exec gate's
 // copy of the detector unioned the pad with a flow map's key and reported the pad's own down arrow as a
-// label the legend covered, which forced a healing regeneration. This copy takes signatureGroups[0] as THE legend to slide, and the pad is drawn before the key,
-// so the pass would have slid the zoom pad. Helper furniture is excluded by its class, as the tick
+// label the legend covered, which forced a healing regeneration. This copy takes signatureGroups[0] as THE
+// legend to slide, and the pad is drawn before the key, so the pass would have slid the zoom pad. Helper furniture is excluded by its class, as the tick
 // reader in this file already excludes the pad's glyphs.
 //
 // jsdom has no layout, so getBoundingClientRect is stubbed from each element's own attributes: a rect's

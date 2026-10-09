@@ -225,9 +225,9 @@ function hasSelfManagedScrollLayout(svg: SVGSVGElement): boolean {
  *
  * MEASURED, NOT ESTIMATED, and that is the whole reason this lives client-side.
  * The server exec-gate breadcrumb has to approximate text width as
- * chars * fontSize * 0.6 because jsdom has no getComputedTextLength - its own
- * author called that good enough to triage on and not good enough to spend a
- * regeneration on. Here the box is the browser's own.
+ * chars * fontSize * 0.6 because jsdom has no getComputedTextLength - good
+ * enough to triage on and not good enough to spend a regeneration on. Here the
+ * box is the browser's own.
  *
  * Hides the text only. The tick LINE and the gridline stay, so the reader keeps
  * every position they align against and loses only a redundant caption.
