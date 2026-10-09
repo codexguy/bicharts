@@ -141,24 +141,36 @@ export function newQualifyRefusalGroupState(): QualifyRefusalGroupState {
 /**
  * THE REFUSAL CODES THAT MEAN "THE TILE", NOT "THE FIELDS".
  *
- * Each refusal carries the code of the gate that wrote its sentence. These four gates compare what
- * a chart type needs with the size and shape of the tile and nothing else: too narrow, too short,
- * not square enough, not tall enough. The data can be exactly right and the type is still turned
- * down, and the one thing that changes the answer is a bigger tile.
+ * Each refusal carries the code of the gate that wrote its sentence. These gates compare what a
+ * chart type needs with the size and shape of the tile and nothing else:
+ *  - TILE_TOO_NARROW, TILE_TOO_SHORT, TILE_NOT_SQUARE, TILE_NOT_TALL: too narrow, too short, not
+ *    square enough, not tall enough.
+ *  - TILE_TOO_SMALL: a type that does not hold up on a small tile, turned down because the tile is
+ *    under the size the full catalogue needs, whatever the data is.
+ *  - EMBED_NOTHING_FITS_TILE: a headline-plus-small-drawing type whose drawing has no form that
+ *    fits the tile; the headline alone is still drawable on a plain card.
+ *  - EMBED_BEESWARM_TILE_TOO_SMALL: a beeswarm turned down because the tile is under the size it
+ *    needs.
+ * The data can be exactly right and the type is still turned down, and the one thing that changes
+ * the answer is a bigger tile.
  *
  * Without this split those rows sat under "Can't be drawn from the fields as bound" or "Poor fit
  * for these fields" - headings that send the reader to rebind data that is fine.
  *
  * ONLY GATES THAT LOOK AT THE TILE ALONE ARE LISTED. A gate that weighs the tile against the data
- * (a row-per-category floor, a panel budget) can be answered by either, so naming it a tile
- * problem would be the same false instruction turned around. A code is added here when the server
- * starts sending one that is purely about the tile; an unknown code keeps the grouping it had.
+ * (ROWS_CRAMPED, a row-per-category floor; TOO_MANY_PANELS, a panel budget; CATEGORIES_TOO_WIDE)
+ * can be answered by either, so naming it a tile problem would be the same false instruction
+ * turned around. A code is added here when the server starts sending one that is purely about the
+ * tile; an unknown code keeps the grouping it had.
  */
 export const QUALIFY_TILE_REFUSAL_CODES: readonly string[] = Object.freeze([
     "TILE_TOO_NARROW",
     "TILE_TOO_SHORT",
     "TILE_NOT_SQUARE",
     "TILE_NOT_TALL",
+    "TILE_TOO_SMALL",
+    "EMBED_NOTHING_FITS_TILE",
+    "EMBED_BEESWARM_TILE_TOO_SMALL",
 ]);
 
 /**

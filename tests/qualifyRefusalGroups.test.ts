@@ -164,12 +164,15 @@ const fieldsWaivable = (name: string, code = "TOO_FEW_RAW_ROWS"): QualifyRefusal
     ({ name, reason: `${name} would be ugly`, reasonCode: code, isVeto: false });
 
 describe("refusalIsTileBound", () => {
-    it("is true for each of the four tile codes", () => {
-        for (const code of ["TILE_TOO_NARROW", "TILE_TOO_SHORT", "TILE_NOT_SQUARE", "TILE_NOT_TALL"]) {
+    it("is true for each of the tile codes", () => {
+        const TILE_CODES = [
+            "TILE_TOO_NARROW", "TILE_TOO_SHORT", "TILE_NOT_SQUARE", "TILE_NOT_TALL",
+            "TILE_TOO_SMALL", "EMBED_NOTHING_FITS_TILE", "EMBED_BEESWARM_TILE_TOO_SMALL",
+        ];
+        for (const code of TILE_CODES) {
             expect(refusalIsTileBound({ name: "Basic Sankey", reasonCode: code }), code).toBe(true);
         }
-        expect([...QUALIFY_TILE_REFUSAL_CODES].sort())
-            .toEqual(["TILE_NOT_SQUARE", "TILE_NOT_TALL", "TILE_TOO_NARROW", "TILE_TOO_SHORT"]);
+        expect([...QUALIFY_TILE_REFUSAL_CODES].sort()).toEqual([...TILE_CODES].sort());
     });
 
     // Reading any other code as a tile problem would tell a reader to resize a visual whose data is
@@ -284,5 +287,67 @@ describe("the rendered sequence with tile refusals", () => {
         const out = orderRefusalsForDisplay(
             [{ reasonCode: "TILE_TOO_NARROW", isVeto: true }, tile("Basic Sankey", "TILE_TOO_NARROW")] as QualifyRefusalRow[]);
         expect(out.map(r => r.name)).toEqual(["Basic Sankey"]);
+    });
+});
+
+// THREE MORE REFUSALS THAT ARE ABOUT THE TILE ALONE.
+//
+// A type that does not hold up on a small tile is turned down on any tile under the size the full
+// catalogue needs, whatever the data is: the server tags that refusal TILE_TOO_SMALL. A
+// headline-plus-small-drawing type is turned down when the drawing has no form that fits the tile
+// (EMBED_NOTHING_FITS_TILE), with the headline alone still drawable on a plain card. And a beeswarm
+// is turned down when the tile is under the size it needs (EMBED_BEESWARM_TILE_TOO_SMALL). None of
+// them compares the tile with the data, so all belong under the tile heading, not the fields.
+describe("the size codes added to the tile list", () => {
+    const NEW_TILE_CODES = ["TILE_TOO_SMALL", "EMBED_NOTHING_FITS_TILE", "EMBED_BEESWARM_TILE_TOO_SMALL"];
+    const FIRST_FOUR = ["TILE_TOO_NARROW", "TILE_TOO_SHORT", "TILE_NOT_SQUARE", "TILE_NOT_TALL"];
+
+    it("reads each new code as a tile refusal", () => {
+        for (const code of NEW_TILE_CODES) {
+            expect(refusalIsTileBound({ name: "Beeswarm chart", reasonCode: code }), code).toBe(true);
+        }
+    });
+
+    it("lists them beside the first four, and the list is still frozen", () => {
+        for (const code of [...FIRST_FOUR, ...NEW_TILE_CODES]) {
+            expect(QUALIFY_TILE_REFUSAL_CODES, code).toContain(code);
+        }
+        expect(QUALIFY_TILE_REFUSAL_CODES).toHaveLength(FIRST_FOUR.length + NEW_TILE_CODES.length);
+        expect(Object.isFrozen(QUALIFY_TILE_REFUSAL_CODES)).toBe(true);
+    });
+
+    // These three weigh the tile against the amount of data: binding fewer categories or panels
+    // answers each of them as well as a bigger tile does, so a "bigger tile" heading over them
+    // would give the same false instruction the fields heading gave, turned around.
+    it("keeps the gates that weigh the tile against the data out of the tile list", () => {
+        for (const code of ["ROWS_CRAMPED", "TOO_MANY_PANELS", "CATEGORIES_TOO_WIDE"]) {
+            expect(QUALIFY_TILE_REFUSAL_CODES, code).not.toContain(code);
+            expect(refusalIsTileBound({ name: "Bar chart (horizontal)", reasonCode: code }), code).toBe(false);
+        }
+    });
+
+    it("groups them under the tile heading, apart from a fields veto", () => {
+        expect(render([
+            tile("Beeswarm chart", "TILE_TOO_SMALL"),
+            fieldsVeto("Gantt chart"),
+            tile("Card with embedded visual", "EMBED_NOTHING_FITS_TILE"),
+            tile("Beeswarm with a headline", "EMBED_BEESWARM_TILE_TOO_SMALL"),
+        ])).toEqual(["[tooSmall]", "Beeswarm chart*", "Card with embedded visual*", "Beeswarm with a headline*",
+                     "[cannotDraw]", "Gantt chart*"]);
+    });
+
+    // The small-tile restriction is waivable (the reader may still pick the type), and it is a
+    // statement about the tile all the same.
+    it("keeps a pickable TILE_TOO_SMALL row under the tile heading with its control", () => {
+        expect(render([fieldsWaivable("Bullet"), tile("Beeswarm chart", "TILE_TOO_SMALL", false)]))
+            .toEqual(["[poorFit]", "Bullet", "[tooSmall]", "Beeswarm chart"]);
+    });
+
+    it("keeps a gate that weighs the tile against the data under the fields headings", () => {
+        expect(render([
+            tile("Beeswarm chart", "TILE_TOO_SMALL", false),
+            { name: "Bar chart (horizontal)", reason: "too many rows for this tile", reasonCode: "ROWS_CRAMPED", isVeto: true },
+            { name: "Facet grid", reason: "too many panels", reasonCode: "TOO_MANY_PANELS", isVeto: false },
+        ])).toEqual(["[poorFit]", "Facet grid", "[tooSmall]", "Beeswarm chart", "[cannotDraw]", "Bar chart (horizontal)*"]);
     });
 });
