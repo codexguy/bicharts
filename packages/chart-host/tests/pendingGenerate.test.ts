@@ -22,6 +22,7 @@ import {
     latePickupAction, latePickupKeepsMarker, pollGiveUpKeepsMarker,
 } from "../src/pendingGenerate";
 import type { PendingRecoveryDecision } from "../src/pendingGenerate";
+import { fetchFields } from "@bicharts/shape-core";
 
 const T0 = 1_755_583_000_000; // a fixed epoch, no Date.now() in tests
 
@@ -502,5 +503,105 @@ describe("the recovery poll's final answers", () => {
         expect(m.GENERATION_FAILED_MESSAGE).not.toMatch(/charg/i);
         expect(m.RECOVERY_UNREACHABLE_MESSAGE).not.toMatch(/charg|nothing was generated/i);
         expect(m.TRANSPORT_LOST_CHECKING_MESSAGE).not.toMatch(/charg/i);
+    });
+});
+
+// A GENERATE THAT DIED WITH A SERVER RESTART. The process that was building the chart is gone, so nothing
+// will ever be written for the correlation - and a poll that kept answering "not yet" made the reader wait out
+// the whole window for it. The server says so with a final answer of its own, `lost-in-restart`; isVersionNotFound
+// rides beside it for older hosts, and a host that does not know the ending already reads any final answer as
+// "failed", so this one degrades to the server's sentence rather than to a wait.
+describe("a generate that died with a server restart", () => {
+    const nf = { isVersionNotFound: true };
+
+    it("is its own final outcome, read from the outcome and from the code", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "lost-in-restart" })).toBe("lost-in-restart");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: " Lost-In-Restart " })).toBe("lost-in-restart");
+        // A parser that predates the two flags still hands over the code, which is final by definition.
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_LOST_IN_RESTART" })).toBe("lost-in-restart");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: " generation_lost_in_restart " })).toBe("lost-in-restart");
+    });
+
+    it("is final only when the server said so, and a cancel still outranks it", async () => {
+        const m = await import("../src/pendingGenerate");
+        // An outcome without the final flag is not final; neither is a code beside anything but a not-found.
+        expect(m.recoveryFinalOutcome({ ...nf, pollOutcome: "lost-in-restart" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: false, pollOutcome: "lost-in-restart" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: false, errorCode: "GENERATION_LOST_IN_RESTART" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ isVersionNotFound: false, errorCode: "GENERATION_LOST_IN_RESTART" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ errorCode: "GENERATION_LOST_IN_RESTART" })).toBeNull();
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "lost-in-restart", isGenerationCancelled: true })).toBe("cancelled");
+    });
+
+    it("leaves every other ending reading as it did", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "not-received" })).toBe("not-received");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "failed" })).toBe("failed");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "cancelled" })).toBe("cancelled");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "lost-in-restart-ish" })).toBe("failed");
+        expect(m.recoveryFinalOutcome({ ...nf, isPollFinal: true, pollOutcome: "something-new" })).toBe("failed");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_NOT_RECEIVED" })).toBe("not-received");
+        expect(m.recoveryFinalOutcome({ ...nf, errorCode: "GENERATION_LOST" })).toBeNull();
+    });
+
+    it("is worded in the server's sentence, else the same words - and the words name the restart and claim no charge", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryFinalMessage("lost-in-restart", "Server says so.")).toBe("Server says so.");
+        expect(m.recoveryFinalMessage("lost-in-restart", "  ")).toBe(m.GENERATION_LOST_IN_RESTART_MESSAGE);
+        expect(m.recoveryFinalMessage("lost-in-restart", null)).toBe(m.GENERATION_LOST_IN_RESTART_MESSAGE);
+        expect(m.GENERATION_LOST_IN_RESTART_MESSAGE).toMatch(/restart/i);
+        expect(m.GENERATION_LOST_IN_RESTART_MESSAGE).toMatch(/Generate/);
+        // A freemium meter can be charged before the generation's record exists, so the sentence promises nothing.
+        expect(m.GENERATION_LOST_IN_RESTART_MESSAGE).not.toMatch(/charg|credit|free/i);
+        // The other endings keep their words.
+        expect(m.recoveryFinalMessage("not-received", null)).toBe(m.GENERATION_NOT_RECEIVED_MESSAGE);
+        expect(m.recoveryFinalMessage("failed", null)).toBe(m.GENERATION_FAILED_MESSAGE);
+        expect(m.recoveryFinalMessage("cancelled", null)).toBe(m.GENERATION_CANCELLED_MESSAGE);
+    });
+
+    it("proves nothing about a charge, and is never a give-up that refunds or keeps the marker", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.recoveryProvesNothingCharged("lost-in-restart")).toBe(false);
+        expect(m.recoveryGiveUpRefunds("lost-in-restart")).toBe(false);
+        expect(m.pollGiveUpKeepsMarker("lost-in-restart", { v: 2, t: T0, c: "corr", p: "", h: 1 })).toBe(false);
+    });
+});
+
+// THE ARM TIME A POLL CARRIES is the marker's own `t` - the client's clock when the generate started - as a
+// whole count of milliseconds. The server compares it with when its own process started; nothing here
+// shifts, clamps or corrects it, so the comparison is the server's alone.
+describe("the arm time a recovery poll states", () => {
+    it("is the marker's t, unchanged", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.markerArmedAtMs({ v: 1, t: T0, c: "c0ffee02", p: "" })).toBe(T0);
+        expect(m.markerArmedAtMs(parsePendingGenerate(encodePendingGenerate({ v: 1, t: T0, c: "c0ffee02", p: "" })))).toBe(T0);
+    });
+
+    it("is a whole number, and nothing at all for a marker that has no usable time", async () => {
+        const m = await import("../src/pendingGenerate");
+        expect(m.markerArmedAtMs({ v: 1, t: T0 + 0.75, c: "c", p: "" })).toBe(T0);
+        for (const t of [0, -1, NaN, Infinity, -Infinity]) {
+            expect(m.markerArmedAtMs({ v: 1, t, c: "c", p: "" }), String(t)).toBeUndefined();
+        }
+        expect(m.markerArmedAtMs(null)).toBeUndefined();
+        expect(m.markerArmedAtMs(undefined)).toBeUndefined();
+    });
+
+    it("is exported by the package barrel with the new ending's words", async () => {
+        const m = await import("../src/pendingGenerate");
+        const api = await import("../src/index");
+        expect(api.markerArmedAtMs).toBe(m.markerArmedAtMs);
+        expect(api.GENERATION_LOST_IN_RESTART_MESSAGE).toBe(m.GENERATION_LOST_IN_RESTART_MESSAGE);
+    });
+
+    it("reaches the wire through fetchFields: the poll carries the marker's time and nothing else changes", async () => {
+        const m = await import("../src/pendingGenerate");
+        const marker = { v: 1, t: T0, c: "c0ffee02", p: "" };
+        const f = fetchFields({ genNew: true, fetchCorrelationId: marker.c, fetchArmedAtMs: m.markerArmedAtMs(marker) });
+        expect(JSON.stringify(f)).toBe(`{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c0ffee02","fetchArmedAtMs":${T0}}`);
+        // A marker with no usable time sends exactly what a poll always sent.
+        const none = fetchFields({ genNew: true, fetchCorrelationId: marker.c, fetchArmedAtMs: m.markerArmedAtMs({ ...marker, t: 0 }) });
+        expect(JSON.stringify(none)).toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c0ffee02"}');
     });
 });

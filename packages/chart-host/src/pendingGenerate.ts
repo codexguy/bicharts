@@ -151,6 +151,22 @@ export function markerArmedBlind(m: PendingGenerateMarker | null | undefined): b
 }
 
 /**
+ * WHEN THIS MARKER'S GENERATE STARTED, as a recovery poll states it: the marker's own `t`, epoch milliseconds on
+ * this host's clock, as a whole number - the `fetchArmedAtMs` a poll by correlation passes to `fetchFields`.
+ *
+ * With it the server can tell a generate that died with a server restart (started before the running process,
+ * no record of it) from one still running, and say so at the first poll instead of after the whole window.
+ * Nothing is shifted or checked against the clock here: a slow or fast host clock is the server's margin to
+ * absorb, and a future time it reads as absent. undefined for no marker or a time that is not a positive
+ * number, so the poll sends exactly what it always sent.
+ */
+export function markerArmedAtMs(m: PendingGenerateMarker | null | undefined): number | undefined {
+    if (!m) return undefined;
+    const t = Math.floor(m.t);
+    return Number.isFinite(t) && t > 0 ? t : undefined;
+}
+
+/**
  * Can this marker be recovered AT ALL? Only by CORRELATION, so only if it carries one.
  *
  * A version number is never a safe handle, not even when we held one: the number we hold came FROM
@@ -350,19 +366,20 @@ export function generationCancelledMessage(serverMessage: string | null | undefi
  * beside it for older hosts, so this is read FIRST. null = not final. A final answer with an outcome
  * this build does not know reads as "failed": it is final, and it claims nothing about charges.
  */
-export type RecoveryFinalOutcome = "cancelled" | "failed" | "not-received";
+export type RecoveryFinalOutcome = "cancelled" | "failed" | "not-received" | "lost-in-restart";
 
 export function recoveryFinalOutcome(r: { isPollFinal?: boolean | null; pollOutcome?: string | null; isGenerationCancelled?: boolean | null; isVersionNotFound?: boolean | null; errorCode?: string | null } | null | undefined): RecoveryFinalOutcome | null {
     if (!r) return null;
     const o = String(r.pollOutcome ?? "").trim().toLowerCase();
     if (r.isGenerationCancelled === true || (r.isPollFinal === true && o === "cancelled")) return "cancelled";
-    if (r.isPollFinal === true) return o === "not-received" ? "not-received" : "failed";
+    if (r.isPollFinal === true) return o === "not-received" ? "not-received" : o === "lost-in-restart" ? "lost-in-restart" : "failed";
     // A body read by a parser that predates the two fields still carries the final answer's own CODE,
-    // and three codes are final by definition. Only those three: any other code beside a not-found is
+    // and four codes are final by definition. Only those four: any other code beside a not-found is
     // the generation's own refusal, which only the flag can tell from "not yet".
     if (r.isPollFinal == null && r.isVersionNotFound === true) {
         const c = String(r.errorCode ?? "").trim().toUpperCase();
         if (c === "GENERATION_NOT_RECEIVED") return "not-received";
+        if (c === "GENERATION_LOST_IN_RESTART") return "lost-in-restart";
         if (c === "GENERATION_FAILED") return "failed";
         if (c === "GENERATION_CANCELLED") return "cancelled";
     }
@@ -370,7 +387,8 @@ export function recoveryFinalOutcome(r: { isPollFinal?: boolean | null; pollOutc
 }
 
 /** Did the server PROVE nothing was charged? Only a cancel and a request it never received do; a
- *  failed generation's charge is its own, and a host claims nothing about it. */
+ *  failed generation's charge is its own, and a generate that died with a restart may have been charged
+ *  before its record was written, so a host claims nothing about either. */
 export function recoveryProvesNothingCharged(o: string | null | undefined): boolean {
     return o === "cancelled" || o === "not-received";
 }
@@ -397,6 +415,11 @@ export const GENERATION_NOT_RECEIVED_MESSAGE =
     "The charting service has no record of that request, so nothing was generated and nothing was charged. Generate again.";
 export const GENERATION_FAILED_MESSAGE =
     "That chart didn't finish on the server, so there's nothing to show. Generate again.";
+/** The process that was building the chart is gone, so nothing will arrive. Says what happened and what to
+ *  do, and claims nothing about a charge: a free-tier meter can be charged before the generation's record
+ *  exists, so a restart in between can leave a charge that no record shows. */
+export const GENERATION_LOST_IN_RESTART_MESSAGE =
+    "The charting service restarted while your chart was being built, so nothing was delivered. Click Generate to build it again.";
 /** Neither the generate's answer nor any check reached us. Claims nothing about a charge: behind a
  *  proxy the generate may have arrived when the checks did not. */
 export const RECOVERY_UNREACHABLE_MESSAGE =
@@ -406,5 +429,8 @@ export const RECOVERY_UNREACHABLE_MESSAGE =
 export function recoveryFinalMessage(o: RecoveryFinalOutcome, serverMessage: string | null | undefined): string {
     const s = String(serverMessage ?? "").trim();
     if (s !== "") return s;
-    return o === "cancelled" ? GENERATION_CANCELLED_MESSAGE : o === "not-received" ? GENERATION_NOT_RECEIVED_MESSAGE : GENERATION_FAILED_MESSAGE;
+    return o === "cancelled" ? GENERATION_CANCELLED_MESSAGE
+        : o === "not-received" ? GENERATION_NOT_RECEIVED_MESSAGE
+        : o === "lost-in-restart" ? GENERATION_LOST_IN_RESTART_MESSAGE
+        : GENERATION_FAILED_MESSAGE;
 }

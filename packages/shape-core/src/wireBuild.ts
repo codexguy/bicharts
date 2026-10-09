@@ -120,6 +120,11 @@ export interface FetchRequest {
     genNew: boolean;
     /** A recovery poll keyed by the correlation of the generation it is looking for. null/absent = not one. */
     fetchCorrelationId?: string | null;
+    /**
+     * When the generation a correlation poll looks for was started: the host's pending-generate marker time, epoch
+     * milliseconds on the host's own clock. Used only with `fetchCorrelationId`; see `fetchFields`.
+     */
+    fetchArmedAtMs?: number | null;
     /** A recovery poll keyed by version. null/absent = not one. */
     recoveryFetchVersion?: number | null;
     /** A version the reader stated - asked for by number. null or 0 mean "no preference", never "version zero". */
@@ -134,6 +139,8 @@ export interface FetchFields {
     version: number | null;
     fetchOnly: boolean | undefined;
     fetchCorrelationId: string | undefined;
+    /** Present only on a poll by correlation that stated a usable arm time; never a key holding `undefined`. */
+    fetchArmedAtMs?: number;
 }
 
 /**
@@ -186,12 +193,19 @@ export function resolveFetchVersion(i: {
 }
 
 /**
- * THE FETCH FIELDS OF A REQUEST - `genNew`, `version`, `fetchOnly`, `fetchCorrelationId` - decided
- * together, so the two that must agree cannot drift apart as two independent expressions did.
+ * THE FETCH FIELDS OF A REQUEST - `genNew`, `version`, `fetchOnly`, `fetchCorrelationId`, and a poll's
+ * `fetchArmedAtMs` - decided together, so the two that must agree cannot drift apart as two
+ * independent expressions did.
  *
  * A recovery poll (by correlation or by version) is never a generation, whatever the caller asked;
  * the version and the fetch-only flag are `resolveFetchVersion`'s. A member that is undefined is not
  * sent, so an ordinary generation serialises exactly as it did before any of these existed.
+ *
+ * THE ARM TIME rides a poll by correlation, and only that: it tells the server when the generation
+ * began, which is what lets it tell one that died with a server restart from one still running. The
+ * server binds it as an integer, and a value it cannot bind (a fraction, a string, an exponent form)
+ * fails the whole request rather than just that field, so it is sent only as a positive whole number
+ * and its key is left off otherwise. A server that predates the field drops it unread.
  */
 export function fetchFields(r: FetchRequest): FetchFields {
     const byCorrelation = r.fetchCorrelationId != null;
@@ -204,7 +218,12 @@ export function fetchFields(r: FetchRequest): FetchFields {
         settingVersion: r.settingVersion,
         codeVersion: r.codeVersion,
     });
-    return { genNew, version: v.version, fetchOnly: v.fetchOnly, fetchCorrelationId: r.fetchCorrelationId ?? undefined };
+    const armed = r.fetchArmedAtMs;
+    const armedAtMs = byCorrelation && typeof armed === "number" && Number.isSafeInteger(armed) && armed > 0 ? armed : undefined;
+    return {
+        genNew, version: v.version, fetchOnly: v.fetchOnly, fetchCorrelationId: r.fetchCorrelationId ?? undefined,
+        ...(armedAtMs !== undefined ? { fetchArmedAtMs: armedAtMs } : {}),
+    };
 }
 
 /** The renderer capability flags a generate request carries. */

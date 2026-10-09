@@ -382,7 +382,7 @@ export {
     PENDING_RECOVERY_FAST_PHASE_MS, PENDING_RECOVERY_MID_POLL_MS,
     PENDING_RECOVERY_SLOW_PHASE_MS, PENDING_RECOVERY_SLOW_POLL_MS,
     pendingRecoveryNextDelayMs, encodePendingGenerate, parsePendingGenerate,
-    markerArmedBlind, isBlindMarker, servedCorrelationProves, sameMarker,
+    markerArmedBlind, markerArmedAtMs, isBlindMarker, servedCorrelationProves, sameMarker,
     decidePendingRecovery, recoveryPollRunning, recoveryOwnsTheSentence,
     latePickupAction, latePickupKeepsMarker, pollGiveUpKeepsMarker,
     pendingRecoveryRemainingMs, transportFailureShouldRecover,
@@ -390,7 +390,7 @@ export {
     recoveryAnswerIsCancelled, generationCancelledMessage,
     recoveryFinalOutcome, recoveryProvesNothingCharged, recoveryGiveUpRefunds, recoveryLooksUnreachable,
     recoveryFinalMessage, PENDING_RECOVERY_UNREACHABLE_POLLS, GENERATION_NOT_RECEIVED_MESSAGE,
-    GENERATION_FAILED_MESSAGE, RECOVERY_UNREACHABLE_MESSAGE,
+    GENERATION_FAILED_MESSAGE, GENERATION_LOST_IN_RESTART_MESSAGE, RECOVERY_UNREACHABLE_MESSAGE,
     type PendingGenerateMarker, type PendingRecoveryDecision, type LatePickupAction, type RecoveryFinalOutcome,
 } from "./pendingGenerate";
 // Comment-blind code reading: a host deciding what a chart needs from its source must not count a word

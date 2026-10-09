@@ -632,6 +632,16 @@ export type LLMRequestCode =
         // ignore it and fall back to `version`, which is why the client sends both and
         // verifies servedCorrelationId on the way back.
         fetchCorrelationId?: string,
+        // WHEN THE GENERATE A CORRELATION POLL LOOKS FOR WAS STARTED: the host's pending-generate
+        // marker time, Unix epoch MILLISECONDS on the host's own clock, a whole number. Sent only
+        // beside fetchCorrelationId. It lets the server tell a generate that died with a server
+        // restart (started before the running process, no record of it) from one still running, and
+        // answer the first with a final pollOutcome of "lost-in-restart" instead of "not yet" until
+        // the window closes. The unit is in the name because the server binds a whole number: a
+        // string or a fraction fails the whole request instead of being ignored. Gated by absence -
+        // a request without it gets exactly the answers it always did, and a server that predates
+        // the field drops it unread, so a poll against one simply keeps polling.
+        fetchArmedAtMs?: number,
         model?: string,
         // Requested renderer — the "Render Type" setting ("" / VISUAL = leave to
         // visual, or explicit D3 / PLOTLY / PYMATPLOT / VEGA).
@@ -968,8 +978,9 @@ export type LLMRequestCodeResult =
         isGenerationCancelled?: boolean,
         // A recovery poll's FINAL answer (2026-10-04): nothing is coming for that correlation, ever -
         // pollOutcome says which ending ("cancelled", "failed" in the generation's own errorMessage
-        // and errorCode, or "not-received": nothing ran, nothing was charged). isVersionNotFound is
-        // set beside it for older clients. See chart-host `recoveryFinalOutcome`.
+        // and errorCode, "not-received": nothing ran, nothing was charged, or "lost-in-restart": the
+        // generate died with a server restart, and nothing is claimed about a charge). isVersionNotFound
+        // is set beside it for older clients. See chart-host `recoveryFinalOutcome`.
         isPollFinal?: boolean,
         pollOutcome?: string | null,
         // The correlation id of the generation this response actually SERVED (2026-08-26).

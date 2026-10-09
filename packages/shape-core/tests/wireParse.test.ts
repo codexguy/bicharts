@@ -122,6 +122,19 @@ describe("parseGenerateResponse", () => {
         expect(parseGenerateResponse(pascalize({ ...NOT_YET, isPollFinal: true, pollOutcome: "failed" }) as any).pollOutcome).toBe("failed");
     });
 
+    it("the recovery answers: a generate that died with a server restart is final and keeps its code and sentence", () => {
+        const body = {
+            ...NOT_YET, isPollFinal: true, pollOutcome: "lost-in-restart", errorCode: "GENERATION_LOST_IN_RESTART", retryable: false,
+            errorMessage: "The charting service restarted while your chart was being built, so nothing was delivered. Click Generate to build it again.",
+        };
+        for (const b of [body, pascalize(body) as any]) {
+            const lost = parseGenerateResponse(b);
+            expect([lost.isVersionNotFound, lost.isPollFinal, lost.pollOutcome, lost.errorCode, lost.retryable])
+                .toEqual([true, true, "lost-in-restart", "GENERATION_LOST_IN_RESTART", false]);
+            expect(lost.errorMessage).toMatch(/restarted/);
+        }
+    });
+
     for (const [name, body] of Object.entries({ POINT_MAP, ROUTE, THROTTLED, NOT_YET, CANCELLED })) {
         it(`${name} reads the same in PascalCase`, () => {
             expect(parseGenerateResponse(pascalize(body))).toEqual(parseGenerateResponse(body));

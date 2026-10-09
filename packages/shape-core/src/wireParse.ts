@@ -102,7 +102,7 @@ export interface ParsedGenerateResponse {
      * isVersionNotFound rides beside it; a host reads this first (chart-host recoveryFinalOutcome).
      */
     isPollFinal?: boolean;
-    /** Which final answer: "cancelled", "failed" or "not-received". Present only when sent. */
+    /** Which final answer: "cancelled", "failed", "not-received" or "lost-in-restart". Present only when sent. */
     pollOutcome?: string;
     /**
      * The account's thumbnail override - an account-level "include thumbnails" setting, which a

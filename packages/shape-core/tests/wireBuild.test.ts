@@ -281,6 +281,60 @@ describe("fetchFields - the four fetch fields decided together", () => {
     });
 });
 
+// A RECOVERY POLL STATES WHEN THE GENERATE IT LOOKS FOR WAS STARTED, so the server can tell one that died
+// with a restart from one still running. The field is a whole count of milliseconds: a value the server
+// cannot bind as an integer fails the whole request rather than just itself, so only a usable one is sent,
+// and only on the request that can use it.
+describe("fetchFields - the arm time of a recovery poll", () => {
+    const ARMED = 1_760_000_000_000;
+    const poll = { genNew: true, fetchCorrelationId: "c-1" } as const;
+
+    it("a poll by correlation sends it, last, after the correlation", () => {
+        const f = fetchFields({ ...poll, fetchArmedAtMs: ARMED });
+        expect(f.fetchArmedAtMs).toBe(ARMED);
+        expect(JSON.stringify(f)).toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c-1","fetchArmedAtMs":1760000000000}');
+    });
+
+    it("sends no member at all when none is supplied, so every request serialises as it did before", () => {
+        const keys = ["genNew", "version", "fetchOnly", "fetchCorrelationId"];
+        for (const none of [undefined, null]) {
+            expect(Object.keys(fetchFields({ ...poll, fetchArmedAtMs: none }))).toEqual(keys);
+        }
+        expect(Object.keys(fetchFields(poll))).toEqual(keys);
+        expect(JSON.stringify(fetchFields(poll)))
+            .toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c-1"}');
+    });
+
+    it("sends only a positive whole number of milliseconds - anything else would fail the server's binding", () => {
+        const unusable: unknown[] = [0, -5, NaN, Infinity, -Infinity, 1.5, ARMED + 0.5, Number.MAX_SAFE_INTEGER + 2, 1e21,
+            "1760000000000", "", {}, [], true];
+        for (const bad of unusable) {
+            const f = fetchFields({ ...poll, fetchArmedAtMs: bad as number });
+            expect("fetchArmedAtMs" in f, String(bad)).toBe(false);
+            expect(JSON.stringify(f), String(bad)).not.toContain("fetchArmedAtMs");
+        }
+        expect(fetchFields({ ...poll, fetchArmedAtMs: 1 }).fetchArmedAtMs).toBe(1);
+        expect(fetchFields({ ...poll, fetchArmedAtMs: Number.MAX_SAFE_INTEGER }).fetchArmedAtMs).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it("rides only a poll by correlation: never a generate, a poll by version or a refetch", () => {
+        expect("fetchArmedAtMs" in fetchFields({ genNew: true, settingVersion: 0, fetchArmedAtMs: ARMED })).toBe(false);
+        expect("fetchArmedAtMs" in fetchFields({ genNew: true, recoveryFetchVersion: 7, fetchArmedAtMs: ARMED })).toBe(false);
+        expect("fetchArmedAtMs" in fetchFields({ genNew: false, codeVersion: 4, fetchArmedAtMs: ARMED })).toBe(false);
+        expect("fetchArmedAtMs" in fetchFields({ genNew: false, settingVersion: 3, fetchArmedAtMs: ARMED })).toBe(false);
+    });
+
+    it("an empty correlation is still a correlation, as for every other fetch field", () => {
+        expect(fetchFields({ genNew: true, fetchCorrelationId: "", fetchArmedAtMs: ARMED }).fetchArmedAtMs).toBe(ARMED);
+    });
+
+    it("leaves the other four fields exactly as they were", () => {
+        const { fetchArmedAtMs, ...rest } = fetchFields({ ...poll, settingVersion: 9, codeVersion: 4, fetchArmedAtMs: ARMED });
+        expect(fetchArmedAtMs).toBe(ARMED);
+        expect(JSON.stringify(rest)).toBe(JSON.stringify(fetchFields({ ...poll, settingVersion: 9, codeVersion: 4 })));
+    });
+});
+
 describe("capabilityFields - the request states what the host can run, derived from its renderers", () => {
     const of = (...r: RendererId[]) => capabilityFields({ renderers: new Set(r) });
 
