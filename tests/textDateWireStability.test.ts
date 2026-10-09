@@ -61,17 +61,27 @@ describe("a date written as TEXT means the same thing on every machine", () => {
         expect(w.highValue).toBe("2024-03-17T23:45:00.000Z");
     });
 
-    it("MEASURED EXPOSURE: only ISO-ish text ever becomes a Date with a time on it", () => {
-        // Worth pinning, because it bounds this whole fix. The type sniffer accepts a NON-ISO
-        // whole-day date ("3/15/2024") but refuses a non-ISO timestamp, so a column of
-        // "3/15/2024 10:30 AM" is typed String and never constructs a Date at all - there was
-        // never an unstable instant there to fix. If that ever changes, this test fails and the
-        // stable parser is already in the path waiting for it.
-        process.env.TZ = "America/Los_Angeles";
-        for (const s of ["3/15/2024 10:30 AM", "March 15, 2024 10:30", "15-Mar-2024 10:30"]) {
-            const m = ingest({ kind: "grid", header: ["When", "Dept"], rows: [[s, "Eng"], [s, "Ops"]] },
-                             { dedup: false });
-            expect((m.columns[0] as any).dataType).toBe("String");
+    it("a NON-ISO timestamp is the wall clock too, identical under UTC, Los Angeles and Tokyo", () => {
+        // This used to pin the EXPOSURE: the type sniffer refused a non-ISO timestamp, so a column of
+        // "3/15/2024 10:30 AM" was typed String and never constructed a Date at all - there was never
+        // an unstable instant there to fix - with the note that, if that ever changed, the stable
+        // parser was already in the path waiting for it. It changed: the text-date reader types
+        // these columns and reads each as its fields (a UTC wall clock), never through Date.parse,
+        // so no machine's zone can reach them. The pin is now the property that mattered.
+        const columns = [
+            ["3/15/2024 10:30 AM", "3/16/2024 9:05 PM"],
+            ["March 15, 2024 10:30", "March 16, 2024 21:05"],
+            ["15-Mar-2024 10:30", "16-Mar-2024 21:05"],
+        ];
+        for (const texts of columns) {
+            const out = acrossZones(() => wireFor(texts));
+            expect(out["America/Los_Angeles"], texts[0]).toBe(out["UTC"]);
+            expect(out["Asia/Tokyo"], texts[0]).toBe(out["UTC"]);
+            const w = JSON.parse(out["UTC"]);
+            expect(w.dataType, texts[0]).toBe("DateTime");
+            expect(w.dateWithTime, texts[0]).toBe(true);
+            expect(w.lowValue, texts[0]).toBe("2024-03-15T10:30:00.000Z");
+            expect(w.highValue, texts[0]).toBe("2024-03-16T21:05:00.000Z");
         }
     });
 

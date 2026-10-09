@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { monthFirstLocale, readTextDateColumn } from "../src/textDate";
 import { monthWordReadings, readMonthWords } from "../src/monthNames";
+import { IndexedText, classifyTemporal, detectTextDatePattern } from "../src/indexedText";
+import { ingest } from "../src/ingest";
 
 // THE TEXT-DATE READER, ONE SHAPE AT A TIME. The twin tests prove a whole CSV profiles like its ISO
 // twin; this table proves each shape on its own, and every REFUSAL: a reader that reads too much turns
@@ -371,5 +373,110 @@ describe("monthFirstLocale", () => {
     it("is the United States family and nothing else", () => {
         for (const l of ["en-US", "en", "EN-us", "en-PH", "en-BZ"]) expect(monthFirstLocale(l), l).toBe(true);
         for (const l of ["en-GB", "en-AU", "en-IN", "de-DE", "es-ES", "fr", "pt-BR", "ja-JP", "", undefined]) expect(monthFirstLocale(l), String(l)).toBe(false);
+    });
+});
+
+describe("a straggler floor, for the flag that has always tolerated a few labels", () => {
+    it("a column is read when 80% of its values are dates in one shape", () => {
+        const values = ["2024. 3. 15.", "2024. 3. 16.", "2024. 3. 17.", "2024. 3. 18.", "TBD"];
+        expect(readTextDateColumn(values)).toBeNull();
+        const col = readTextDateColumn(values, { floor: 0.8 })!;
+        expect(col.pattern).toBe("%Y. %m. %d.");
+        expect(readTextDateColumn(values.slice(0, 3).concat(["TBD", "TBD"]), { floor: 0.8 })).toBeNull();
+    });
+
+    it("a day that does not exist is one more straggler, and a typed value is one too", () => {
+        const dates = ["15.03.2024", "16.03.2024", "17.03.2024", "18.03.2024"];
+        expect(readTextDateColumn(dates.concat(["31.02.2024"]), { floor: 0.8 })).not.toBeNull();
+        expect(readTextDateColumn(dates.concat([12 as any]), { floor: 0.8 })).not.toBeNull();
+        expect(readTextDateColumn(dates.slice(0, 2).concat(["31.02.2024"]), { floor: 0.8 })).toBeNull();
+    });
+
+    it("the shape most values share wins; a second shape is a straggler, not a second reading", () => {
+        const col = readTextDateColumn(["15.03.2024", "16.03.2024", "17.03.2024", "18.03.2024", "19.03.2024", "2024-03-20"], { floor: 0.8 })!;
+        expect(col.pattern).toBe("%d.%m.%Y");
+    });
+});
+
+describe("detectTextDatePattern knows the shapes the reader knows", () => {
+    it("year first with spaces and a closing dot", () => {
+        expect(detectTextDatePattern(["2024. 3. 15.", "2024. 3. 16.", "2024. 4. 1."])).toEqual({ pattern: "%Y. %m. %d.", orderFrom: "iso" });
+    });
+
+    it("the CJK markers, with a labelled row among them", () => {
+        const values = ["2024年3月15日", "2024年3月16日", "2024年3月17日", "2024年3月18日", "2024年3月19日", "合計"];
+        expect(detectTextDatePattern(values)).toEqual({ pattern: "%Y年%m月%d日", orderFrom: "iso" });
+        expect(detectTextDatePattern(["2024년 3월 15일", "2024년 3월 16일"])).toEqual({ pattern: "%Y년 %m월 %d일", orderFrom: "iso" });
+    });
+
+    it("a hyphen date that is not zero-padded, and spaced or dot-closed day-first dates", () => {
+        expect(detectTextDatePattern(["2024-3-5", "2024-3-6", "2024-4-7"])?.pattern).toBe("%Y-%m-%d");
+        expect(detectTextDatePattern(["15. 3. 2024", "16. 3. 2024"], "de-DE")).toEqual({ pattern: "%d. %m. %Y", orderFrom: "values" });
+        expect(detectTextDatePattern(["01. 02. 2024", "03. 04. 2024"], "en-US")).toEqual({ pattern: "%m. %d. %Y", orderFrom: "locale" });
+        expect(detectTextDatePattern(["15.03.2024.", "16.03.2024."])?.pattern).toBe("%d.%m.%Y.");
+    });
+
+    it("a month in words has no specifier, so it is no pattern", () => {
+        expect(detectTextDatePattern(["15 March 2024", "16 March 2024", "17 March 2024"])).toBeNull();
+    });
+
+    it("a column that mixes a legacy shape with a new one is still refused", () => {
+        expect(detectTextDatePattern(["2024-03-15", "2024. 3. 16.", "2024-03-17", "2024. 3. 18."])).toBeNull();
+        expect(detectTextDatePattern(["15/03/2024", "2024年3月16日", "17/03/2024", "2024年3月18日"])).toBeNull();
+    });
+
+    it("the legacy shapes keep their reading exactly (the reader is a fallback, never a rewrite)", () => {
+        expect(detectTextDatePattern(["15/03/2024", "02/04/2024"], "en-US")).toEqual({ pattern: "%d/%m/%Y", orderFrom: "values" });
+        expect(detectTextDatePattern(["01/02/2024", "03/04/2024"])).toEqual({ pattern: "%d/%m/%Y", orderFrom: "locale" });
+        expect(detectTextDatePattern(["12/05/24", "13/05/24", "14/05/24"])).toBeNull();
+    });
+
+    it("a String column of such dates is a time axis that carries its pattern", () => {
+        const values = ["2024. 3. 15.", "2024. 3. 16.", "2024. 3. 17."];
+        expect(classifyTemporal({ dataType: "String", name: "Seen", isMeasure: false, distinctCount: 3, sampleValues: values })).toBe(true);
+        const t = new IndexedText();
+        t.setColumns([{ name: "Seen", dataType: "String", isMeasure: false }]);
+        for (const v of values) t.addRow([v]);
+        const col = t.getColumnsWithStats("20", "ko-KR")[0];
+        expect(col.isTemporal).toBe(true);
+        expect(col.temporalTextPattern).toBe("%Y. %m. %d.");
+        expect(col.temporalCadence?.grain).toBe("day");
+    });
+});
+
+describe("ingest reads a text-date column from the whole column", () => {
+    const table = (values: string[], dataType: string | undefined, locale?: string) =>
+        ingest({ kind: "table", columns: [{ name: "When", ...(dataType ? { dataType } : {}) }], rows: values.map(v => [v]) }, { dedup: false, ...(locale ? { locale } : {}) });
+
+    it("a value past the type sample can still decide the order for every value", () => {
+        // 600 rows whose first field is 12 or under, then one with a first field of 25: the column is
+        // day first, and the first row is the 1st of February, not the 2nd of January.
+        const values = Array.from({ length: 600 }, (_, i) => `0${(i % 9) + 1}/02/2024`).concat(["25/02/2024"]);
+        const got = table(values, undefined);
+        expect(got.columns[0].dataType).toBe("DateTime");
+        expect(got.rows[0].When.toISOString().slice(0, 10)).toBe("2024-02-01");
+        expect(got.rows[600].When.toISOString().slice(0, 10)).toBe("2024-02-25");
+    });
+
+    it("a caller-declared DateTime column that holds German text is read, not nulled or swapped", () => {
+        const got = table(["15.03.2024", "05.01.2024", "31.12.2023"], "DateTime", "de-DE");
+        expect(got.rows.map(r => r.When.toISOString().slice(0, 10))).toEqual(["2024-03-15", "2024-01-05", "2023-12-31"]);
+    });
+
+    it("a declared DateTime column of ISO text is exactly as it was", () => {
+        const got = table(["2024-03-15", "2024-03-16T10:30:00Z"], "DateTime");
+        expect(got.rows.map(r => r.When.toISOString())).toEqual(["2024-03-15T00:00:00.000Z", "2024-03-16T10:30:00.000Z"]);
+    });
+
+    it("a column of typed Dates, numbers and mixed text is not this reader's", () => {
+        const d = new Date(Date.UTC(2024, 2, 15));
+        const got = ingest({ kind: "table", columns: [{ name: "When" }], rows: [[d], ["15.03.2024"]] }, { dedup: false });
+        expect(got.columns[0].dataType).not.toBe("DateTime");
+    });
+
+    it("a number column is untouched by the reader: nothing in it is a date", () => {
+        const got = table(["1.234,5", "12,5", "3"], undefined, "de-DE");
+        expect(got.columns[0].dataType).toBe("Decimal");
+        expect(got.rows.map(r => r.When)).toEqual([1234.5, 12.5, 3]);
     });
 });

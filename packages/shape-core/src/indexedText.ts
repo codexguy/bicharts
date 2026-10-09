@@ -17,7 +17,7 @@ import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } fr
 
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
-import { monthFirstLocale } from "./textDate";
+import { monthFirstLocale, readTextDateColumn } from "./textDate";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
 import { nameLetterRuns, foldName } from "./nameReader";
@@ -171,6 +171,26 @@ export interface TextDateDetection {
 // field order), mirroring the period branch's 80% floor so a stray "TBD" does not sink a
 // real date column and a mostly-free-text column cannot sneak in on a few dates.
 export function detectTextDatePattern(values: Iterable<string>, locale?: string): TextDateDetection | null {
+    // The values are walked ONCE (a Map's key iterator cannot be walked twice), and the sample the
+    // legacy shapes saw is the sample the fuller reader below sees.
+    const sample: string[] = [];
+    let legacyShaped = 0;
+    const legacy = detectLegacyTextDatePattern(values, locale, sample, () => { legacyShaped++; });
+    if (legacy) return legacy;
+    // SHAPES THE THREE EXPRESSIONS ABOVE NEVER KNEW (year first with spaces and a closing dot,
+    // `2024. 3. 15.`; the CJK markers; a year-first hyphen date that is not zero-padded; spaced or
+    // dot-closed day-first dates): read by the text-date reader, with the same 80% floor. Only for a
+    // column in which NO value has a legacy shape - a column that mixes the two has always been
+    // refused, and one pattern would misparse half of it.
+    if (legacyShaped > 0 || sample.length < 2) return null;
+    const col = readTextDateColumn(sample, { locale, floor: 0.8 });
+    if (!col || !col.pattern || col.form === "named") return null;
+    return { pattern: col.pattern, orderFrom: col.orderFrom === "shape" ? "iso" : col.orderFrom };
+}
+
+function detectLegacyTextDatePattern(
+    values: Iterable<string>, locale: string | undefined, sample: string[], onLegacyShape: () => void,
+): TextDateDetection | null {
     let n = 0;
     let iso = 0, isoWithTime = 0, isoWithSeconds = 0;
     let ymd = 0; let ymdSep = "";
@@ -183,8 +203,10 @@ export function detectTextDatePattern(values: Iterable<string>, locale?: string)
         const s = String(raw).trim();
         if (s === "") continue;
         n++;
+        sample.push(s);
         let m: RegExpExecArray | null;
         if ((m = ISO_DATE_RE.exec(s))) {
+            onLegacyShape();
             const mo = +m[2], d = +m[3];
             if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
                 iso++;
@@ -192,6 +214,7 @@ export function detectTextDatePattern(values: Iterable<string>, locale?: string)
                 if (m[6] !== undefined) isoWithSeconds++;
             }
         } else if ((m = YMD_SLASH_RE.exec(s))) {
+            onLegacyShape();
             const mo = +m[3], d = +m[4];
             if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
                 if (ymdSep && ymdSep !== m[2]) shapeConflict = true;
@@ -199,6 +222,7 @@ export function detectTextDatePattern(values: Iterable<string>, locale?: string)
                 ymd++;
             }
         } else if ((m = DMY_OR_MDY_RE.exec(s))) {
+            onLegacyShape();
             const a = +m[1], b = +m[3];
             // Both fields must be plausible as SOME day/month reading, or it is not a date.
             if (a >= 1 && a <= 31 && b >= 1 && b <= 31 && (a <= 12 || b <= 12)) {

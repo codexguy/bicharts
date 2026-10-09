@@ -198,23 +198,50 @@ function utc(y: number, mo: number, d: number, clock: Clock | null): Date {
  *
  * `locale` is the tiebreak for a numeric `a/b/yyyy` column whose values do not say which field is
  * the day, and the tiebreak between two languages that read a month word differently.
+ *
+ * `floor` (default 1, every value) is the share of the non-blank values that must read, in the one
+ * shape most of them share; the rest are stragglers and are left unread. A TYPE needs all of them,
+ * because a typed straggler is a deleted value. A FLAG ("this column is a time axis") has always
+ * tolerated a few labels, and asks for 0.8. A value that is not text counts as a straggler there.
  */
-export function readTextDateColumn(values: Iterable<unknown>, opts: { locale?: string } = {}): TextDateColumn | null {
+export function readTextDateColumn(values: Iterable<unknown>, opts: { locale?: string; floor?: number } = {}): TextDateColumn | null {
+    const strict = (opts.floor ?? 1) >= 1;
     const seen = new Map<string, Scan | "iso" | null>();
+    const perKey = new Map<string, number>();
+    let nonblank = 0;
     let first: Scan | null = null;
     for (const raw of values) {
         if (raw === null || raw === undefined) continue;
-        if (typeof raw !== "string") return null;
+        if (typeof raw !== "string") {
+            if (strict) return null;
+            nonblank++;
+            continue;
+        }
         const text = raw.trim();
         if (text === "") continue;
+        nonblank++;
         let sc = seen.get(text);
         if (sc === undefined) { sc = scan(text); seen.set(text, sc); }
-        if (sc === null || sc === "iso") return null;
-        if (first === null) first = sc;
-        else if (sc.key !== first.key) return null;
+        if (sc === null || sc === "iso") {
+            if (strict) return null;
+            continue;
+        }
+        if (strict) {
+            if (first === null) first = sc;
+            else if (sc.key !== first.key) return null;
+        } else {
+            perKey.set(sc.key, (perKey.get(sc.key) ?? 0) + 1);
+        }
+    }
+    if (!strict) {
+        let best = 0, bestKey = "";
+        for (const [k, n] of perKey) if (n > best) { best = n; bestKey = k; }
+        if (best === 0 || best / nonblank < (opts.floor as number)) return null;
+        first = [...seen.values()].find((sc): sc is Scan => sc !== null && sc !== "iso" && sc.key === bestKey) ?? null;
     }
     if (first === null) return null;
-    const scans = [...seen.values()] as Scan[];
+    const key = first.key;
+    const scans = ([...seen.values()] as Array<Scan | "iso" | null>).filter((sc): sc is Scan => sc !== null && sc !== "iso" && sc.key === key);
 
     let order: TextDateOrder;
     let orderFrom: TextDateColumn["orderFrom"] = "shape";
@@ -248,14 +275,21 @@ export function readTextDateColumn(values: Iterable<unknown>, opts: { locale?: s
         return order === "dmy" ? [sc.c, sc.b, sc.a] : [sc.c, sc.a, sc.b];
     };
 
-    // Every distinct value must be a day that exists, or the column is not read.
+    // Every distinct value must be a day that exists, or (strictly) the column is not read; with a
+    // floor, a day that does not exist is one more straggler.
     let lowYear = Infinity, highYear = -Infinity;
+    let impossible = 0;
     for (const sc of scans) {
         const f = fields(sc);
-        if (!f || !validDay(f[0], f[1], f[2])) return null;
+        if (!f || !validDay(f[0], f[1], f[2])) {
+            if (strict) return null;
+            impossible++;
+            continue;
+        }
         lowYear = Math.min(lowYear, f[0]);
         highYear = Math.max(highYear, f[0]);
     }
+    if (!strict && (perKey.get(key)! - impossible) / nonblank < (opts.floor as number)) return null;
     // A column whose every year is 2400-2699 is the Thai Buddhist calendar (2567 is 2024), not the
     // year 2567. Read as Gregorian it would be a date 543 years off, drawn without a flaw; left as
     // text it is at least left alone. No ordinary business column lives wholly in those centuries.
@@ -272,7 +306,7 @@ export function readTextDateColumn(values: Iterable<unknown>, opts: { locale?: s
             if (text === "") return null;
             let sc = seen.get(text);
             if (sc === undefined) { sc = scan(text); seen.set(text, sc); }
-            if (sc === null || sc === "iso" || sc.key !== first!.key) return null;
+            if (sc === null || sc === "iso" || sc.key !== key) return null;
             const f = fields(sc);
             if (!f || !validDay(f[0], f[1], f[2])) return null;
             return utc(f[0], f[1], f[2], sc.clock);

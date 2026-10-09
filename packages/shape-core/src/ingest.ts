@@ -28,6 +28,7 @@
 import Papa from "papaparse";
 import { IndexedText, isIdentifierName } from "./indexedText";
 import { parseDateStable } from "./util";
+import { readTextDateColumn, type TextDateColumn } from "./textDate";
 import { detectDecimalSeparator, isNumberText, parseNumberText, type DecimalSeparator } from "./numberText";
 import type { LLMColumnWithValue } from "./models";
 
@@ -141,7 +142,14 @@ const SLASH_DATE_RE = /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/;
 // 1.234. Each column's separator is now decided from its own values (numberText.ts), with the
 // caller's locale as the tiebreak and the dot as the default - so a column that reads the English
 // way reads exactly as it always did.
-function inferDataType(samples: any[], decimal: DecimalSeparator = "."): EngineDataType {
+//
+// DATES WRITTEN AS TEXT are read by the text-date reader (textDate.ts), per COLUMN, before anything
+// below is asked: `Date.parse` reads `05.01.2024` as the 1st of May whoever wrote it, and does not
+// read a day-first date with a day over 12, a month in words, or a year-month-day with markers at
+// all. A column that reader reads in full is a DateTime column; one it does not read goes on to the
+// ISO and slash tests below exactly as it always did.
+function inferDataType(samples: any[], decimal: DecimalSeparator = ".", textDate = false): EngineDataType {
+    if (textDate) return "DateTime";
     let ints = 0, nums = 0, dates = 0, nonblank = 0;
 
     for (const raw of samples) {
@@ -179,7 +187,7 @@ function inferDataType(samples: any[], decimal: DecimalSeparator = "."): EngineD
     return "String";
 }
 
-function convert(v: any, dataType: string, decimal: DecimalSeparator = "."): any {
+function convert(v: any, dataType: string, decimal: DecimalSeparator = ".", textDate: TextDateColumn | null = null): any {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") return dataType === "String" ? String(v) : v;
     if (v instanceof Date) return dataType === "DateTime" ? v : v.toISOString();
@@ -191,8 +199,9 @@ function convert(v: any, dataType: string, decimal: DecimalSeparator = "."): any
         case "Decimal": return parseNumberText(s, decimal);
         // parseDateStable, not Date.parse: a zone-less date-TIME and every non-ISO spelling
         // are LOCAL to Date.parse, so the same text became a different instant on every
-        // machine. An ISO date is untouched - it is already UTC.
-        case "DateTime": return parseDateStable(s);
+        // machine. An ISO date is untouched - it is already UTC. A column the text-date reader
+        // read is converted by that reader, so its order is the column's, not the engine's.
+        case "DateTime": return textDate ? textDate.read(s) : parseDateStable(s);
         default: return s;
     }
 }
@@ -217,6 +226,12 @@ export function engineTypeForSqlType(sqlType: string): EngineDataType {
 // ---------------------------------------------------------------------------
 // The shared core.
 // ---------------------------------------------------------------------------
+
+/** One column's cells, without copying the column: the text-date reader stops at the first cell
+ *  that is not a date, which for every column but a date column is the first cell. */
+function* columnValues(rows: any[][], c: number): Generator<any> {
+    for (const r of rows) yield r?.[c];
+}
 
 /**
  * PRECEDENCE, stated rather than implied:
@@ -245,7 +260,16 @@ function buildProfile(
     //    separator is read from the same sample first, because it decides what counts as a number.
     const samples = descriptors.map((_, c) => rows.slice(0, TYPE_SAMPLE_CAP).map(r => r?.[c]));
     const decimals: DecimalSeparator[] = samples.map(s => detectDecimalSeparator(s, opts.locale));
-    const types: string[] = descriptors.map((d, c) => d.dataType ?? inferDataType(samples[c], decimals[c]));
+    // A text-date column is read from the WHOLE column, not the sample: its order (day first or month
+    // first) is decided by every value, and a value past the sample that contradicts the sample would
+    // otherwise be converted to null. A caller-declared DateTime column holding text is read the same
+    // way, which is the one place a declared type is allowed to improve its values. `en` is the locale
+    // a caller that names none has always had: month first when nothing says otherwise.
+    const textDates: Array<TextDateColumn | null> = descriptors.map((d, c) =>
+        d.dataType === undefined || d.dataType === "DateTime"
+            ? readTextDateColumn(columnValues(rows, c), { locale: opts.locale ?? "en" })
+            : null);
+    const types: string[] = descriptors.map((d, c) => d.dataType ?? inferDataType(samples[c], decimals[c], textDates[c] !== null));
 
     // 2. Roles, by the ladder above.
     const forceM = new Set((opts.measures ?? []).map(s => s.toLowerCase()));
@@ -275,7 +299,7 @@ function buildProfile(
     index.declareDimensions(cols.filter((_, c) => forceD.has(descriptors[c].name.toLowerCase())));
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
-        index.addRow(Array.from({ length: n }, (_, c) => convert(r?.[c], types[c], decimals[c])), i);
+        index.addRow(Array.from({ length: n }, (_, c) => convert(r?.[c], types[c], decimals[c], textDates[c])), i);
     }
 
     // 4. Measure.
