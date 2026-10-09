@@ -135,6 +135,22 @@ export const LIVE_OPTION_KEYS: readonly OptionKey[] = Object.freeze(
 );
 
 /**
+ * Does this chart's code read the shared option `key`?
+ * A host uses it to show a control only for a chart that
+ * will respond to it - a switch on a chart that ignores it
+ * does nothing. Generated code reads options as
+ * `options.<key>`, so the property access is the test.
+ */
+export function codeReadsOption(
+    code: string | null | undefined,
+    key: OptionKey,
+): boolean {
+    if (!code || !Object.prototype.hasOwnProperty
+            .call(OPTIONS_VOCABULARY, key)) return false;
+    return new RegExp(`\\boptions\\.${key}\\b`).test(code);
+}
+
+/**
  * THE LIMIT COUNT A REQUEST CARRIES: a positive count, or null - never 0. The server reads any value it
  * receives as the reader's own limit (and 0 as a limit of zero), so "no limit" must arrive as no value.
  * A host places null where it always has; one that omits blank fields maps it to absent.

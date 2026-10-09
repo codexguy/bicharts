@@ -49,6 +49,7 @@ export { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // default, the bounds, when a change takes effect and where it travels. See optionsVocabulary.ts.
 export {
     OPTIONS_VOCABULARY, LIVE_OPTION_KEYS, MAX_MAP_POINTS_MIN, MAX_MAP_POINTS_MAX, LIMIT_COUNT_MAX, wireLimitCount,
+    codeReadsOption,
     type OptionVocabularyEntry, type OptionTiming, type OptionWire, type OptionKey,
 } from "./optionsVocabulary";
 // GEOMETRY IS NOT RE-EXPORTED HERE ON PURPOSE. "./geo" statically imports ~1.3 MB of

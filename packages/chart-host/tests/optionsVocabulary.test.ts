@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     OPTIONS_VOCABULARY, LIVE_OPTION_KEYS, MAX_MAP_POINTS_MIN, MAX_MAP_POINTS_MAX, LIMIT_COUNT_MAX, wireLimitCount,
-    resolveOptions, type OptionKey,
+    resolveOptions, codeReadsOption, type OptionKey,
 } from "../src/index";
 
 const KEYS = Object.keys(OPTIONS_VOCABULARY) as OptionKey[];
@@ -73,6 +73,30 @@ describe("the vocabulary and resolveOptions agree", () => {
             for (const v of OPTIONS_VOCABULARY[k].values!) expect((resolveOptions({ [k]: v }) as any)[k], `${k}=${v}`).toBe(v);
             expect((resolveOptions({ [k]: "sideways" }) as any)[k], k).toBe(OPTIONS_VOCABULARY[k].default);
         }
+    });
+});
+
+describe("codeReadsOption - a host shows a control only for a chart that responds to it", () => {
+    it("is true when the code reads the option, in either form a chart writes it", () => {
+        expect(codeReadsOption("orb.dropLines(sel, xyz, options.hoverDropLines === true);", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("const on = options.hoverDropLines !== false;", "hoverDropLines")).toBe(true);
+    });
+
+    it("is false for code that never reads it, and for no code at all", () => {
+        expect(codeReadsOption("const w = options.width;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption(null, "hoverDropLines")).toBe(false);
+        expect(codeReadsOption(undefined, "hoverDropLines")).toBe(false);
+    });
+
+    it("matches the whole key, not a longer name that starts with it", () => {
+        expect(codeReadsOption("options.hoverDropLinesColor", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("myoptions.hoverDropLines", "hoverDropLines")).toBe(false);
+    });
+
+    it("answers only for keys in the vocabulary", () => {
+        expect(codeReadsOption("options.notAnOption", "notAnOption" as OptionKey)).toBe(false);
+        for (const k of KEYS) expect(codeReadsOption(`x = options.${k};`, k), k).toBe(true);
     });
 });
 
