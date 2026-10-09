@@ -94,6 +94,11 @@ jobs:
           const geo = await import("@bicharts/chart-host/geo");
           if (typeof geo.geoForKind !== "function") throw new Error("the ./geo subpath does not export geoForKind");
 
+          const legendFit = await import("@bicharts/chart-host/legend-fit");
+          for (const name of ["reconcileLegendInSvg", "fitTextToFrame", "planLegendReconcile", "planFrameFit"]) {
+            if (typeof legendFit[name] !== "function") throw new Error("the ./legend-fit subpath does not export " + name);
+          }
+
           console.log("chart-host imports clean; contract " + HOST_CONTRACT_VERSION);
           EOF
           node smoke.mjs

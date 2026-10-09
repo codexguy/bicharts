@@ -8,8 +8,8 @@
     visual, where a paged 25-row chart lost 9 of its rows with no scrollbar anywhere to suggest
     they existed. Only the visual could measure that. Now every host can.
 
-    What is NOT here, and deliberately: the viewBox RECONCILE and its legibility cap. That pass shrinks a chart to rescue a label hanging off an edge, and it is bound up with
-    the visual's own reconcile pipeline. This module is the half that applies everywhere - decide
+    What is NOT here, and deliberately: the viewBox RECONCILE and its legibility cap. That pass shrinks a chart to rescue a label hanging off an edge, so a host opts into it
+    through the `legend-fit` entry (`@bicharts/chart-host/legend-fit`). This module is the half that applies everywhere - decide
     whether ink is outside the frame, and grow the frame so it stops cutting.
 
     DOM-FREE ON PURPOSE. Everything here takes numbers and returns numbers, so it is testable
@@ -161,15 +161,15 @@ export function isPhantomBox(w: number, h: number, refW: number, refH: number): 
 
       A. GROW THE viewBox        - same element, content scales DOWN, everything visible smaller.
                                    Right for a label hanging a few units off an edge. That is the
-                                   visual's own viewBox reconcile, capped by legibility,
-                                   and it is NOT in this package.
+                                   viewBox reconcile, capped by legibility, in the
+                                   `legend-fit` entry, which a host opts into.
       B. GROW THE ELEMENT        - content stays at 1:1 and the CONTAINER scrolls.
                                    Right for a row body that is twice the frame, where scaling to
                                    fit would mean 7px type.
 
     Where A exists it runs first and takes what it can afford, so ink still outside afterwards is
-    by definition ink that scaling could not rescue. Where it does not exist - every host but the
-    visual - B is simply the whole remedy. Both dimensions move together: the element by
+    by definition ink that scaling could not rescue. Where it does not run - a host that has not
+    opted into `legend-fit` - B is simply the whole remedy. Both dimensions move together: the element by
     `pxDelta`, the viewBox by `pxDelta / scale`, which holds the on-screen scale EXACTLY constant
     (when the scale is height-limited the two ratios cancel; when it is width-limited it was never
     the binding constraint). Nothing on screen moves or resizes; the frame simply stops cutting.

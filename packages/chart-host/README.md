@@ -351,6 +351,49 @@ const report = await assertViewStateConformance(service, {
 expect(report.skipped).toEqual([]);              // nothing went unchecked
 ```
 
+## Keeping a drawn chart readable inside its frame
+
+A generated chart cannot know how wide its own legend text will come out, where its tick labels will
+collide, or how far a label will hang past the frame, because none of that exists until the browser
+has laid the SVG out. `@bicharts/chart-host/legend-fit` measures the rendered chart and repairs what
+it finds. It is opt-in, and a separate entry so a host that never calls it never loads it.
+
+```ts
+import { chartSvgOf } from "@bicharts/chart-host";
+import { reconcileLegendInSvg, fitTextToFrame } from "@bicharts/chart-host/legend-fit";
+
+// After a render, once the SVG is in the document (layout must exist):
+const svg = chartSvgOf(container);
+const result = svg && reconcileLegendInSvg(svg);   // { applied, reason, dx, ext, fit, ... }
+fitTextToFrame(container);                         // grows the viewBox for text at the edge, fits the rest
+```
+
+What `reconcileLegendInSvg` does, in this order, each phase on its own and each leaving the chart as
+it was drawn when it has no evidence:
+
+1. **Legend slide.** A legend that overlaps the plot or runs off the right edge is slid clear and the
+   viewBox widened just enough to hold it. The legend is found by `.d3-legend-mark`, or by its measured
+   shape (a mark-free group of same-size swatches, each with a label) when the chart omitted the class.
+2. **Colorbar.** A gradient bar drawn over the marks, or over the x-axis, is pushed into the margin it
+   belongs in.
+3. **Axis and label thinning.** A horizontal axis whose tick labels collide loses every k-th label
+   (the tick lines stay). A nominal axis, where each label is the only record of its bar, is never
+   thinned: each label is shrunk, then shortened with the full name in a `<title>`.
+4. **Bottom text.** An axis title or caption sitting on top of the tick labels is pushed below them.
+5. **Content fit.** The viewBox is extended so nothing the chart painted is cut off, unless that
+   would shrink the smallest text past a legibility floor.
+
+`fitTextToFrame` is the sibling for text parked against the raw edge of the frame: a few units past
+it grow the viewBox, and a label too far out for that is shrunk and then cut to the widest prefix
+that fits, never inside a number.
+
+Both are idempotent per render (the SVG is stamped) and take no policy: pass
+`{ minOverlap, maxGutterFraction }` to `reconcileLegendInSvg` to make it act less often, and decide
+yourself when to call it. They are best-effort, so call them in a `try`/`catch` and log what you like:
+a throw must never fail a chart that already drew. The geometry behind each phase (`planLegendReconcile`, `planContentFit`,
+`planAxisTickThin`, `planFrameFit`, ...) is exported as plain functions over boxes, for a host that
+measures on its own terms.
+
 ## Architecture — three layers, and why it matters if you contribute
 
 Read this before adding code. The package has **three** concerns, and they are independent.
