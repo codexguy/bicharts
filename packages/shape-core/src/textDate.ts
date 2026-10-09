@@ -99,7 +99,7 @@ const FILLERS = new Set(["de", "del", "of"]);
 const YEAR_MARKERS = new Set(["г", "р", "r"]);
 // Letters and marks, plus the Devanagari abbreviation sign (`जन॰`) and the Hebrew geresh (`בינו׳`),
 // which are punctuation to Unicode and part of the word to its reader.
-const WORD = /^[\p{L}\p{M}॰׳]+$/u;
+const WORD = /^[\p{L}\p{M}\u0970\u05f3]+$/u;
 const DIGITS = /^\d+$/;
 
 function readClock(m: RegExpExecArray): Clock | null {
@@ -118,7 +118,7 @@ function readClock(m: RegExpExecArray): Clock | null {
  *  engine's own ISO reader owns. */
 function scan(raw: string): Scan | "iso" | null {
     // Bidi marks ride inside right-to-left locales' dates and mean nothing.
-    let s = raw.replace(/[‎‏؜]/g, "").replace(/\s+/g, " ").trim();
+    let s = raw.replace(/[\u200e\u200f\u061c]/g, "").replace(/\s+/g, " ").trim();
     if (s === "") return null;
 
     let clock: Clock | null = null;

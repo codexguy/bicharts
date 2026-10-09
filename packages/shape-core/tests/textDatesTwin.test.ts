@@ -63,10 +63,10 @@ const TWINS: Twin[] = [
     { label: "en-GB 15/03/2024", locale: "en-GB", group: ",", decimal: ".", numericOrder: true, date: (y, m, d) => `${p2(d)}/${p2(m)}/${y}` },
     { label: "de 15.03.2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
     { label: "de 15.3.2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${d}.${m}.${y}` },
-    { label: "fr 15/03/2024", locale: "fr-FR", group: " ", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}/${p2(m)}/${y}` },
+    { label: "fr 15/03/2024", locale: "fr-FR", group: "\u202f", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}/${p2(m)}/${y}` },
     { label: "es 15/3/2024", locale: "es-ES", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${d}/${m}/${y}` },
     { label: "nl 15-03-2024", locale: "nl-NL", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}-${p2(m)}-${y}` },
-    { label: "ru 15.03.2024", locale: "ru-RU", group: " ", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
+    { label: "ru 15.03.2024", locale: "ru-RU", group: "\u00a0", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
     { label: "ja 2024/03/15", locale: "ja-JP", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${y}/${p2(m)}/${p2(d)}` },
     { label: "ja 2024/3/15", locale: "ja-JP", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${y}/${m}/${d}` },
     { label: "ja 2024年3月15日", locale: "ja-JP", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${y}年${m}月${d}日` },
@@ -77,7 +77,7 @@ const TWINS: Twin[] = [
     { label: "en March 15, 2024", locale: "en-US", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${MONTHS.en[m - 1]} ${d}, ${y}` },
     { label: "en Mar 15, 2024", locale: "en-US", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${MONTHS.enShort[m - 1]} ${d}, ${y}` },
     { label: "de 15. März 2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: false, date: (y, m, d) => `${d}. ${MONTHS.de[m - 1]} ${y}` },
-    { label: "fr 15 mars 2024", locale: "fr-FR", group: " ", decimal: ",", numericOrder: false, date: (y, m, d) => `${d} ${MONTHS.fr[m - 1]} ${y}` },
+    { label: "fr 15 mars 2024", locale: "fr-FR", group: "\u202f", decimal: ",", numericOrder: false, date: (y, m, d) => `${d} ${MONTHS.fr[m - 1]} ${y}` },
     { label: "es 15 de marzo de 2024", locale: "es-ES", group: ".", decimal: ",", numericOrder: false, date: (y, m, d) => `${d} de ${MONTHS.es[m - 1]} de ${y}` },
 ];
 

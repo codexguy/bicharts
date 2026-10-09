@@ -329,12 +329,12 @@ describe("what the reader leaves alone", () => {
 
 describe("the whitespace a spreadsheet carries", () => {
     it("no-break and narrow no-break spaces read as spaces", () => {
-        expect(read(["15 mars 2024", "16 mars 2024"])).toEqual(["2024-03-15", "2024-03-16"]);
-        expect(read(["2024. 3. 15.", "2024. 3. 16."])).toEqual(["2024-03-15", "2024-03-16"]);
+        expect(read(["15\u00a0mars\u00a02024", "16 mars\u202f2024"])).toEqual(["2024-03-15", "2024-03-16"]);
+        expect(read(["2024.\u00a03.\u00a015.", "2024. 3. 16."])).toEqual(["2024-03-15", "2024-03-16"]);
     });
 
     it("right-to-left marks inside a date are ignored", () => {
-        expect(read(["15‏/3‏/2024", "16‏/3‏/2024"])).toEqual(["2024-03-15", "2024-03-16"]);
+        expect(read(["15\u200f/3\u200f/2024", "16\u200f/3\u200f/2024"])).toEqual(["2024-03-15", "2024-03-16"]);
     });
 });
 
