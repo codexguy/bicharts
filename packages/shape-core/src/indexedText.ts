@@ -24,7 +24,7 @@ import { localizedYearWordIn } from "./vocab/calendarWords";
 import { readPeriodCode } from "./vocab/periodCodes";
 import { localizedIdentifierWordIn } from "./vocab/identifierWords";
 import { maskSampleText } from "./sampleMask";
-import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, LOCALIZED_CHOICE_AGG_PREFIXES, LOCALIZED_DEFAULT_AGG_PREFIXES } from "./aggregation";
+import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, localizedHostAggHint } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence } from "./cadence";
 import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
@@ -377,16 +377,10 @@ export function hostAggHint(name: string): "sum" | "avg" | "count" | "min" | "ma
     // THE SAME DECISION, WRITTEN IN THE MODEL'S LANGUAGE (2026-09-12). A localized
     // AVERAGE prefix is the strongest evidence this file has that a quantity is already a mean:
     // it routes straight to intensive_rate below, where a name token only reaches the server's
-    // fallback. `Media de <metric>` is a real name from that corpus and had neither.
-    if (LOCALIZED_CHOICE_AGG_PREFIXES.some(p => n.startsWith(p + " "))) {
-        if (/^(minimum|minimo)\b/.test(n)) return "min";
-        if (/^(maximum|maximo|massimo)\b/.test(n)) return "max";
-        return "avg";
-    }
-    if (LOCALIZED_DEFAULT_AGG_PREFIXES.some(p => n.startsWith(p + " ") || n === p)) {
-        return /^(nombre|recuento|contagem|anzahl|aantal|conteggio|antal|lukumaara|pocet)\b/.test(n) ? "count" : "sum";
-    }
-    return null;
+    // fallback. `Media de <metric>` is a real name from that corpus and had neither. The labels, and
+    // the aggregation each one names, are data in aggregation.ts (LOCALIZED_AGG_KINDS), and a host that
+    // writes its label after the name (`Amount osszege`) is read there too.
+    return localizedHostAggHint(name);
 }
 
 // Classify a MEASURE column's additivity from the REAL data + the host's

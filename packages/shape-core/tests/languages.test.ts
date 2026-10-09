@@ -4,12 +4,13 @@ import { describe, it, expect } from "vitest";
 import {
     SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, resolveLanguage, supportedLanguage,
     VOCABULARY_ONLY_LANGUAGES, VOCABULARY_LANGUAGE_CODES, vocabularyLanguage,
-    type SupportedLanguageCode,
+    type SupportedLanguageCode, type VocabularyLanguageCode,
 } from "../src/languages";
 import { matchNameToken } from "../src/nameReader";
 import { SUPPORTED_LANGS, countryIso3 } from "../src/geoCountryNames";
 import {
     INTENSIVE_WORD_TOKENS, LOCALIZED_DEFAULT_AGG_PREFIXES, LOCALIZED_CHOICE_AGG_PREFIXES,
+    LOCALIZED_DEFAULT_AGG_SUFFIXES, LOCALIZED_CHOICE_AGG_SUFFIXES,
 } from "../src/aggregation";
 
 describe("the Tier 1 list", () => {
@@ -176,10 +177,18 @@ const INTENSIVE_TOKEN_LANGUAGES: Record<string, SupportedLanguageCode[]> = {
     leeftijd: ["nl"], edad: ["es"], idade: ["pt"], wiek: ["pl"], eletkor: ["hu"], varsta: ["ro"],
     puntuacion: ["es"], pontuacao: ["pt"], punteggio: ["it"], betyg: ["sv"], ocena: ["pl"],
     indice: ["fr", "es", "it", "pt"], indeks: ["pl", "hr", "da", "nb"], wskaznik: ["pl"], puan: ["tr"],
+    // occupancy / utilisation
+    ocupacion: ["es"], ocupacao: ["pt"], occupazione: ["it"], auslastung: ["de"], bezetting: ["nl"],
+    belaggning: ["sv"], belaegning: ["da"], belegg: ["nb"], kayttoaste: ["fi"], oblozenie: ["pl"],
+    obsazenost: ["cs"], obsadenost: ["sk"], kihasznaltsag: ["hu"], doluluk: ["tr"], ocupare: ["ro"],
+    popunjenost: ["hr"],
+    // efficiency
+    efficacite: ["fr"], eficiencia: ["es", "pt"], efficienza: ["it"], effizienz: ["de"],
+    effectiviteit: ["nl"], verimlilik: ["tr"],
 };
 
 /** Which language(s) each localized host-aggregation prefix belongs to. */
-const AGG_PREFIX_LANGUAGES: Record<string, SupportedLanguageCode[]> = {
+const AGG_PREFIX_LANGUAGES: Record<string, VocabularyLanguageCode[]> = {
     "somme de": ["fr"], "suma de": ["es"], "soma de": ["pt"], "summe von": ["de"], "som van": ["nl"],
     "somma di": ["it"], "summa av": ["sv"], "sum av": ["nb"], "sum af": ["da"], "soucet z": ["cs"],
     "suma z": ["pl", "sk"], "totaal van": ["nl"], "total de": ["es", "pt", "fr"], "toplam": ["tr"],
@@ -192,6 +201,13 @@ const AGG_PREFIX_LANGUAGES: Record<string, SupportedLanguageCode[]> = {
     "srednia z": ["pl"], "medie de": ["ro"], "minimum de": ["fr"], "minimo de": ["es", "pt"],
     "minimo di": ["it"], "minimum von": ["de"], "maximum de": ["fr"], "maximo de": ["es", "pt"],
     "massimo di": ["it"], "maximum von": ["de"],
+    // Danish / Norwegian, Russian, Ukrainian, Greek and Persian, and the prefix `Prom.` of a Spanish model
+    "sum pa": ["da", "nb"], "сумма": ["ru"], "количество": ["ru"], "сума": ["uk"], "кількість": ["uk"],
+    "αθροισμα": ["el"], "πληθος": ["el"], "prom.": ["es"], "среднее значение": ["ru"], "среднее": ["ru"],
+    "середнє": ["uk"], "μεσος ορος": ["el"], "میانگین": ["fa"],
+    // the labels a host writes AFTER the name (aggregation.ts: LOCALIZED_*_AGG_SUFFIXES)
+    "osszege": ["hu"], "sucet": ["sk"], "的总和": ["zh"], "的计数": ["zh"], "の合計": ["ja"], "의 합계": ["ko"],
+    "atlaga": ["hu"], "priemer": ["sk"], "的平均值": ["zh"], "の平均": ["ja"], "의 평균": ["ko"],
 };
 
 /** What those vocabularies cover TODAY, and - by subtraction - what they owe. Changing either
@@ -200,8 +216,9 @@ const AGG_PREFIX_LANGUAGES: Record<string, SupportedLanguageCode[]> = {
  *  server copy of these lists is ASCII-only by construction until its reader reads Unicode. */
 const INTENSIVE_COVERS: SupportedLanguageCode[] =
     ["en", "nl", "de", "fr", "es", "pt", "it", "pl", "cs", "sk", "sv", "da", "nb", "fi", "hu", "tr", "ro", "hr"];
-const AGG_PREFIX_COVERS: SupportedLanguageCode[] =
-    ["en", "nl", "de", "fr", "es", "pt", "it", "pl", "cs", "sk", "sv", "da", "nb", "fi", "hu", "tr", "ro"];
+const AGG_PREFIX_COVERS: string[] =
+    ["en", "nl", "de", "fr", "es", "pt", "it", "pl", "cs", "sk", "sv", "da", "nb", "fi", "hu", "tr", "ro",
+     "ru", "uk", "el", "fa", "zh", "ja", "ko"];
 
 /** The localized slice of the intensive list - everything after the marker comment in the array. */
 const ENGLISH_INTENSIVE = new Set([
@@ -219,14 +236,17 @@ describe("every flat vocabulary's language claim agrees with the Tier 1 list", (
         expect(Object.keys(INTENSIVE_TOKEN_LANGUAGES).sort()).toEqual([...localized].sort());
     });
 
-    it("every localized aggregation prefix carries a claim, and only those do", () => {
+    it("every localized aggregation label (before or after the name) carries a claim, and only those do", () => {
         expect(Object.keys(AGG_PREFIX_LANGUAGES).sort())
-            .toEqual([...LOCALIZED_DEFAULT_AGG_PREFIXES, ...LOCALIZED_CHOICE_AGG_PREFIXES].sort());
+            .toEqual([...LOCALIZED_DEFAULT_AGG_PREFIXES, ...LOCALIZED_CHOICE_AGG_PREFIXES,
+                      ...LOCALIZED_DEFAULT_AGG_SUFFIXES, ...LOCALIZED_CHOICE_AGG_SUFFIXES].sort());
     });
 
-    it("every claimed language is a Tier 1 language", () => {
+    it("every claimed language is a language a vocabulary may carry (Tier 1, or vocabulary-only)", () => {
+        // WIDENED from "a Tier 1 language" (2026-10-08): Persian's average label is in the production corpus, and Persian
+        // is the vocabulary-only language (VOCABULARY_ONLY_LANGUAGES) - the tier that exists for exactly this.
         for (const langs of [...Object.values(INTENSIVE_TOKEN_LANGUAGES), ...Object.values(AGG_PREFIX_LANGUAGES)]) {
-            for (const l of langs) expect(SUPPORTED_LANGUAGE_CODES, l).toContain(l);
+            for (const l of langs) expect(VOCABULARY_LANGUAGE_CODES, l).toContain(l);
         }
     });
 
@@ -240,6 +260,6 @@ describe("every flat vocabulary's language claim agrees with the Tier 1 list", (
     it("what they owe is recorded, not silent: the rest of the thirty", () => {
         const owed = (covers: string[]) => SUPPORTED_LANGUAGE_CODES.filter(c => !covers.includes(c));
         expect(owed(INTENSIVE_COVERS)).toEqual(["id", "vi", "ru", "uk", "el", "zh", "ja", "ko", "ar", "he", "hi", "th"]);
-        expect(owed(AGG_PREFIX_COVERS)).toEqual(["hr", "id", "vi", "ru", "uk", "el", "zh", "ja", "ko", "ar", "he", "hi", "th"]);
+        expect(owed(AGG_PREFIX_COVERS)).toEqual(["hr", "id", "vi", "ar", "he", "hi", "th"]);
     });
 });

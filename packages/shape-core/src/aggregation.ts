@@ -153,6 +153,14 @@ export const INTENSIVE_WORD_TOKENS: readonly string[] = [
     "leeftijd", "edad", "idade", "wiek", "eletkor", "varsta",
     // score / index
     "puntuacion", "pontuacao", "punteggio", "betyg", "ocena", "indice", "indeks", "wskaznik", "puan",
+    // occupancy / utilisation (2026-10-08): a share of capacity, never a total. A Spanish model's
+    // `Prom. Ocupacion` is in the production corpus; the rest are the same concept in the other Latin-script
+    // languages. French `occupation` is deliberately absent: in English it is a job.
+    "ocupacion", "ocupacao", "occupazione", "auslastung", "bezetting", "belaggning", "belaegning",
+    "belegg", "kayttoaste", "oblozenie", "obsazenost", "obsadenost", "kihasznaltsag", "doluluk",
+    "ocupare", "popunjenost",
+    // efficiency / effectiveness (2026-10-08): `%Efficacite VM` is in the corpus.
+    "efficacite", "eficiencia", "efficienza", "effizienz", "effectiviteit", "verimlilik",
 ];
 /* parity:intensive-word:end */
 
@@ -231,6 +239,12 @@ export const LOCALIZED_DEFAULT_AGG_PREFIXES: readonly string[] = [
     "toplam", "osszeg",
     "nombre de", "recuento de", "contagem de", "anzahl von", "aantal van",
     "conteggio di", "antal av", "lukumaara", "pocet z",
+    // 2026-10-08: the production corpus also carries Danish / Norwegian `Sum pa X`, Russian and Ukrainian
+    // `Summa X` / `Kolichestvo X`, and the Greek forms (stored accent-folded; a non-Latin token has no
+    // word-boundary dependence here, because these regexes carry none). Russian `Summa` is also the
+    // everyday word for AMOUNT (`Summa zakaza`); read as a default prefix it only strips the word and
+    // marks the sum non-conclusive, the same trade `total de` and `toplam` already make.
+    "sum pa", "сумма", "количество", "сума", "кількість", "αθροισμα", "πληθος",
 ];
 /* parity:localized-default-agg:end */
 
@@ -246,8 +260,49 @@ export const LOCALIZED_CHOICE_AGG_PREFIXES: readonly string[] = [
     "keskiarvo", "atlag", "ortalama", "prumer z", "srednia z", "medie de",
     "minimum de", "minimo de", "minimo di", "minimum von",
     "maximum de", "maximo de", "massimo di", "maximum von",
+    // 2026-10-08: the Spanish abbreviation `Prom.` (with its dot, so a bare English word never reads as
+    // one), Russian / Ukrainian / Greek / Persian averages.
+    "prom.", "среднее значение", "среднее", "середнє", "μεσος ορος", "میانگین",
 ];
 /* parity:localized-choice-agg:end */
+
+/** The aggregation a host label names. */
+export type HostAggKind = "sum" | "avg" | "count" | "min" | "max";
+
+/* parity:localized-default-agg-suffix:begin */
+/** DEFAULT host aggregation labels written AFTER the name, in the languages whose host puts them there:
+ *  Hungarian `Amount osszege`, Slovak `Amount - sucet`, Chinese `Amount 的总和`, and the Japanese and
+ *  Korean forms of the same. Accent-folded and lower-case. A label that counts rather than sums says so
+ *  in LOCALIZED_AGG_KINDS below. The Latin-script ones need whitespace or a dash before them; the CJK ones
+ *  attach with or without a space. */
+export const LOCALIZED_DEFAULT_AGG_SUFFIXES: readonly string[] = [
+    "osszege", "sucet", "的总和", "的计数", "の合計", "의 합계",
+];
+/* parity:localized-default-agg-suffix:end */
+
+/* parity:localized-choice-agg-suffix:begin */
+/** DELIBERATE host aggregation labels written after the name (an average): kept apart from the defaults for the
+ *  reason the prefixes are, and never stripped. */
+export const LOCALIZED_CHOICE_AGG_SUFFIXES: readonly string[] = [
+    "atlaga", "priemer", "的平均值", "の平均", "의 평균",
+];
+/* parity:localized-choice-agg-suffix:end */
+
+/* parity:localized-agg-kinds:begin */
+/** Which aggregation each localized label names, where it is not the array's own: every label in a DEFAULT
+ *  list is a sum and every label in a CHOICE list an average unless it is listed here. Read by
+ *  `localizedHostAggHint`; the server keeps the same table, and a parity test binds the two. */
+export const LOCALIZED_AGG_KINDS: Readonly<Record<string, HostAggKind>> = Object.freeze({
+    // counts
+    "nombre de": "count", "recuento de": "count", "contagem de": "count", "anzahl von": "count",
+    "aantal van": "count", "conteggio di": "count", "antal av": "count", "lukumaara": "count",
+    "pocet z": "count", "количество": "count", "кількість": "count", "πληθος": "count", "的计数": "count",
+    // minimums
+    "minimum de": "min", "minimo de": "min", "minimo di": "min", "minimum von": "min",
+    // maximums
+    "maximum de": "max", "maximo de": "max", "massimo di": "max", "maximum von": "max",
+});
+/* parity:localized-agg-kinds:end */
 
 /** Longest first so "count distinct of" cannot match as "count", and whitespace-flexible. */
 function prefixAlternation(phrases: readonly string[]): string {
@@ -262,6 +317,62 @@ function prefixAlternation(phrases: readonly string[]): string {
 const DEFAULT_AGG_PREFIX = new RegExp(
     "^\\s*(?:(?:sum|count|count\\s+distinct|distinct\\s+count)\\s+of\\s+|(?:"
     + prefixAlternation(LOCALIZED_DEFAULT_AGG_PREFIXES) + ")\\s+)", "i");
+
+/** Hungarian / Slovak / Chinese / Japanese / Korean put the host's label AFTER the name. A label in a
+ *  CJK script attaches with or without a space; a Latin-script one needs whitespace or a dash first (`Amount
+ *  - sucet`). The match is anchored at the end, and the caller slices the ORIGINAL at the match offset,
+ *  which is sound only because foldAccents preserves length. Group 1 is a Latin label, group 2 a CJK one. */
+function hasCjk(t: string): boolean {
+    for (const ch of t) {
+        const c = ch.codePointAt(0) ?? 0;
+        if ((c >= 0x2e80 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7af)) return true;
+    }
+    return false;
+}
+const SUFFIX_DASH = "[" + String.fromCharCode(0x2013, 0x2014) + "-]";
+function suffixRegex(labels: readonly string[]): RegExp {
+    const latin = labels.filter(l => !hasCjk(l));
+    const cjk = labels.filter(hasCjk);
+    const parts: string[] = [];
+    if (latin.length) parts.push("(?:\\s+|\\s*" + SUFFIX_DASH + "\\s*)(" + prefixAlternation(latin) + ")");
+    if (cjk.length) parts.push("\\s*(" + prefixAlternation(cjk) + ")");
+    return new RegExp("(?:" + parts.join("|") + ")\\s*$", "i");
+}
+const DEFAULT_AGG_SUFFIX = suffixRegex(LOCALIZED_DEFAULT_AGG_SUFFIXES);
+const CHOICE_AGG_SUFFIX = suffixRegex(LOCALIZED_CHOICE_AGG_SUFFIXES);
+
+/** A name that ENDS in a host label: the name before it and the label (lower-case, folded), or null. A name
+ *  that is nothing but the label is not a suffix form. */
+function aggSuffixHit(folded: string, re: RegExp): { base: string; label: string } | null {
+    const m = re.exec(folded);
+    if (!m) return null;
+    const base = folded.slice(0, m.index);
+    if (base.trim() === "") return null;
+    return { base, label: (m[1] ?? m[2] ?? "").toLowerCase() };
+}
+
+/**
+ * The aggregation a LOCALIZED host label names, read off the front of the name (`Soma de X`, `Сумма X`)
+ * or the end of it (`X osszege`, `X 的总和`); null when the name carries none. (`Среднее значение X` is an average.) The English labels are read by
+ * `hostAggHint`, which calls this after them. Each label carries its kind as data (LOCALIZED_AGG_KINDS): a label
+ * not listed there is the list's own kind, a sum in a DEFAULT list and an average in a CHOICE one. A choice
+ * label is tested before a default one, as it always was.
+ */
+export function localizedHostAggHint(name: string | null | undefined): HostAggKind | null {
+    const n = foldAccents(String(name ?? "").trim().toLowerCase());
+    if (!n) return null;
+    for (const p of LOCALIZED_CHOICE_AGG_PREFIXES) {
+        if (n.startsWith(p + " ")) return LOCALIZED_AGG_KINDS[p] ?? "avg";
+    }
+    for (const p of LOCALIZED_DEFAULT_AGG_PREFIXES) {
+        if (n.startsWith(p + " ") || n === p) return LOCALIZED_AGG_KINDS[p] ?? "sum";
+    }
+    const choice = aggSuffixHit(n, CHOICE_AGG_SUFFIX);
+    if (choice) return LOCALIZED_AGG_KINDS[choice.label] ?? "avg";
+    const def = aggSuffixHit(n, DEFAULT_AGG_SUFFIX);
+    if (def) return LOCALIZED_AGG_KINDS[def.label] ?? "sum";
+    return null;
+}
 
 // THERE IS DELIBERATELY NO "strip every host label" REGEX HERE. Stripping a DELIBERATE prefix
 // would throw away the evidence it carries: `Average of Margin` is intensive precisely BECAUSE
@@ -289,8 +400,12 @@ export function stripHostAggPrefix(name: string | null | undefined): string {
     // off the ORIGINAL at the same offset — which is sound only because foldAccents preserves
     // length. DEFAULT prefixes only, English and localized alike: a deliberate Average/Min/Max
     // stays in the string because it is evidence about the quantity, not noise about the host.
-    const m = DEFAULT_AGG_PREFIX.exec(foldAccents(s));
-    return (m ? s.slice(m[0].length) : s).trim();
+    const folded = foldAccents(s);
+    const m = DEFAULT_AGG_PREFIX.exec(folded);
+    if (m) return s.slice(m[0].length).trim();
+    // The languages whose host writes its label AFTER the name (`Amount osszege`): the same default labels, from the end.
+    const suffix = aggSuffixHit(folded, DEFAULT_AGG_SUFFIX);
+    return (suffix ? s.slice(0, suffix.base.length) : s).trim();
 }
 
 /** True when the name carries a DEFAULT aggregation prefix — the one Power BI applies without
@@ -298,7 +413,9 @@ export function stripHostAggPrefix(name: string | null | undefined): string {
  *  localized default ("Soma de", "Summe von") counts; a localized CHOICE ("Média de") does
  *  not, exactly as "Average of" does not. */
 export function hasDefaultAggPrefix(name: string | null | undefined): boolean {
-    return !!name && DEFAULT_AGG_PREFIX.test(foldAccents(String(name)));
+    if (!name) return false;
+    const folded = foldAccents(String(name));
+    return DEFAULT_AGG_PREFIX.test(folded) || aggSuffixHit(folded, DEFAULT_AGG_SUFFIX) !== null;
 }
 
 // ── "Sum of Sum of Revenue" (2026-09-04) ─────────────────────────────────────────────────────
