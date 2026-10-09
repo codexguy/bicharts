@@ -387,6 +387,19 @@ describe("the host lasso", () => {
             expect(container.querySelector(".lch-lasso-count")!.textContent).toBe("");
         });
 
+        it("the live count does not read the style of every mark on every move; the release does, once, to leave out hidden marks", () => {
+            const spy = vi.spyOn(window, "getComputedStyle");
+            surface().dispatchEvent(ptr("pointerdown", 80, 80));
+            for (const [x, y] of [[120, 80], [160, 80], [230, 80], [230, 130], [80, 130]] as Array<[number, number]>) {
+                surface().dispatchEvent(ptr("pointermove", x, y));
+            }
+            expect(container.querySelector(".lch-lasso-count")!.textContent).toBe("3 selected");
+            expect(spy).not.toHaveBeenCalled();
+            surface().dispatchEvent(ptr("pointerup", 80, 130));
+            expect(spy).toHaveBeenCalled();
+            expect(spy.mock.calls.length).toBeLessThanOrEqual(MARKS.length);
+        });
+
         it("points closer than 3px to the last one kept are dropped", () => {
             // A square walked in 1px steps: about 350 moves.
             surface().dispatchEvent(ptr("pointerdown", 80, 80));

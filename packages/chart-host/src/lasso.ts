@@ -321,11 +321,13 @@ function markHidden(el: Element, win: any): boolean {
     } catch { return false; }
 }
 
-function rowsInside(centres: Centre[], shapes: Shape[], win: any): number[] {
+/** The rows whose marks have their centre inside any of `shapes`. `skipHidden` reads the style of each mark that is
+ *  inside, which a live count while dragging does not need to pay for on every move: the release does it once. */
+function rowsInside(centres: Centre[], shapes: Shape[], win: any, skipHidden = true): number[] {
     const set = new Set<number>();
     for (const c of centres) {
         if (!shapes.some(s => pointInShape(s, c.x, c.y))) continue;
-        if (markHidden(c.el, win)) continue;
+        if (skipHidden && markHidden(c.el, win)) continue;
         for (const r of c.rows) set.add(r);
     }
     return Array.from(set).sort((a, b) => a - b);
@@ -669,7 +671,7 @@ export function installLasso(env: LassoEnv): LassoHandle | null {
         const live = liveShape(g);
         const parts = g.additive ? [...shapes, live] : [live];
         outline.setAttribute("d", dFor(parts, f));
-        setCount(rowsInside(centres, parts, win).length);
+        setCount(rowsInside(centres, parts, win, false).length);
     };
 
     function onDown(e: any) {

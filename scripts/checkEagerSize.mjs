@@ -58,9 +58,16 @@ import { resolve, dirname, join } from "node:path";
 // adds ~4 KB: it runs on every selection paint, so it cannot sit behind a dynamic import. No
 // geometry is in the closure. The rule still holds: closure (~713 KB) + the smallest map asset
 // (223 KB) is ~936 KB, far above 720, so a statically imported map still trips this check.
+//
+// 720 -> 770 KB, deliberately, as ordinary growth, measured first. The closure stood within a few KB of the
+// line, and the host lasso (lasso.ts, about 22 KB compiled) took it to 745 KB. It is eager on purpose: it is
+// installed in the render's own post-render pass, which is synchronous, and a lazy chunk would draw the first
+// frame of a lasso-capable chart without it and restore a kept lasso a frame late. No geometry is in the
+// closure. The rule still holds: closure (~745 KB) + the smallest map asset (223 KB) is ~968 KB, far above 770,
+// so a statically imported map still trips this check.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 720);
+const limitKB = Number(process.argv[3] ?? 770);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //

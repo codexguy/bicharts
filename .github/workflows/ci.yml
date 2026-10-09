@@ -171,5 +171,9 @@ jobs:
       #
       # The ceiling is passed explicitly rather than left to the script's default because this
       # measures the INSTALLED package, which is ~16 KB lighter than the repo build.
+      #
+      # 2026-10-09: RAISED 700 -> 750, with the script's own default (720 -> 770), as ordinary growth: the
+      # host lasso is about 22 KB compiled and eager on purpose. No geometry is in the closure; the
+      # installed closure (~729 KB) plus the smallest map asset (223 KB) is still far above 750.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 700
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 750
