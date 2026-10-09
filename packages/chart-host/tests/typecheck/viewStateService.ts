@@ -2,7 +2,8 @@
 // view-state contract in src/host/services.ts changes shape under a host that already builds against it.
 // Each @ts-expect-error below is a line that MUST be rejected; if the contract loosens until one
 // compiles, the directive itself becomes the error.
-import type { HostServices, ViewStateKeyPolicy, ViewStateService } from "../../src/host/services";
+import type { HostServices, PreferenceSource, ViewStateKeyPolicy, ViewStateService } from "../../src/host/services";
+import { commitViewState, resolveViewState, viewStateAfterSwap } from "../../src/viewState";
 import type { ViewStateProvider } from "../../src/contract";
 
 const provider: ViewStateProvider = { load: () => ({}), save: () => {} };
@@ -47,3 +48,14 @@ export const missingFlag: ViewStateKeyPolicy = { lifetime: "viewing", dropOnNewV
 export const noViewing: ViewStateService = { policy: {} };
 // @ts-expect-error the policy is required, even when empty
 export const noPolicy: ViewStateService = { viewing: provider };
+
+// The rules take the preference source a host already passes in HostServices (keyed on RenderOptions),
+// though the key they ask for is the host's own name for its switch.
+declare const hostPrefs: PreferenceSource;
+export const committed = commitViewState({ a: 1 }, fullest, hostPrefs);
+export const committedWithout = commitViewState({ a: 1 }, fullest);
+export const committedNull = commitViewState({ a: 1 }, fullest, null);
+export const resolved: Record<string, unknown> = resolveViewState(fullest, { codeVersion: 3, freshViewing: true }).bag;
+export const resolvedBare: Record<string, unknown> = resolveViewState(smallest).bag;
+export const swapped: Record<string, unknown> = viewStateAfterSwap(fullest, resolved);
+export const outcome: "saved" | "ignored" | "too-large" = committed.outcome;
