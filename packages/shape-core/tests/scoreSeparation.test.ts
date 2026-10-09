@@ -407,6 +407,15 @@ describe.skipIf(!DATASETS)("scoreSeparation - the wire fixture the server reads"
             ["PersonID", "Sex", "OutcomeScore"]).cols;
     };
 
+    // The outcome is a 0/1 MEASURE: the total of a flag at case grain.
+    const flagMeasure = () => {
+        const rand = rng(7);
+        const rows: any[][] = [];
+        for (let i = 0; i < 200; i++) { const y = i % 10 === 0 ? 1 : 0; rows.push(["c" + i, Math.round((y ? 0.4 + rand() * 0.6 : rand() * 0.8) * 1000) / 1000, y]); }
+        return profile([col("CustomerID", "String"), col("Propensity", "Decimal"), col("Sum of Churned", "Integer", true)], rows, "20",
+            ["CustomerID", "Propensity"]).cols;
+    };
+
     const loan: Spec[] = [
         { name: "LoanID", type: "String", dimension: true }, { name: "CreditScore", type: "Integer" },
         { name: "DebtToIncome", type: "Decimal" }, { name: "LoanPurpose", type: "String", dimension: true },
@@ -439,6 +448,7 @@ describe.skipIf(!DATASETS)("scoreSeparation - the wire fixture the server reads"
         churnNull: wire(table("churn_scores_null.csv", asDims(churn, ["Churn Probability"]), "20")),
         churnNoId: wire(table("churn_scores.csv", asDims(churn, ["Churn Probability"]), "20", ["CustomerID", "Segment"])),
         peopleSexScore: wire(people("20")),
+        flagMeasure: wire(flagMeasure()),
         bucketed: wire(table("churn_scores_bucketed.csv", [
             { name: "Churn Probability Bucket", type: "String", dimension: true }, { name: "Churned", type: "String", dimension: true },
             { name: "Cases", type: "Integer", measure: true }], "20")),
@@ -458,6 +468,8 @@ describe.skipIf(!DATASETS)("scoreSeparation - the wire fixture the server reads"
         expect(sep("loanMeasures", "DebtToIncome").aucMinorityHigh).toBe(0.6669);
         expect(sep("admissionsDims", "SATScore").aucMinorityHigh).toBe(0.3261);
         expect(sep("admissionsTier0", "SATScore")).toEqual(sep("admissionsDims", "SATScore"));
+        expect(fx.flagMeasure.find((c: any) => c.name === "Sum of Churned").isBinaryFlag).toBe(true);
+        expect(sep("flagMeasure", "Propensity").outcome).toBe("Sum of Churned");
         expect(fx.peopleSexScore.find((c: any) => c.name === "Sex").isBinaryFlag, "Sex is two-valued and not a flag").toBeFalsy();
     });
 });

@@ -604,6 +604,47 @@
       ]
     }
   ],
+  "flagMeasure": [
+    {
+      "name": "CustomerID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 200,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.005,
+      "formatSignature": "OTHER"
+    },
+    {
+      "name": "Propensity",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 172,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.015,
+      "scoreSeparation": [
+        {
+          "outcome": "Sum of Churned",
+          "aucMinorityHigh": 0.8099,
+          "nMinority": 20,
+          "nMajority": 180,
+          "ties": 54
+        }
+      ]
+    },
+    {
+      "name": "Sum of Churned",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Ordinal"
+    }
+  ],
   "bucketed": [
     {
       "name": "Churn Probability Bucket",
