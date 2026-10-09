@@ -30,6 +30,7 @@ import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence } from "./cadence";
 import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
 import { measureTwoSetPairing } from "./twoSetPairing";
+import { measureScoreSeparation } from "./scoreSeparation";
 
 // ============================================================================
 // ValueNature classification (Continuous / Ordinal / Categorical)
@@ -781,6 +782,9 @@ export class IndexedText implements IValueCollection {
         // Per-column distinct value-sets, captured during the loop for the
         // cross-column overlap pass below (null for measures / high-cardinality).
         const colValueSets: (Set<string> | null)[] = [];
+        // Per column: how many distinct non-blank values, and the two of them when there are exactly two.
+        const colDistinct: number[] = [];
+        const colTwoValues: (readonly [string, string] | null)[] = [];
         for (const col of this._cols) {
             const vals = new Map<string, number>();
             const arr: any[] = [];
@@ -877,6 +881,12 @@ export class IndexedText implements IValueCollection {
                     const nameOutcome = /^(is|has)[_\p{L}\p{N}]|(?:default|churn|fraud|approv|convert|active|cancel|delinquen|flag|paid|win|pass|fail)/iu.test(col.name);
                     if (valuesBoolean || nameOutcome) col.isBinaryFlag = true;
                 }
+            } else if (col.isMeasure && (col.dataType === "Integer" || col.dataType === "Decimal")
+                && vals.size === 2 && vals.has("0") && vals.has("1")) {
+                // A 0/1 MEASURE (2026-10-09): the total of a flag at case grain (Sum of Churned) is the
+                // outcome column of a table whose rows are cases, and the dimension arm above never sees it.
+                // The non-blank values are exactly 0 and 1; a measure of 0, 1 and 2 is a count, not a flag.
+                col.isBinaryFlag = true;
             }
             if (col.dataType == "DateTime") {
                 col.dateWithTime = hastime;
@@ -976,6 +986,8 @@ export class IndexedText implements IValueCollection {
             // very high-cardinality / id-like columns — those never share usefully
             // and the intersection cost is not worth it).
             colValueSets[cidx] = (col.isMeasure || vals.size > 2000) ? null : new Set(vals.keys());
+            colDistinct[cidx] = vals.size;
+            colTwoValues[cidx] = vals.size === 2 ? ([...vals.keys()].sort() as [string, string]) : null;
 
             cidx++;
         }
@@ -1465,6 +1477,8 @@ export class IndexedText implements IValueCollection {
 
         this.applyTwoSetPairing(locale, colValueSets);
 
+        this.applyScoreSeparation(colDistinct, colTwoValues);
+
         this.applySeriesCompleteness(pl, locale, colValueSets);
 
         this._computedStatsForLevel = privacyLevel;
@@ -1499,6 +1513,29 @@ export class IndexedText implements IValueCollection {
         if (!found) return;
         this._cols[found.key].twoSetPairing = found.pairing;
         this._cols[found.discriminator].twoSetPairing = found.pairing;
+    }
+
+    // SCORE-SEPARATION pass (2026-10-09). Which numeric columns rank which yes/no outcome - see
+    // scoreSeparation.ts. Its own pass over the rows: the group-discrimination one pairs a measure with a
+    // dimension, while a score is routinely a group-by column and the outcome may be a 0/1 measure.
+    // Runs after every per-column signal it reads is final (isMeasure after promotion, isBinaryFlag).
+    // Reads the privacy level nowhere, so a tighter tier changes nothing about whether it is found.
+    private applyScoreSeparation(colDistinct: number[], colTwoValues: (readonly [string, string] | null)[]): void {
+        // A second call at another tier re-measures; an entry from the last one must not survive it.
+        for (const c of this._cols) if (c.scoreSeparation !== undefined) delete c.scoreSeparation;
+        const found = measureScoreSeparation({
+            rows: this._rows,
+            columns: this._cols.map((c, i) => ({
+                name: c.name, dataType: c.dataType, isMeasure: !!c.isMeasure,
+                isTemporal: !!c.isTemporal, isDatePart: !!c.isDatePart,
+                identifierNamed: isIdentifierName(c.name),
+                isBinaryFlag: !!c.isBinaryFlag,
+                distinct: colDistinct[i] ?? 0,
+                twoValues: colTwoValues[i] ?? null,
+            })),
+            text: v => this.STR(v),
+        });
+        for (const [i, entries] of found) this._cols[i].scoreSeparation = entries;
     }
 
     // PER-SERIES COMPLETENESS pass (2026-09-24). Which series of each time axis miss periods the

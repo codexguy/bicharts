@@ -74,6 +74,30 @@ export type TwoSetPairing =
         setOrder: "temporal" | "none",
     }
 
+/**
+ * SCORE SEPARATION (2026-10-09), one entry per yes/no outcome a numeric column could rank. The statistic
+ * is the area under the ROC curve with the RARER outcome value as the positive class and a HIGHER score
+ * as the positive direction, so no outcome value ever ships: a consumer that knows the class it flags for
+ * reads `1 - aucMinorityHigh` when that is the other value, and `1 - auc` again when lower scores point at
+ * it. Scores tied across the two classes count half. An exact tie of the two class counts takes the
+ * alphabetically first value (UTF-16 order of the cell text) as the rare one.
+ *
+ * Counts, a count of tied rows and a probability rounded to four places, with the outcome's column name:
+ * never a value, so it ships at every privacy tier.
+ */
+export type ScoreSeparationEntry =
+    {
+        /** The outcome column's name. */
+        outcome: string,
+        /** AUC, rare value positive, higher score positive. 4 decimal places. */
+        aucMinorityHigh: number,
+        /** Rows of the rarer / the commoner outcome value that carry a score. */
+        nMinority: number,
+        nMajority: number,
+        /** Rows that share their score with at least one other row, among the rows counted above. */
+        ties: number,
+    }
+
 export type LLMColumnWithValue =
     {
         name: string,
@@ -376,6 +400,14 @@ export type LLMColumnWithValue =
         // Absent when no key/set pair has a key in both sets, above 500,000 rows, and on a client that
         // predates it - so absence is never evidence the table is not two-set. Full contract on the type.
         twoSetPairing?: TwoSetPairing
+        // SCORE SEPARATION (2026-10-09), numeric columns only: how well this column RANKS each yes/no
+        // outcome beside it, for the cutoff charts that need a score, an outcome and a direction. One entry
+        // per outcome (the flagged columns first, then any other two-valued one), at most six outcomes
+        // against twelve scores. It is on the SCORE, bound as a measure or as a group-by column alike, and
+        // the outcome may be a 0/1 measure. Absent below three distinct scores, above 500,000 rows, and on
+        // a client that predates it - so absence is never evidence a column does not separate anything.
+        // Full contract on the type.
+        scoreSeparation?: ScoreSeparationEntry[]
         // GROUP-DISCRIMINATION statistics (2026-06-19), measure columns only.
         // relativeDispersion = (p90-p10)/|median| over the non-blank values, linearly
         // interpolated quantiles; exactly 0 when every value is identical; ABSENT below

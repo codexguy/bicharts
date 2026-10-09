@@ -79,7 +79,7 @@ export type {
 } from "./aggregation";
 
 // The wire contract + column value shape.
-export type { LLMColumnWithValue, TwoSetPairing } from "./models";
+export type { LLMColumnWithValue, TwoSetPairing, ScoreSeparationEntry } from "./models";
 export type {
     LLMRequestModifier,
     SimpleColumn,

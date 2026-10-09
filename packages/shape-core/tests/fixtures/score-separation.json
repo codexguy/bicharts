@@ -1,0 +1,649 @@
+{
+  "_why": "Engine output for the published loan, admissions and churn tables, narrowed to the fields a server reads, with the score bound as a group-by column (`...Dims`) and as a measure (`...Measures`), at the strictest and the most open privacy tier, with and without a case id, plus a table whose only two-valued column is not an outcome and the bucketed form (a score bucket, an outcome and a count).",
+  "loanDims": [
+    {
+      "name": "LoanID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1400,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0007142857142857143,
+      "formatSignature": "OPAQUE_ID_ALPHANUMERIC"
+    },
+    {
+      "name": "CreditScore",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 316,
+      "valueNature": "Continuous",
+      "minGroupCount": 1,
+      "modalShare": 0.01,
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.215,
+          "nMinority": 35,
+          "nMajority": 1365,
+          "ties": 1336
+        }
+      ]
+    },
+    {
+      "name": "DebtToIncome",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 473,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.007857142857142858,
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.6669,
+          "nMinority": 35,
+          "nMajority": 1365,
+          "ties": 1268
+        }
+      ]
+    },
+    {
+      "name": "LoanPurpose",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 5,
+      "valueNature": "Categorical",
+      "minGroupCount": 253,
+      "modalShare": 0.22071428571428572,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Defaulted",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 35,
+      "modalShare": 0.975,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "loanDimsTier0": [
+    {
+      "name": "LoanID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1400,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0007142857142857143,
+      "formatSignature": "OPAQUE_ID_ALPHANUMERIC"
+    },
+    {
+      "name": "CreditScore",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 316,
+      "valueNature": "Continuous",
+      "minGroupCount": 1,
+      "modalShare": 0.01,
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.215,
+          "nMinority": 35,
+          "nMajority": 1365,
+          "ties": 1336
+        }
+      ]
+    },
+    {
+      "name": "DebtToIncome",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 473,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.007857142857142858,
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.6669,
+          "nMinority": 35,
+          "nMajority": 1365,
+          "ties": 1268
+        }
+      ]
+    },
+    {
+      "name": "LoanPurpose",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 5,
+      "valueNature": "Categorical",
+      "minGroupCount": 253,
+      "modalShare": 0.22071428571428572,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Defaulted",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 35,
+      "modalShare": 0.975,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "loanMeasures": [
+    {
+      "name": "LoanID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1400,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0007142857142857143,
+      "formatSignature": "OPAQUE_ID_ALPHANUMERIC"
+    },
+    {
+      "name": "CreditScore",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 316,
+      "valueNature": "Continuous",
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.215,
+          "nMinority": 35,
+          "nMajority": 1365,
+          "ties": 1336
+        }
+      ]
+    },
+    {
+      "name": "DebtToIncome",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 473,
+      "valueNature": "Ordinal",
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.6669,
+          "nMinority": 35,
+          "nMajority": 1365,
+          "ties": 1268
+        }
+      ]
+    },
+    {
+      "name": "LoanPurpose",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 5,
+      "valueNature": "Categorical",
+      "minGroupCount": 253,
+      "modalShare": 0.22071428571428572,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Defaulted",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 35,
+      "modalShare": 0.975,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "loanNoId": [
+    {
+      "name": "CreditScore",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 316,
+      "valueNature": "Continuous",
+      "minGroupCount": 1,
+      "modalShare": 0.005797101449275362,
+      "scoreSeparation": [
+        {
+          "outcome": "Defaulted",
+          "aucMinorityHigh": 0.2924,
+          "nMinority": 33,
+          "nMajority": 312,
+          "ties": 58
+        }
+      ]
+    },
+    {
+      "name": "Defaulted",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 33,
+      "modalShare": 0.9043478260869565,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "admissionsDims": [
+    {
+      "name": "ApplicantID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1800,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0005555555555555556,
+      "formatSignature": "ALL_UPPER_FIXED_7"
+    },
+    {
+      "name": "HighSchoolGPA",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 171,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.06055555555555556,
+      "scoreSeparation": [
+        {
+          "outcome": "Accepted",
+          "aucMinorityHigh": 0.4048,
+          "nMinority": 492,
+          "nMajority": 1308,
+          "ties": 1778
+        }
+      ]
+    },
+    {
+      "name": "SATScore",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 648,
+      "valueNature": "Continuous",
+      "minGroupCount": 1,
+      "modalShare": 0.015555555555555555,
+      "scoreSeparation": [
+        {
+          "outcome": "Accepted",
+          "aucMinorityHigh": 0.3261,
+          "nMinority": 492,
+          "nMajority": 1308,
+          "ties": 1604
+        }
+      ]
+    },
+    {
+      "name": "IntendedMajor",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 9,
+      "valueNature": "Categorical",
+      "minGroupCount": 186,
+      "modalShare": 0.12611111111111112,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Accepted",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 492,
+      "modalShare": 0.7266666666666667,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "admissionsTier0": [
+    {
+      "name": "ApplicantID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1800,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0005555555555555556,
+      "formatSignature": "ALL_UPPER_FIXED_7"
+    },
+    {
+      "name": "HighSchoolGPA",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 171,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.06055555555555556,
+      "scoreSeparation": [
+        {
+          "outcome": "Accepted",
+          "aucMinorityHigh": 0.4048,
+          "nMinority": 492,
+          "nMajority": 1308,
+          "ties": 1778
+        }
+      ]
+    },
+    {
+      "name": "SATScore",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 648,
+      "valueNature": "Continuous",
+      "minGroupCount": 1,
+      "modalShare": 0.015555555555555555,
+      "scoreSeparation": [
+        {
+          "outcome": "Accepted",
+          "aucMinorityHigh": 0.3261,
+          "nMinority": 492,
+          "nMajority": 1308,
+          "ties": 1604
+        }
+      ]
+    },
+    {
+      "name": "IntendedMajor",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 9,
+      "valueNature": "Categorical",
+      "minGroupCount": 186,
+      "modalShare": 0.12611111111111112,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Accepted",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 492,
+      "modalShare": 0.7266666666666667,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "churnDims": [
+    {
+      "name": "CustomerID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 2000,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0005,
+      "formatSignature": "OPAQUE_ID_ALPHANUMERIC"
+    },
+    {
+      "name": "Segment",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 3,
+      "valueNature": "Categorical",
+      "minGroupCount": 305,
+      "modalShare": 0.5435,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Churn Probability",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1673,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.0025,
+      "scoreSeparation": [
+        {
+          "outcome": "Churned",
+          "aucMinorityHigh": 0.8393,
+          "nMinority": 301,
+          "nMajority": 1699,
+          "ties": 607
+        }
+      ]
+    },
+    {
+      "name": "Churned",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 301,
+      "modalShare": 0.8495,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "churnNull": [
+    {
+      "name": "CustomerID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 2000,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0005,
+      "formatSignature": "OPAQUE_ID_ALPHANUMERIC"
+    },
+    {
+      "name": "Segment",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 3,
+      "valueNature": "Categorical",
+      "minGroupCount": 286,
+      "modalShare": 0.549,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "Churn Probability",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1692,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.002,
+      "scoreSeparation": [
+        {
+          "outcome": "Churned",
+          "aucMinorityHigh": 0.5058,
+          "nMinority": 297,
+          "nMajority": 1703,
+          "ties": 575
+        }
+      ]
+    },
+    {
+      "name": "Churned",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 297,
+      "modalShare": 0.8515,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "churnNoId": [
+    {
+      "name": "Churn Probability",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 1673,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.0011695906432748538,
+      "scoreSeparation": [
+        {
+          "outcome": "Churned",
+          "aucMinorityHigh": 0.8272,
+          "nMinority": 298,
+          "nMajority": 1412,
+          "ties": 74
+        }
+      ]
+    },
+    {
+      "name": "Churned",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 298,
+      "modalShare": 0.8257309941520468,
+      "formatSignature": "BOOLEAN"
+    }
+  ],
+  "peopleSexScore": [
+    {
+      "name": "PersonID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 400,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0025,
+      "formatSignature": "ALL_UPPER"
+    },
+    {
+      "name": "Sex",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 200,
+      "modalShare": 0.5,
+      "formatSignature": "TITLE_CASE_WORDS"
+    },
+    {
+      "name": "OutcomeScore",
+      "dataType": "Integer",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 100,
+      "valueNature": "Ordinal",
+      "minGroupCount": 1,
+      "modalShare": 0.025,
+      "scoreSeparation": [
+        {
+          "outcome": "Sex",
+          "aucMinorityHigh": 0.4951,
+          "nMinority": 200,
+          "nMajority": 200,
+          "ties": 389
+        }
+      ]
+    },
+    {
+      "name": "Weight",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 345,
+      "valueNature": "Continuous",
+      "minGroupCount": 1,
+      "modalShare": 0.0075,
+      "scoreSeparation": [
+        {
+          "outcome": "Sex",
+          "aucMinorityHigh": 0.4537,
+          "nMinority": 200,
+          "nMajority": 200,
+          "ties": 105
+        }
+      ]
+    }
+  ],
+  "bucketed": [
+    {
+      "name": "Churn Probability Bucket",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 17,
+      "valueNature": "Categorical",
+      "minGroupCount": 1,
+      "modalShare": 0.0625,
+      "formatSignature": "OTHER"
+    },
+    {
+      "name": "Churned",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "isBinaryFlag": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "minGroupCount": 16,
+      "modalShare": 0.5,
+      "formatSignature": "BOOLEAN"
+    },
+    {
+      "name": "Cases",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 27,
+      "valueNature": "Continuous",
+      "scoreSeparation": [
+        {
+          "outcome": "Churned",
+          "aucMinorityHigh": 0.7656,
+          "nMinority": 16,
+          "nMajority": 16,
+          "ties": 10
+        }
+      ]
+    }
+  ]
+}
