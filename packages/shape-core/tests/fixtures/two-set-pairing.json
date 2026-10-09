@@ -1,0 +1,163 @@
+{
+  "_why": "Engine output for the 400-customer, two-snapshot master (312 identical, 48 changed, 22 only in January, 18 only in February), as the client puts it on the wire. `headline` labels the snapshots Jan / Feb (no calendar period, so the order is alphabetical); `headlineDated` labels them Jan 2026 / Feb 2026 (a calendar period, so A is the earlier).",
+  "headline": [
+    {
+      "name": "CustomerID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 400,
+      "valueNature": "Categorical",
+      "twoSetPairing": {
+        "form": "long",
+        "key": "CustomerID",
+        "discriminator": "Snapshot",
+        "keysA": 378,
+        "keysB": 382,
+        "keysBoth": 360,
+        "duplicateKeysA": 0,
+        "duplicateKeysB": 0,
+        "identicalPct": 87,
+        "discriminatorBlankRows": 0,
+        "looseCollisionsA": 0,
+        "looseCollisionsB": 0,
+        "setOrder": "none"
+      }
+    },
+    {
+      "name": "Snapshot",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "twoSetPairing": {
+        "form": "long",
+        "key": "CustomerID",
+        "discriminator": "Snapshot",
+        "keysA": 378,
+        "keysB": 382,
+        "keysBoth": 360,
+        "duplicateKeysA": 0,
+        "duplicateKeysB": 0,
+        "identicalPct": 87,
+        "discriminatorBlankRows": 0,
+        "looseCollisionsA": 0,
+        "looseCollisionsB": 0,
+        "setOrder": "none"
+      }
+    },
+    {
+      "name": "Name",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 412,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "City",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 8,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "CreditLimit",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 50,
+      "valueNature": "Continuous"
+    },
+    {
+      "name": "Balance",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 412,
+      "valueNature": "Continuous"
+    }
+  ],
+  "headlineDated": [
+    {
+      "name": "CustomerID",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 400,
+      "valueNature": "Categorical",
+      "twoSetPairing": {
+        "form": "long",
+        "key": "CustomerID",
+        "discriminator": "Snapshot",
+        "keysA": 382,
+        "keysB": 378,
+        "keysBoth": 360,
+        "duplicateKeysA": 0,
+        "duplicateKeysB": 0,
+        "identicalPct": 87,
+        "discriminatorBlankRows": 0,
+        "looseCollisionsA": 0,
+        "looseCollisionsB": 0,
+        "setOrder": "temporal"
+      }
+    },
+    {
+      "name": "Snapshot",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": true,
+      "distinctCount": 2,
+      "valueNature": "Categorical",
+      "twoSetPairing": {
+        "form": "long",
+        "key": "CustomerID",
+        "discriminator": "Snapshot",
+        "keysA": 382,
+        "keysB": 378,
+        "keysBoth": 360,
+        "duplicateKeysA": 0,
+        "duplicateKeysB": 0,
+        "identicalPct": 87,
+        "discriminatorBlankRows": 0,
+        "looseCollisionsA": 0,
+        "looseCollisionsB": 0,
+        "setOrder": "temporal"
+      }
+    },
+    {
+      "name": "Name",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 412,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "City",
+      "dataType": "String",
+      "isMeasure": false,
+      "isTemporal": false,
+      "distinctCount": 8,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "CreditLimit",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 50,
+      "valueNature": "Continuous"
+    },
+    {
+      "name": "Balance",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "isTemporal": false,
+      "distinctCount": 412,
+      "valueNature": "Continuous"
+    }
+  ]
+}

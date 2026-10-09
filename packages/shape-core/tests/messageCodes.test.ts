@@ -67,6 +67,18 @@ describe("parseGenerateResponse reads the codes", () => {
         expect(parseGenerateResponse({ notices: "nope" }).notices).toEqual([]);
     });
 
+    it("a rows-withheld advisory keeps its code in any language, so a host decides by the code and not the sentence", () => {
+        const advisory = (text: string) => ({
+            code: "function render(){}", warningMessage: text,
+            notices: [{ code: "rows-withheld", severity: "advisory", text }],
+        });
+        const en = parseGenerateResponse(advisory("Not every row was loaded, so this chart may not show everything."));
+        const es = parseGenerateResponse(advisory("No se cargaron todas las filas, así que el gráfico puede no mostrarlo todo."));
+        expect(en.notices.map(n => [n.code, n.severity])).toEqual([["rows-withheld", "advisory"]]);
+        expect(es.notices.map(n => [n.code, n.severity])).toEqual([["rows-withheld", "advisory"]]);
+        expect(parseGenerateResponse(pascalize(advisory("x"))).notices[0].code).toBe("rows-withheld");
+    });
+
     it("the freemium state and the refusal code", () => {
         const p = parseGenerateResponse({ freemiumStatusCode: FREEMIUM_ATTEMPT_SPENT, refusalCode: FREEMIUM_COLUMN_CAP, isRefusal: true });
         expect([p.freemiumStatusCode, p.refusalCode]).toEqual(["FREEMIUM_ATTEMPT_SPENT", "FREEMIUM_COLUMN_CAP"]);

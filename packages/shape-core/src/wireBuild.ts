@@ -286,6 +286,41 @@ export function leafCardinalityField(count: number | null | undefined): { leafCa
     return count && count > 0 ? { leafCardinality: Math.round(count) } : {};
 }
 
+/** The completeness fields a request's client hints carry. Each is absent when the host does not know it. */
+export interface DataCompletenessFields {
+    dataComplete?: boolean;
+    rowsWithheld?: number;
+    rowsFilteredOut?: number;
+}
+
+/**
+ * WHETHER EVERY ROW ARRIVED, AS THE REQUEST STATES IT - the client hints' `dataComplete`, `rowsWithheld`
+ * and `rowsFilteredOut`.
+ *  - `dataComplete` is false when rows the reader did not choose to remove never reached the chart: a row
+ *    cap, a load that stalled, a host memory ceiling, a query limit. A filter the reader applied (a slicer,
+ *    a sheet filter) is their view of the data, not a cut, and never lowers it.
+ *  - `rowsWithheld` is how many rows such a cut left out, sent only when the host knows the exact number.
+ *  - `rowsFilteredOut` is how many rows the reader's own filter hides inside the bound range, kept apart
+ *    from the cut so a chart can say so without the cut's warning.
+ *
+ * ABSENT MEANS UNKNOWN, NEVER TRUE: a server that reads a missing `dataComplete` as "complete" would call
+ * a cut table whole, so the host says nothing unless it knows. Only a boolean is a statement about
+ * completeness, and a count travels only when it is a whole number above zero - a zero, a fraction or a
+ * non-number says nothing the absence did not. Spread where the host builds its hints.
+ */
+export function dataCompletenessFields(
+    complete?: boolean | null,
+    withheld?: number | null,
+    filteredOut?: number | null,
+): DataCompletenessFields {
+    const count = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
+    return {
+        ...(typeof complete === "boolean" ? { dataComplete: complete } : {}),
+        ...(count(withheld) ? { rowsWithheld: withheld } : {}),
+        ...(count(filteredOut) ? { rowsFilteredOut: filteredOut } : {}),
+    };
+}
+
 /** The order of the "what fits" list: by how well each type suits the data, or by the picker's selection order. */
 export type QualifyOrder = "fit" | "variety";
 

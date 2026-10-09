@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
-    retryFields, leafCardinalityField, shortlistIsStale, offeredShortlistFor, qualifyOrderOf, qualifyOrderField, QUALIFY_ORDER_LABELS,
+    retryFields, leafCardinalityField, dataCompletenessFields, shortlistIsStale, offeredShortlistFor, qualifyOrderOf, qualifyOrderField, QUALIFY_ORDER_LABELS,
     type ViewportSource, type CredentialSource, type RendererId,
 } from "../src/index";
 
@@ -402,6 +402,46 @@ describe("leafCardinalityField - a leaf count is sent only when it is one", () =
 
     it("spreads at the host's own position", () => {
         expect(JSON.stringify({ rowCount: 5, ...leafCardinalityField(3), next: true })).toBe('{"rowCount":5,"leafCardinality":3,"next":true}');
+    });
+});
+
+describe("dataCompletenessFields - what the host knows about whether every row arrived", () => {
+    it("states a cut as complete=false with the rows it left out", () => {
+        expect(dataCompletenessFields(false, 25)).toEqual({ dataComplete: false, rowsWithheld: 25 });
+    });
+
+    it("states a whole load as complete=true and nothing else", () => {
+        expect(dataCompletenessFields(true)).toEqual({ dataComplete: true });
+        expect(dataCompletenessFields(true, 0, 0)).toEqual({ dataComplete: true });
+    });
+
+    it("an unknown is NOT a yes: nothing known sends no field at all", () => {
+        for (const c of [undefined, null]) {
+            expect(dataCompletenessFields(c as any), String(c)).toEqual({});
+            expect(JSON.stringify({ a: 1, ...dataCompletenessFields(c as any), b: 2 })).toBe('{"a":1,"b":2}');
+        }
+        expect(dataCompletenessFields()).toEqual({});
+    });
+
+    it("a count is sent only when it is a whole number above zero", () => {
+        for (const n of [0, -3, 2.5, Number.NaN, Number.POSITIVE_INFINITY, null, undefined, "12" as any]) {
+            expect(dataCompletenessFields(false, n as any), String(n)).toEqual({ dataComplete: false });
+            expect(dataCompletenessFields(undefined, undefined, n as any), String(n)).toEqual({});
+        }
+    });
+
+    it("the rows a sheet filter hides ride apart from the rows a cut withheld", () => {
+        expect(dataCompletenessFields(true, undefined, 40)).toEqual({ dataComplete: true, rowsFilteredOut: 40 });
+        expect(dataCompletenessFields(false, 7, 40)).toEqual({ dataComplete: false, rowsWithheld: 7, rowsFilteredOut: 40 });
+    });
+
+    it("only a boolean is a completeness statement", () => {
+        for (const v of [0, 1, "true", "false", {}, []]) expect(dataCompletenessFields(v as any), String(v)).toEqual({});
+    });
+
+    it("spreads at the host's own position, in a fixed field order", () => {
+        expect(JSON.stringify({ rowCount: 5, ...dataCompletenessFields(false, 25, 3), next: true }))
+            .toBe('{"rowCount":5,"dataComplete":false,"rowsWithheld":25,"rowsFilteredOut":3,"next":true}');
     });
 });
 

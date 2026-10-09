@@ -21,7 +21,15 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.14.0";
+export const HOST_CONTRACT_VERSION = "1.15.0";
+// 1.15.0 (2026-10-09): WHETHER EVERY ROW ARRIVED. RenderOptions gains dataComplete, rowsWithheld and
+// rowsFilteredOut, host facts about the rows it handed over. dataComplete is false when rows the reader did
+// not choose to remove never reached the chart (a row cap, a stalled load, a host memory ceiling, a query
+// limit), true when none were cut, and ABSENT when the host does not know: absent is never true.
+// rowsWithheld is how many rows such a cut left out, present only when exact; rowsFilteredOut is how many
+// rows the reader's own filter hides inside the bound range, kept apart so it never reads as a cut. A chart
+// that draws "only in this set" or a total can say its figures describe the rows that arrived. Additive:
+// resolveOptions passes all three through untouched, and a chart that never reads them is unaffected.
 // 1.14.0 (2026-10-07): A DECLARED SELECTION RULE. SELECTION_RULE_ATTR on an element the chart draws,
 // with the value SELECTION_RULE_CLICKED_MARKS, says a selection lights exactly the marks the reader
 // clicked (named by MARK_KEY_ATTR, else by their data-row-idx) and dims every other mark, even one
@@ -460,6 +468,18 @@ export interface RenderOptions {
     // serialising (contract 1.9.0). Absent means "not known": a chart or a date shim may still see a
     // date at the reader's local midnight and should treat it as the day it names.
     dateCellsAreUtcDays?: boolean;
+    // WHETHER EVERY ROW ARRIVED (contract 1.15.0). Host facts about the rows it handed over, never
+    // option-pane knobs. `dataComplete` is false when rows the READER did not choose to remove never
+    // reached the chart - a row cap, a stalled load, a host memory ceiling, a query limit - and true when
+    // none were cut. A filter the reader applied (a slicer, a sheet filter) is their view of the data, not
+    // a cut, and does not lower it. ABSENT MEANS UNKNOWN, never true: a chart that draws "only in this set"
+    // or a total may say its figures describe the rows that arrived, and must not claim completeness it
+    // was not told. `rowsWithheld` is how many rows a cut left out, present only when the host knows the
+    // exact number. `rowsFilteredOut` is how many rows the reader's own filter hides inside the bound range
+    // (the spreadsheet host's hidden rows); a chart may caption it, and it never counts as a cut.
+    dataComplete?: boolean;
+    rowsWithheld?: number;
+    rowsFilteredOut?: number;
     geoPointDest?: {
         precision: GeoPointPrecision | null;
         precisionCounts: Record<GeoPointPrecision, number>;

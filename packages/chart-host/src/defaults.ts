@@ -68,6 +68,11 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         geoPointDest: p.geoPointDest,
         // A host FACT about the data it serialised (contract 1.9.0), passed through untouched.
         dateCellsAreUtcDays: p.dateCellsAreUtcDays,
+        // Host FACTS about whether every row arrived (contract 1.15.0), passed through untouched: an
+        // absent flag means the host does not know, and must stay absent rather than become true.
+        dataComplete: p.dataComplete,
+        rowsWithheld: p.rowsWithheld,
+        rowsFilteredOut: p.rowsFilteredOut,
         // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
         // undefined, and every map chart then fell back to whatever number its own code carried -
         // 1000 in every archetype written so far - while the offer gate used the server's. One

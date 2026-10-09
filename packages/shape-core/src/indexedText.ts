@@ -29,6 +29,7 @@ import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggN
 import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence } from "./cadence";
 import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
+import { measureTwoSetPairing } from "./twoSetPairing";
 
 // ============================================================================
 // ValueNature classification (Continuous / Ordinal / Categorical)
@@ -1462,10 +1463,42 @@ export class IndexedText implements IValueCollection {
             }
         }
 
+        this.applyTwoSetPairing(locale, colValueSets);
+
         this.applySeriesCompleteness(pl, locale, colValueSets);
 
         this._computedStatsForLevel = privacyLevel;
         return this._cols;
+    }
+
+    // TWO-SET PAIRING pass (2026-10-09). Does the table hold the same records twice, once per set - see
+    // twoSetPairing.ts. Its OWN row pass, because the signals it could have borrowed from stop short of a
+    // key: colValueSets is null for a measure and for any column over 2,000 distinct values, and the
+    // categorical-pair pass skips anything over 50.
+    //
+    // It reads structure and values only, never the privacy level, so a tighter tier changes nothing about
+    // whether it is found. The key and the discriminator carry the SAME object.
+    private applyTwoSetPairing(locale: string | undefined, colValueSets: (Set<string> | null)[]): void {
+        // A second call at another tier re-measures; a descriptor from the last one must not survive it.
+        for (const c of this._cols) if (c.twoSetPairing !== undefined) delete c.twoSetPairing;
+        const found = measureTwoSetPairing({
+            rows: this._rows,
+            columns: this._cols.map((c, i) => {
+                const values = colValueSets[i];
+                return {
+                    name: c.name, values,
+                    distinct: values ? values.size : (c.distinctCount ?? 0),
+                    isMeasure: !!c.isMeasure, isTemporal: !!c.isTemporal, isDatePart: !!c.isDatePart,
+                    identifierNamed: isIdentifierName(c.name),
+                    temporalTextPattern: c.temporalTextPattern,
+                };
+            }),
+            text: v => this.STR(v),
+            locale,
+        });
+        if (!found) return;
+        this._cols[found.key].twoSetPairing = found.pairing;
+        this._cols[found.discriminator].twoSetPairing = found.pairing;
     }
 
     // PER-SERIES COMPLETENESS pass (2026-09-24). Which series of each time axis miss periods the

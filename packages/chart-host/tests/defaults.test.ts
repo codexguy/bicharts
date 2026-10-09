@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { resolveOptions } from "../src/defaults";
 import { RenderOptions, MAX_MAP_POINTS_DEFAULT, ANIMATION_OPTION_KEYS } from "../src/contract";
+import { OPTIONS_VOCABULARY } from "../src/optionsVocabulary";
 
 // BYTE-COMPARE lock: resolveOptions must reproduce EXACTLY the normalization that was
 // inline in the visual's option assembly, so routing the visual through it is
@@ -426,5 +427,50 @@ describe("ANIMATION_OPTION_KEYS: the one list of animation knobs", () => {
         const animFields = [...body.matchAll(/^ {4}((?:anim[A-Z][A-Za-z0-9]*)|filtersDuringPlay)\??\s*:/gm)].map(m => m[1]);
         expect(animFields.length).toBeGreaterThanOrEqual(7);
         expect([...animFields].sort()).toEqual([...ANIMATION_OPTION_KEYS].sort());
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// WHETHER EVERY ROW ARRIVED (contract 1.15.0). The host knows whether it cut the rows it handed over
+// - a row cap, a stalled load, a query limit - and a chart that draws "only in this set" or a total
+// must be able to say so. These are host FACTS, passed through exactly as supplied, and ABSENT MEANS
+// UNKNOWN: coercing a missing flag to true would call a cut table whole.
+// ---------------------------------------------------------------------------------------------
+describe("resolveOptions - the data-completeness facts", () => {
+    const base = { width: 1, height: 1, palette: [] as string[] };
+    const FIELDS = ["dataComplete", "rowsWithheld", "rowsFilteredOut"] as const;
+
+    it("a cut arrives as stated: complete=false, the rows it left out, the rows a filter hides", () => {
+        const o = resolveOptions({ ...base, dataComplete: false, rowsWithheld: 25, rowsFilteredOut: 3 });
+        expect(o.dataComplete).toBe(false);
+        expect(o.rowsWithheld).toBe(25);
+        expect(o.rowsFilteredOut).toBe(3);
+    });
+
+    it("a whole load stays true, and a count is never defaulted, clamped or rounded", () => {
+        const o = resolveOptions({ ...base, dataComplete: true });
+        expect(o.dataComplete).toBe(true);
+        expect(o.rowsWithheld).toBeUndefined();
+        expect(resolveOptions({ ...base, rowsWithheld: 0, rowsFilteredOut: 2.5 }).rowsWithheld).toBe(0);
+        expect(resolveOptions({ ...base, rowsFilteredOut: 2.5 }).rowsFilteredOut).toBe(2.5);
+    });
+
+    it("absent stays undefined - unknown is never turned into true - and the keys exist", () => {
+        const o = resolveOptions(base) as Record<string, unknown>;
+        for (const f of FIELDS) {
+            expect(f in o, `${f} is a key of the result`).toBe(true);
+            expect(o[f], f).toBeUndefined();
+        }
+        expect(resolveOptions({ ...base, dataComplete: undefined }).dataComplete).toBeUndefined();
+        expect(resolveOptions({ ...base, dataComplete: null as any }).dataComplete).toBeNull();
+    });
+
+    it("are declared on RenderOptions as optional host facts, and are not option-pane knobs", () => {
+        const s = fs.readFileSync(new URL("../src/contract.ts", import.meta.url), "utf8");
+        const body = s.slice(s.indexOf("export interface RenderOptions {")).split(/\n\}/)[0];
+        expect(body).toMatch(/^ {4}dataComplete\?: boolean;/m);
+        expect(body).toMatch(/^ {4}rowsWithheld\?: number;/m);
+        expect(body).toMatch(/^ {4}rowsFilteredOut\?: number;/m);
+        for (const f of FIELDS) expect(Object.keys(OPTIONS_VOCABULARY), `${f} is a fact, not a knob`).not.toContain(f);
     });
 });

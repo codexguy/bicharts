@@ -24,6 +24,56 @@ export type VegaRendererPayload =
         configSpec?: string
     }
 
+/**
+ * TWO-SET PAIRING, long form (2026-10-09): the table holds the SAME RECORDS TWICE, once per set, and one
+ * column identifies the record. `key` names that column and `discriminator` names the column with exactly
+ * two non-blank values that says which set a row belongs to; both columns carry this one object.
+ *
+ * Counts, one integer percentage, two column names and an enum - never a value - so it ships at every
+ * privacy tier. A = the discriminator's FIRST value in `setOrder`; B = the other.
+ *
+ * Measured on the rows the engine holds. The visual and the chart MCP collapse byte-for-byte duplicate
+ * rows before the engine sees them, so a row repeated exactly inside one set is invisible to the
+ * duplicate counts; a key repeated with ANY differing value is counted.
+ */
+export type TwoSetPairing =
+    {
+        /** "wide" is reserved for the chart's own build. */
+        form: "long",
+        key: string,
+        discriminator: string,
+        /** Distinct keys present in set A / set B / both sets. A row with a blank key joins no key. */
+        keysA: number,
+        keysB: number,
+        keysBoth: number,
+        /** Keys appearing in two or more rows of that set. > 0 means the key is NOT unique per record. */
+        duplicateKeysA: number,
+        duplicateKeysB: number,
+        /**
+         * Integer 0-100: the share of `keysBoth` whose every COMPARED field is equal (every column but the
+         * key and the discriminator). Text is compared on the trimmed cell, numbers as numbers and exactly,
+         * a blank equals a blank. A key repeated inside a set is compared by its first row there. 100 only
+         * when every key in both sets is identical, and 0 only when none is, however the share rounds.
+         */
+        identicalPct: number,
+        /** Rows whose discriminator cell is blank: they belong to neither set (never a third set). */
+        discriminatorBlankRows: number,
+        /**
+         * Keys of that set that merge with another key of the SAME set under `looseNameKey` (case,
+         * punctuation and accents ignored), counted as the keys involved. A loose form under four characters
+         * is a code and is never merged.
+         */
+        looseCollisionsA: number,
+        looseCollisionsB: number,
+        /**
+         * How A was chosen. "temporal": the discriminator is a time column whose two values read as calendar
+         * points, and A is the earlier. "none": A is the alphabetically first value (UTF-16 order of the
+         * cell text), the fallback for any other column and for a time column whose values do not read as
+         * calendar points ("Jan" / "Feb" alone carry no year, so they order as text).
+         */
+        setOrder: "temporal" | "none",
+    }
+
 export type LLMColumnWithValue =
     {
         name: string,
@@ -319,6 +369,13 @@ export type LLMColumnWithValue =
         // aggregate over three or more columns. No single value is recoverable from a total
         // that at least three columns contributed to.
         constantSumGroup?: { columns: string[], total: number, matchedPct: number }
+        // TWO-SET PAIRING (2026-10-09), non-measure columns only: the table holds the same records
+        // twice, once per set (a customer master in two snapshots, a ledger as budget and actual). The
+        // KEY column and the DISCRIMINATOR column carry the same object, like constantSumGroup's
+        // members, so a consumer reads it off whichever column it holds and no host plumbs it.
+        // Absent when no key/set pair has a key in both sets, above 500,000 rows, and on a client that
+        // predates it - so absence is never evidence the table is not two-set. Full contract on the type.
+        twoSetPairing?: TwoSetPairing
         // GROUP-DISCRIMINATION statistics (2026-06-19), measure columns only.
         // relativeDispersion = (p90-p10)/|median| over the non-blank values, linearly
         // interpolated quantiles; exactly 0 when every value is identical; ABSENT below
@@ -455,6 +512,15 @@ export type LLMClientHints =
         // Distinct count of the non-measure dimension tuple (leaf grain). Lets the server
         // decide deterministically whether an implicit row count aggregates or is degenerate.
         leafCardinality?: number,
+        // WHETHER EVERY ROW ARRIVED (2026-10-09), each stated by the host only when it knows it.
+        // dataComplete: false = rows the reader did NOT choose to remove never reached the chart (a row
+        // cap, a stalled load, a host memory ceiling, a query limit); true = none were cut. A reader's
+        // own filter is a view, not a cut. ABSENT MEANS UNKNOWN, never true. rowsWithheld: how many rows
+        // the cut left out, sent only when exact. rowsFilteredOut: rows the reader's own filter hides
+        // inside the bound range - kept apart so it never reads as a cut. Built by dataCompletenessFields.
+        dataComplete?: boolean,
+        rowsWithheld?: number,
+        rowsFilteredOut?: number,
         randomSeed?: number,
         favorTitle?: string,           // "", "1", "0"
         legendPlacement?: string,      // "", "outside", "inside"

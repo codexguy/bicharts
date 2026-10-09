@@ -66,4 +66,11 @@ describe("host contract version stamp", () => {
         mount({ hostContract: bump(HOST_CONTRACT_VERSION, 1) });
         expect(container.querySelectorAll(".d3-mark")).toHaveLength(1);
     });
+
+    it("the data-completeness options are announced by the version that adds them (1.15.0)", () => {
+        // A host that reads the stamp learns that options.dataComplete / rowsWithheld / rowsFilteredOut
+        // can be present; a chart generated against an older stamp must not assume they are.
+        const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(maj > 1 || (maj === 1 && min >= 15)).toBe(true);
+    });
 });
