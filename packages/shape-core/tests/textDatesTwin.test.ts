@@ -53,7 +53,8 @@ interface Twin {
     decimal: string;
     date: (y: number, m: number, d: number) => string;
     /** True when the written order of the fields cannot be told from the values alone (a day over
-     *  12 is the only thing that can tell it), so the no-locale reading is the one to pin. */
+     *  12 is the only thing that can tell it), so the no-locale reading is the one to pin. A dotted
+     *  date is not one: its separator says day first, so it carries its order like a year first. */
     numericOrder: boolean;
 }
 
@@ -61,12 +62,12 @@ const TWINS: Twin[] = [
     { label: "en-US 03/15/2024", locale: "en-US", group: ",", decimal: ".", numericOrder: true, date: (y, m, d) => `${p2(m)}/${p2(d)}/${y}` },
     { label: "en-US 3/15/2024", locale: "en-US", group: ",", decimal: ".", numericOrder: true, date: (y, m, d) => `${m}/${d}/${y}` },
     { label: "en-GB 15/03/2024", locale: "en-GB", group: ",", decimal: ".", numericOrder: true, date: (y, m, d) => `${p2(d)}/${p2(m)}/${y}` },
-    { label: "de 15.03.2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
-    { label: "de 15.3.2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${d}.${m}.${y}` },
+    { label: "de 15.03.2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: false, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
+    { label: "de 15.3.2024", locale: "de-DE", group: ".", decimal: ",", numericOrder: false, date: (y, m, d) => `${d}.${m}.${y}` },
     { label: "fr 15/03/2024", locale: "fr-FR", group: "\u202f", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}/${p2(m)}/${y}` },
     { label: "es 15/3/2024", locale: "es-ES", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${d}/${m}/${y}` },
     { label: "nl 15-03-2024", locale: "nl-NL", group: ".", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}-${p2(m)}-${y}` },
-    { label: "ru 15.03.2024", locale: "ru-RU", group: "\u00a0", decimal: ",", numericOrder: true, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
+    { label: "ru 15.03.2024", locale: "ru-RU", group: "\u00a0", decimal: ",", numericOrder: false, date: (y, m, d) => `${p2(d)}.${p2(m)}.${y}` },
     { label: "ja 2024/03/15", locale: "ja-JP", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${y}/${p2(m)}/${p2(d)}` },
     { label: "ja 2024/3/15", locale: "ja-JP", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${y}/${m}/${d}` },
     { label: "ja 2024年3月15日", locale: "ja-JP", group: ",", decimal: ".", numericOrder: false, date: (y, m, d) => `${y}年${m}月${d}日` },
@@ -147,12 +148,15 @@ describe("with no locale, a column whose values settle the reading still profile
 });
 
 describe("an all-ambiguous numeric column and no locale", () => {
-    // PINNED, and green before the reader: when no value is over 12 and the host named no locale,
-    // the reading is month first, which is what the default locale (en) has always meant. A host
-    // that knows its reader's locale passes it, and the table above shows that reading true.
+    // PINNED, and green before the reader: when no value is over 12, the separator is a slash or a
+    // dash, and the host named no locale, the reading is month first, which is what the default
+    // locale (en) has always meant. A host that knows its reader's locale passes it, and the table
+    // above shows that reading true. (A DOTTED date is not in this pin: it reads day first.)
     it("reads month first", () => {
-        const got = run(TWINS.find(t => t.label === "de 15.03.2024")!, SET_B);
-        expect(got.rows[0].Date.toISOString().slice(0, 10)).toBe("2024-05-01");
+        for (const label of ["en-GB 15/03/2024", "es 15/3/2024", "nl 15-03-2024"]) {
+            const got = run(TWINS.find(t => t.label === label)!, SET_B);
+            expect(got.rows[0].Date.toISOString().slice(0, 10), label).toBe("2024-05-01");
+        }
     });
 });
 

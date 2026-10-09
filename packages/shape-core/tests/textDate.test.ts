@@ -425,7 +425,8 @@ describe("detectTextDatePattern knows the shapes the reader knows", () => {
     it("a hyphen date that is not zero-padded, and spaced or dot-closed day-first dates", () => {
         expect(detectTextDatePattern(["2024-3-5", "2024-3-6", "2024-4-7"])?.pattern).toBe("%Y-%m-%d");
         expect(detectTextDatePattern(["15. 3. 2024", "16. 3. 2024"], "de-DE")).toEqual({ pattern: "%d. %m. %Y", orderFrom: "values" });
-        expect(detectTextDatePattern(["01. 02. 2024", "03. 04. 2024"], "en-US")).toEqual({ pattern: "%m. %d. %Y", orderFrom: "locale" });
+        // A dotted date is day first in every locale: the dot is the day-first countries' separator.
+        expect(detectTextDatePattern(["01. 02. 2024", "03. 04. 2024"], "en-US")).toEqual({ pattern: "%d. %m. %Y", orderFrom: "shape" });
         expect(detectTextDatePattern(["15.03.2024.", "16.03.2024."])?.pattern).toBe("%d.%m.%Y.");
     });
 
