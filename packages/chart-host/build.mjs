@@ -81,6 +81,9 @@ const result = await build({
         "view-state": join(here, "src/viewState.ts"),
         // The renderer adapter interface and the D3 binding; nothing in the core consumes them yet (off the main entry).
         adapters: join(here, "src/adapters/index.ts"),
+        // The post-render passes that keep a drawn chart readable inside its frame (slide a legend off the plot, thin
+        // colliding tick labels, extend the viewBox, fit the labels it cannot rescue); off the main entry (its eager budget).
+        "legend-fit": join(here, "src/legendFit/index.ts"),
     },
     bundle: true,
     splitting: true,

@@ -59,6 +59,11 @@
       "import": "./dist/adapters.mjs",
       "default": "./dist/adapters.mjs"
     },
+    "./legend-fit": {
+      "types": "./dist/types/legendFit/index.d.ts",
+      "import": "./dist/legend-fit.mjs",
+      "default": "./dist/legend-fit.mjs"
+    },
     "./dax": {
       "types": "./dist/types/dax.d.ts",
       "import": "./dist/dax.mjs",
