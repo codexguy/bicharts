@@ -241,6 +241,19 @@ describe("every supported language's own long and short dates, from the runtime'
     });
 });
 
+describe("a Solar Hijri or Hijri year is not the same year of the Gregorian calendar", () => {
+    // 1404 is 2025 and 1446 is 2024. A reader that took 1404 for the year 1404 would draw a date six
+    // centuries early, flawlessly; the column is left as text instead.
+    it("a column whose every year is 1300-1500 is left as text", () => {
+        expect(read(["1404/01/15", "1404/02/20"])).toBeNull();
+        expect(read(["15/01/1446", "20/02/1446"], "ar-SA")).toBeNull();
+    });
+
+    it("one year in the window beside an ordinary one is an ordinary column", () => {
+        expect(read(["15/01/1404", "20/02/2024"], "en-GB")).toEqual(["1404-01-15", "2024-02-20"]);
+    });
+});
+
 describe("the Buddhist calendar is not the year 2567", () => {
     it("a column whose every year is 2400-2699 is left as text", () => {
         expect(read(["15/03/2567", "16/03/2567"], "th-TH")).toBeNull();

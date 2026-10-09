@@ -290,10 +290,12 @@ export function readTextDateColumn(values: Iterable<unknown>, opts: { locale?: s
         highYear = Math.max(highYear, f[0]);
     }
     if (!strict && (perKey.get(key)! - impossible) / nonblank < (opts.floor as number)) return null;
-    // A column whose every year is 2400-2699 is the Thai Buddhist calendar (2567 is 2024), not the
-    // year 2567. Read as Gregorian it would be a date 543 years off, drawn without a flaw; left as
-    // text it is at least left alone. No ordinary business column lives wholly in those centuries.
-    if (lowYear >= 2400 && highYear <= 2699) return null;
+    // A column whose every year is 2400-2699 is the Thai Buddhist calendar (2567 is 2024), and one
+    // whose every year is 1300-1500 is a Solar Hijri or Hijri calendar (1404 is 2025, 1446 is 2024),
+    // not those years of the Gregorian one. Read as Gregorian each would be a date centuries off,
+    // drawn without a flaw; left as text it is at least left alone. No ordinary business column
+    // lives wholly in either window.
+    if ((lowYear >= 2400 && highYear <= 2699) || (lowYear >= 1300 && highYear <= 1500)) return null;
 
     const column: TextDateColumn = {
         form: first.form,
