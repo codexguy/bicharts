@@ -17,6 +17,7 @@ import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } fr
 
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, normalizeMonthKey } from "./monthNames";
+import { monthFirstLocale } from "./textDate";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
 import { nameLetterRuns, foldName } from "./nameReader";
@@ -157,15 +158,6 @@ function isYyyymmdd(v: number): boolean {
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?Z?)?$/;
 const YMD_SLASH_RE = /^(\d{4})([\/.])(\d{1,2})\2(\d{1,2})$/;
 const DMY_OR_MDY_RE = /^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
-
-function monthFirstLocale(locale?: string): boolean {
-    // The month-first convention is, in practice, the United States (and a few of its
-    // neighbours that follow its forms). Everything else - including en-GB, en-AU, en-IN,
-    // every es-*, every de-*, fr-*, pt-* - reads day first. A missing locale is read as
-    // day first because most of the world is.
-    const l = (locale || "").toLowerCase();
-    return l === "en-us" || l === "en" || l.startsWith("en-us-") || l === "en-ph" || l === "en-bz";
-}
 
 export interface TextDateDetection {
     /** strptime / d3.timeParse specifier, e.g. "%d/%m/%Y". */

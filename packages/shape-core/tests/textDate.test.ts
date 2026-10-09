@@ -1,0 +1,375 @@
+import { describe, expect, it } from "vitest";
+import { monthFirstLocale, readTextDateColumn } from "../src/textDate";
+import { monthWordReadings, readMonthWords } from "../src/monthNames";
+
+// THE TEXT-DATE READER, ONE SHAPE AT A TIME. The twin tests prove a whole CSV profiles like its ISO
+// twin; this table proves each shape on its own, and every REFUSAL: a reader that reads too much turns
+// labels into dates, which is worse than reading too little.
+
+const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+const stamp = (d: Date | null) => (d ? d.toISOString() : null);
+
+/** The days a column reads as, or null when the column is not read. */
+function read(values: string[], locale?: string): (string | null)[] | null {
+    const col = readTextDateColumn(values, { locale });
+    return col ? values.map(v => day(col.read(v))) : null;
+}
+
+describe("a year that comes first carries its own order", () => {
+    const cases: Array<[string, string[], string[], string]> = [
+        ["slashes", ["2024/03/15", "2024/3/5"], ["2024-03-15", "2024-03-05"], "%Y/%m/%d"],
+        ["dots, zero-padded", ["2024.03.15", "2024.04.01"], ["2024-03-15", "2024-04-01"], "%Y.%m.%d"],
+        ["dots with a closing dot", ["2024.3.15.", "2024.4.1."], ["2024-03-15", "2024-04-01"], "%Y.%m.%d."],
+        ["dots and spaces and a closing dot", ["2024. 3. 15.", "2024. 12. 1."], ["2024-03-15", "2024-12-01"], "%Y. %m. %d."],
+        ["hyphens that are not zero-padded", ["2024-3-15", "2024-4-1"], ["2024-03-15", "2024-04-01"], "%Y-%m-%d"],
+        ["a time of day on every value", ["2024/03/15 10:30", "2024/03/16 18:05"], ["2024-03-15", "2024-03-16"], "%Y/%m/%d %H:%M"],
+    ];
+    for (const [label, values, expected, pattern] of cases) {
+        it(`${label}: ${values[0]}`, () => {
+            const col = readTextDateColumn(values)!;
+            expect(col.order).toBe("ymd");
+            expect(col.orderFrom).toBe("shape");
+            expect(values.map(v => day(col.read(v)))).toEqual(expected);
+            expect(col.pattern).toBe(pattern);
+        });
+    }
+
+    it("is the same in every locale", () => {
+        for (const locale of ["en-US", "de-DE", "ja-JP", undefined]) {
+            expect(read(["2024/01/02", "2024/02/03"], locale)).toEqual(["2024-01-02", "2024-02-03"]);
+        }
+    });
+});
+
+describe("a/b/yyyy: the values decide, then the locale", () => {
+    it("a first field over 12 is a day, whatever the locale says", () => {
+        const col = readTextDateColumn(["15/03/2024", "02/04/2024", "28/02/2024"], { locale: "en-US" })!;
+        expect(col.order).toBe("dmy");
+        expect(col.orderFrom).toBe("values");
+        expect(col.pattern).toBe("%d/%m/%Y");
+    });
+
+    it("a second field over 12 is a day, whatever the locale says", () => {
+        const col = readTextDateColumn(["03/15/2024", "04/02/2024"], { locale: "es-ES" })!;
+        expect(col.order).toBe("mdy");
+        expect(col.orderFrom).toBe("values");
+        expect(read(["03/15/2024", "04/02/2024"], "es-ES")).toEqual(["2024-03-15", "2024-04-02"]);
+    });
+
+    it("values that claim both orders are not one date column", () => {
+        expect(readTextDateColumn(["15/03/2024", "03/15/2024"])).toBeNull();
+    });
+
+    it("when no value decides, the locale does: month first only for the United States family", () => {
+        const ambiguous = ["01/02/2024", "03/04/2024", "05/06/2024"];
+        const first = (locale?: string) => read(ambiguous, locale)![0];
+        expect(first("en-US")).toBe("2024-01-02");
+        expect(first("en")).toBe("2024-01-02");
+        expect(first("en-GB")).toBe("2024-02-01");
+        expect(first("de-DE")).toBe("2024-02-01");
+        expect(first("es-MX")).toBe("2024-02-01");
+        expect(first("fr")).toBe("2024-02-01");
+        expect(first("ja-JP")).toBe("2024-02-01");
+        // The reader's own default, with no locale at all, is day first (the engine passes `en`).
+        expect(first(undefined)).toBe("2024-02-01");
+        expect(readTextDateColumn(ambiguous, { locale: "de-DE" })!.orderFrom).toBe("locale");
+    });
+
+    it("the separator is kept in the pattern: dots and dashes are not rewritten to slashes", () => {
+        expect(readTextDateColumn(["15.03.2024", "16.03.2024"])!.pattern).toBe("%d.%m.%Y");
+        expect(readTextDateColumn(["15-03-2024", "16-03-2024"])!.pattern).toBe("%d-%m-%Y");
+        expect(readTextDateColumn(["15. 3. 2024", "16. 3. 2024"])!.pattern).toBe("%d. %m. %Y");
+        expect(readTextDateColumn(["15.03.2024.", "16.03.2024."])!.pattern).toBe("%d.%m.%Y.");
+    });
+
+    it("one-digit and two-digit fields mix", () => {
+        expect(read(["5.1.2024", "15.01.2024"], "de-DE")).toEqual(["2024-01-05", "2024-01-15"]);
+    });
+
+    it("a leap day exists in a leap year only", () => {
+        expect(read(["29.02.2024", "01.03.2024"])).toEqual(["2024-02-29", "2024-03-01"]);
+        expect(read(["29.02.2023", "01.03.2023"])).toBeNull();
+        expect(read(["29.02.2100", "01.03.2100"])).toBeNull();
+        expect(read(["29.02.2000", "01.03.2000"])).toEqual(["2000-02-29", "2000-03-01"]);
+    });
+
+    it("reads in UTC: the instant does not depend on the machine's zone", () => {
+        const col = readTextDateColumn(["15.03.2024", "16.03.2024"])!;
+        expect(stamp(col.read("15.03.2024"))).toBe("2024-03-15T00:00:00.000Z");
+    });
+});
+
+describe("a time of day", () => {
+    it("24-hour times, with or without seconds, are a UTC wall clock", () => {
+        const col = readTextDateColumn(["15.03.2024 10:30", "16.03.2024 11:45:12"])!;
+        expect(col.hasTime).toBe(true);
+        expect(stamp(col.read("15.03.2024 10:30"))).toBe("2024-03-15T10:30:00.000Z");
+        expect(stamp(col.read("16.03.2024 11:45:12"))).toBe("2024-03-16T11:45:12.000Z");
+    });
+
+    it("the pattern names the clock only when every value carries it, and seconds only when all do", () => {
+        expect(readTextDateColumn(["15.03.2024 10:30", "16.03.2024 11:45"])!.pattern).toBe("%d.%m.%Y %H:%M");
+        expect(readTextDateColumn(["15.03.2024 10:30:00", "16.03.2024 11:45:12"])!.pattern).toBe("%d.%m.%Y %H:%M:%S");
+        expect(readTextDateColumn(["15.03.2024 10:30:00", "16.03.2024 11:45"])!.pattern).toBe("%d.%m.%Y %H:%M");
+        expect(readTextDateColumn(["15.03.2024 10:30", "16.03.2024"])!.pattern).toBeUndefined();
+    });
+
+    it("12-hour clocks: midnight and noon are the edges", () => {
+        const values = ["3/15/2024 12:00 AM", "3/15/2024 12:30 PM", "3/15/2024 1:05 PM", "3/15/2024 11:59 pm"];
+        const col = readTextDateColumn(values, { locale: "en-US" })!;
+        expect(values.map(v => stamp(col.read(v)))).toEqual([
+            "2024-03-15T00:00:00.000Z", "2024-03-15T12:30:00.000Z", "2024-03-15T13:05:00.000Z", "2024-03-15T23:59:00.000Z",
+        ]);
+        expect(col.pattern).toBeUndefined();
+    });
+
+    it("refuses a clock that does not exist", () => {
+        expect(read(["15.03.2024 24:00", "16.03.2024 10:00"])).toBeNull();
+        expect(read(["15.03.2024 10:60", "16.03.2024 10:00"])).toBeNull();
+        expect(read(["3/15/2024 13:00 PM", "3/16/2024 1:00 PM"], "en-US")).toBeNull();
+        expect(read(["3/15/2024 0:30 AM", "3/16/2024 1:00 PM"], "en-US")).toBeNull();
+    });
+});
+
+describe("a month in words", () => {
+    const march5 = "2024-03-05";
+    // Hand-written, one language each. The three orders: day month year, month day year, year month day.
+    const cases: Array<[string, string]> = [
+        ["5 March 2024", "en"], ["March 5, 2024", "en"], ["Mar 5, 2024", "en"], ["5-Mar-2024", "en"], ["5 Mar 2024", "en"],
+        ["March 5th, 2024", "en"], ["5th March 2024", "en"], ["Mar. 5, 2024", "en"], ["MARCH 5 2024", "en"], ["2024 Mar 5", "en"],
+        ["5. März 2024", "de"], ["5 maart 2024", "nl"], ["5 mars 2024", "fr"], ["5 de marzo de 2024", "es"],
+        ["5 de março de 2024", "pt"], ["5 marzo 2024", "it"], ["5 marca 2024", "pl"], ["5. března 2024", "cs"],
+        ["5 mars 2024", "sv"], ["5. marts 2024", "da"], ["5. maaliskuuta 2024", "fi"], ["2024. március 5.", "hu"],
+        ["5 Mart 2024", "tr"], ["5 martie 2024", "ro"], ["5. ožujka 2024.", "hr"], ["5 Maret 2024", "id"],
+        ["5 марта 2024 г.", "ru"], ["5 березня 2024 р.", "uk"], ["5 Μαρτίου 2024", "el"], ["5 مارس 2024", "ar"],
+        ["5 मार्च 2024", "hi"],
+    ];
+    for (const [text, lang] of cases) {
+        it(`${lang}: ${text}`, () => {
+            const col = readTextDateColumn([text])!;
+            expect(col, "should read").not.toBeNull();
+            expect(col.form).toBe("named");
+            expect(day(col.read(text))).toBe(march5);
+        });
+    }
+
+    it("the order is the order the words are written in, and needs no locale", () => {
+        expect(readTextDateColumn(["5 March 2024"])!.order).toBe("dmy");
+        expect(readTextDateColumn(["March 5, 2024"])!.order).toBe("mdy");
+        expect(readTextDateColumn(["2024 March 5"])!.order).toBe("ymd");
+        // A day-first locale does not turn `March 5` into the 3rd of May.
+        expect(read(["March 5, 2024", "April 6, 2024"], "de-DE")).toEqual(["2024-03-05", "2024-04-06"]);
+    });
+
+    it("a whole column of one language's months, short and long", () => {
+        const de = ["5. Januar 2024", "5. Februar 2024", "5. März 2024", "5. April 2024", "5. Mai 2024", "5. Juni 2024",
+            "5. Juli 2024", "5. August 2024", "5. September 2024", "5. Oktober 2024", "5. November 2024", "5. Dezember 2024"];
+        expect(read(de)!.map(d => d!.slice(5, 7))).toEqual(["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]);
+        const frShort = ["5 janv. 2024", "5 févr. 2024", "5 mars 2024", "5 avr. 2024", "5 mai 2024", "5 juin 2024",
+            "5 juil. 2024", "5 août 2024", "5 sept. 2024", "5 oct. 2024", "5 nov. 2024", "5 déc. 2024"];
+        expect(read(frShort)!.map(d => d!.slice(5, 7))).toEqual(["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]);
+    });
+
+    it("accents and case are folded: a month exported without its accents is still that month", () => {
+        expect(read(["5 FEVRIER 2024", "6 aout 2024"])).toEqual(["2024-02-05", "2024-08-06"]);
+        expect(read(["5. Marz 2024", "6. Jänner 2024"])).toEqual(["2024-03-05", "2024-01-06"]);
+    });
+
+    it("English wins a collision, and a column is read in ONE language", () => {
+        // `lip` is June in Croatian and July in Polish: a column that is only `lip` has two readings
+        // and no locale to choose between them.
+        expect(read(["5 lip 2024"])).toBeNull();
+        expect(read(["5 lip 2024"], "pl-PL")).toEqual(["2024-07-05"]);
+        expect(read(["5 lip 2024"], "hr-HR")).toEqual(["2024-06-05"]);
+        // An English month beside another language's: the column reads in that language.
+        expect(read(["5 Jan 2024", "5 März 2024"])).toEqual(["2024-01-05", "2024-03-05"]);
+        // Words from two languages that share no table are not one column.
+        expect(read(["5 März 2024", "5 marzo 2024", "5 maart 2024"])).toBeNull();
+        expect(read(["5 März 2024", "5 janvier 2024"])).toBeNull();
+    });
+
+    it("an impossible day is not a date", () => {
+        expect(read(["31 April 2024", "5 May 2024"])).toBeNull();
+        expect(read(["30 February 2024"])).toBeNull();
+        expect(read(["32 March 2024"])).toBeNull();
+    });
+
+    it("a word that is not a month, a two-digit year or a missing field is not a date", () => {
+        expect(read(["5 Marchish 2024"])).toBeNull();
+        expect(read(["5 March 24"])).toBeNull();
+        expect(read(["March 2024"])).toBeNull();
+        expect(read(["5 March"])).toBeNull();
+        expect(read(["Friday 5 March 2024"])).toBeNull();
+        expect(read(["5 Angry 1957", "12 Men 1957"])).toBeNull();
+    });
+
+    it("has no strptime pattern: a specifier cannot name another language's month", () => {
+        expect(readTextDateColumn(["5 March 2024"])!.pattern).toBeUndefined();
+    });
+});
+
+describe("every supported language's own long and short dates, from the runtime's calendar data", () => {
+    // The check that the month table is complete and the reader is not tuned to the hand-written
+    // cases above: ask the runtime to write 5 and 25 of every month in each language, read the whole
+    // column back, with the language's locale and with none. Hebrew writes `in January` as one word
+    // (read), Thai abbreviates with dots inside the word and Vietnamese writes `tháng 3` (neither is
+    // read, and each is left as text rather than guessed at).
+    const languages = ["en-US", "en-GB", "nl", "de", "fr", "es", "pt", "it", "pl", "cs", "sk", "sv", "da", "nb", "fi", "hu",
+        "tr", "ro", "hr", "id", "ru", "uk", "el", "ar", "he", "hi"];
+    for (const lang of languages) {
+        for (const month of ["long", "short"] as const) {
+            it(`${lang} ${month}`, () => {
+                const f = new Intl.DateTimeFormat(`${lang}-u-ca-gregory-nu-latn`, { timeZone: "UTC", day: "numeric", month, year: "numeric" });
+                const values: string[] = [], truth: string[] = [];
+                for (let m = 0; m < 12; m++) {
+                    for (const d of [5, 25]) {
+                        values.push(f.format(new Date(Date.UTC(2024, m, d))));
+                        truth.push(`2024-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+                    }
+                }
+                expect(read(values, lang), "with the locale").toEqual(truth);
+                expect(read(values), "with none").toEqual(truth);
+            });
+        }
+    }
+
+    it("Thai and Vietnamese abbreviations and Vietnamese months are left as text", () => {
+        expect(read(["5 ม.ค. 2024", "25 ม.ค. 2024"])).toBeNull();
+        expect(read(["5 tháng 1, 2024", "25 tháng 1, 2024"])).toBeNull();
+    });
+});
+
+describe("the Buddhist calendar is not the year 2567", () => {
+    it("a column whose every year is 2400-2699 is left as text", () => {
+        expect(read(["15/03/2567", "16/03/2567"], "th-TH")).toBeNull();
+        expect(read(["5 มีนาคม 2567", "6 มีนาคม 2567"])).toBeNull();
+    });
+
+    it("an ordinary far-future or sentinel date among real ones still reads", () => {
+        expect(read(["15/03/2024", "31/12/9999"], "en-GB")).toEqual(["2024-03-15", "9999-12-31"]);
+        expect(read(["15/03/2024", "16/03/2567"], "en-GB")).toEqual(["2024-03-15", "2567-03-16"]);
+    });
+});
+
+describe("the CJK markers", () => {
+    it("Japanese and Chinese: year, month, day", () => {
+        const col = readTextDateColumn(["2024年3月5日", "2024年12月15日"])!;
+        expect(col.form).toBe("cjk");
+        expect(col.pattern).toBe("%Y年%m月%d日");
+        expect(day(col.read("2024年12月15日"))).toBe("2024-12-15");
+    });
+
+    it("Korean, with its spaces", () => {
+        const col = readTextDateColumn(["2024년 3월 5일", "2024년 12월 15일"])!;
+        expect(col.pattern).toBe("%Y년 %m월 %d일");
+        expect(day(col.read("2024년 3월 5일"))).toBe("2024-03-05");
+    });
+
+    it("needs all three markers: a year and a month is a period, not a day", () => {
+        expect(read(["2024年3月", "2024年4月"])).toBeNull();
+        expect(read(["2024년 3월", "2024년 4월"])).toBeNull();
+    });
+
+    it("an impossible day is refused", () => {
+        expect(read(["2024年2月30日"])).toBeNull();
+    });
+});
+
+describe("what the reader leaves alone", () => {
+    it("ISO is the engine's own shape, so it is never claimed here", () => {
+        expect(readTextDateColumn(["2024-03-15", "2024-03-16"])).toBeNull();
+        expect(readTextDateColumn(["2024-03-15T10:30:00Z", "2024-03-16T10:30:00Z"])).toBeNull();
+        expect(readTextDateColumn(["2024-03-15 10:30", "2024-03-16 10:30"])).toBeNull();
+    });
+
+    it("two-digit years", () => {
+        expect(read(["12/05/24", "13/05/24"])).toBeNull();
+        expect(read(["15.03.24", "16.03.24"])).toBeNull();
+    });
+
+    it("a column in two shapes", () => {
+        expect(read(["15.03.2024", "2024.03.16"])).toBeNull();
+        expect(read(["15.03.2024", "16/03/2024"])).toBeNull();
+        expect(read(["15.03.2024", "16 March 2024"])).toBeNull();
+        expect(read(["5 March 2024", "March 6, 2024"])).toBeNull();
+    });
+
+    it("one value that is not a date makes the column not dates, and the label is never read", () => {
+        expect(read(["15.03.2024", "16.03.2024", "Total"])).toBeNull();
+        expect(read(["15.03.2024", "16.03.2024", "31.02.2024"])).toBeNull();
+        expect(read(["15.03.2024", "16.03.2024", "TBD"])).toBeNull();
+    });
+
+    it("typed values: a number or a Date makes the column not this reader's", () => {
+        expect(readTextDateColumn(["15.03.2024", 45366 as any])).toBeNull();
+        expect(readTextDateColumn(["15.03.2024", new Date() as any])).toBeNull();
+    });
+
+    it("blanks are skipped, and a column of blanks is nothing", () => {
+        const col = readTextDateColumn(["15.03.2024", "", null, undefined, "  ", "16.03.2024"])!;
+        expect(day(col.read("16.03.2024"))).toBe("2024-03-16");
+        expect(col.read("")).toBeNull();
+        expect(readTextDateColumn(["", null, undefined])).toBeNull();
+        expect(readTextDateColumn([])).toBeNull();
+    });
+
+    it("numbers, codes, versions and a release number that looks like a date", () => {
+        expect(read(["1234", "5678"])).toBeNull();
+        expect(read(["12.5", "3.25"])).toBeNull();
+        expect(read(["3.2.0", "3.3.0", "3.3.1"])).toBeNull();
+        expect(read(["3.4.10", "3.4.11"])).toBeNull();
+        expect(read(["2024.3.1", "2024.3.2", "2024.4.1"])).toBeNull();
+        expect(read(["CNSOL-2024-001", "CNSOL-2024-002"])).toBeNull();
+        expect(read(["Q1 2024", "Q2 2024"])).toBeNull();
+        expect(read(["99/99/2024", "00/00/2024"])).toBeNull();
+    });
+});
+
+describe("the whitespace a spreadsheet carries", () => {
+    it("no-break and narrow no-break spaces read as spaces", () => {
+        expect(read(["15 mars 2024", "16 mars 2024"])).toEqual(["2024-03-15", "2024-03-16"]);
+        expect(read(["2024. 3. 15.", "2024. 3. 16."])).toEqual(["2024-03-15", "2024-03-16"]);
+    });
+
+    it("right-to-left marks inside a date are ignored", () => {
+        expect(read(["15‏/3‏/2024", "16‏/3‏/2024"])).toEqual(["2024-03-15", "2024-03-16"]);
+    });
+});
+
+describe("the month-word table", () => {
+    it("English comes first and wins", () => {
+        expect(monthWordReadings("march")[0]).toEqual({ lang: "en", month: 2 });
+        expect(monthWordReadings("Sept")[0]).toEqual({ lang: "en", month: 8 });
+    });
+
+    it("names no two months in one language", () => {
+        // A word that named two months in one language would make the one-language rule guess.
+        for (const w of ["lip", "listopad", "lis", "srp", "mar", "may", "mai", "set", "out"]) {
+            const byLang = new Map<string, Set<number>>();
+            for (const r of monthWordReadings(w)) {
+                if (!byLang.has(r.lang)) byLang.set(r.lang, new Set());
+                byLang.get(r.lang)!.add(r.month);
+            }
+            for (const [lang, months] of byLang) expect(months.size, `${w} in ${lang}`).toBe(1);
+        }
+    });
+
+    it("a month is a word, never a number", () => {
+        expect(monthWordReadings("3")).toEqual([]);
+        expect(monthWordReadings("")).toEqual([]);
+        expect(readMonthWords(["3"])).toBeNull();
+    });
+
+    it("the genitive a language writes beside a day is a month word", () => {
+        expect(monthWordReadings("марта").some(r => r.lang === "ru" && r.month === 2)).toBe(true);
+        expect(monthWordReadings("marca").some(r => r.lang === "pl" && r.month === 2)).toBe(true);
+        expect(monthWordReadings("Μαρτίου").some(r => r.lang === "el" && r.month === 2)).toBe(true);
+    });
+});
+
+describe("monthFirstLocale", () => {
+    it("is the United States family and nothing else", () => {
+        for (const l of ["en-US", "en", "EN-us", "en-PH", "en-BZ"]) expect(monthFirstLocale(l), l).toBe(true);
+        for (const l of ["en-GB", "en-AU", "en-IN", "de-DE", "es-ES", "fr", "pt-BR", "ja-JP", "", undefined]) expect(monthFirstLocale(l), String(l)).toBe(false);
+    });
+});
