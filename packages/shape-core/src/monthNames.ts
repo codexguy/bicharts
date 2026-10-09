@@ -7,6 +7,7 @@
 
 import { foldLatin } from "./knownNameKey";
 import { SUPPORTED_LANGUAGES, supportedLanguage } from "./languages";
+import { foldNumerals } from "./numberText";
 
 // Cached per locale: building one asks Intl for the 12 long + 12 short names.
 const monthLookupCache: Record<string, Record<string, number>> = {};
@@ -54,9 +55,10 @@ export function monthLookupFor(locale: string): Record<string, number> {
 // `15 de marzo de 2024` as readily as `March 15, 2024`. So the words a column is read with are the
 // UNION of the supported languages' (the same rule every other vocabulary here follows), built from
 // the runtime's own calendar data rather than typed in:
-//   - the month's standalone long and short names (`März`, `Mär`), and
+//   - the month's standalone long and short names (`März`, `Mär`),
 //   - the same names as they read beside a DAY (`15 марта`, `15 marca`, `15 Μαρτίου`), because a
-//     language with a genitive writes the month differently once a number precedes it.
+//     language with a genitive writes the month differently once a number precedes it, and
+//   - the names as they read beside a YEAR alone (`Ιανουάριος 2024`), which can differ again.
 // Chinese, Japanese and Korean write a month as a number and a marker (`3月`, `3월`), Vietnamese as
 // `tháng 3`; those are read by the shape that carries the number, not by a word table.
 //
@@ -109,6 +111,8 @@ function buildMonthWordTable(): Map<string, MonthWordReading[]> {
             const formats = [
                 { month: "long" }, { month: "short" },
                 { day: "numeric", month: "long" }, { day: "numeric", month: "short" },
+                // Beside a year alone (`Ιανουάριος 2024`) a language with cases writes the nominative.
+                { year: "numeric", month: "long" }, { year: "numeric", month: "short" },
             ].map(o => new Intl.DateTimeFormat(tag, { timeZone: "UTC", ...o } as Intl.DateTimeFormatOptions));
             for (let m = 0; m < 12; ++m) {
                 const day = new Date(Date.UTC(2020, m, 15));
@@ -187,4 +191,41 @@ export function readMonthWords(words: Iterable<string>, locale?: string): Map<st
     const own = supportedLanguage(String(locale ?? "").split(/[-_]/)[0])?.code;
     const chosen = own ? candidates.get(own) : undefined;
     return chosen ? finish(chosen) : null;
+}
+
+// ── A MONTH WRITTEN BESIDE A YEAR ────────────────────────────────────────────────────────────
+//
+// `Januar 2024`, `enero de 2024`, `2024 janvier`, `январь 2024 г.`, `2024年1月`, `2024년 1월`: a
+// calendar PERIOD (a month, not a day). The period axis has always been read for English, and for
+// the one language a caller named; this is the shape-reader both the profiler's time-axis test and the
+// cadence reader share, so a column one calls a month axis the other can measure.
+//
+// What it takes apart is a year (1900-2099) and ONE other piece: a word, or the CJK month marker.
+// What it ignores, on purpose, is exactly what the languages add around them: the Spanish and
+// Portuguese `de` (`enero de 2024`), and the year marker Russian, Ukrainian and Polish write after the
+// year (`2024 г.`, `2024 р.`, `2024 r.`). A two-digit year is not a year here (`Ene 24` is as likely
+// the 24th of January), and a word that is not a month is not found - this function reads the SHAPE,
+// `readMonthWords` decides whether the word is one.
+
+export type MonthPeriod = { year: number; month: number } | { year: number; word: string };
+
+const CJK_MONTH_PERIOD = /^((?:19|20)\d{2})\s*[年년]\s*(\d{1,2})\s*[月월]$/;
+const PERIOD_FILLERS = new Set(["de", "del", "of"]);
+const PERIOD_YEAR = /^(?:19|20)\d{2}$/;
+const PERIOD_WORD = /^[\p{L}\p{M}\u0970\u05f3]+$/u;
+
+export function splitMonthPeriod(text: string): MonthPeriod | null {
+    let s = foldNumerals(String(text ?? "").replace(/[\u200e\u200f\u061c]/g, "")).replace(/\s+/g, " ").trim();
+    s = s.replace(/(\d{4})\s*(?:г|р|r)\.?$/iu, "$1");
+    const cjk = CJK_MONTH_PERIOD.exec(s);
+    if (cjk) {
+        const month = +cjk[2];
+        return month >= 1 && month <= 12 ? { year: +cjk[1], month } : null;
+    }
+    const pieces = s.split(/[\s\-/.,']+/).filter(p => p !== "" && !PERIOD_FILLERS.has(p.toLowerCase()));
+    if (pieces.length !== 2) return null;
+    const [a, b] = pieces;
+    if (PERIOD_YEAR.test(b) && PERIOD_WORD.test(a)) return { year: +b, word: a };
+    if (PERIOD_YEAR.test(a) && PERIOD_WORD.test(b)) return { year: +a, word: b };
+    return null;
 }

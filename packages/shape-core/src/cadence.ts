@@ -22,7 +22,8 @@
 // a POLICY question and lives server-side with every other threshold, exactly like eta2 and
 // spreadRatio. This module reports the shape and stops.
 
-import { monthLookupFor, normalizeMonthKey } from "./monthNames";
+import { monthLookupFor, monthWordReadings, normalizeMonthKey, readMonthWords, splitMonthPeriod } from "./monthNames";
+import { supportedLanguage } from "./languages";
 import { readPeriodCode } from "./vocab/periodCodes";
 
 /** One contiguous stretch of observations, and how many it holds. */
@@ -122,14 +123,29 @@ const YEAR_THEN_WORD = /^((?:19|20)\d{2})[\s\-/.,']+(\D+)$/u;
  * called temporal for its month names is also measurable here. English is always tried, because
  * an English month label in a non-English report is the commonest export there is; "Sept" is added
  * by hand because Intl's English short form is "Sep".
+ *
+ * AND THEN EVERY SUPPORTED LANGUAGE'S (monthNames.ts), for the label whose language nobody named. A
+ * word that names the same month in every language that has it is that month; one that names two
+ * (Croatian `lip` is June, Polish `lip` is July) is read in the language of the locale, or not at all.
  */
-function monthFromWord(word: string, locale?: string): number {
+function monthFromWord(word: string, locale?: string, columnMonths?: ReadonlyMap<string, number>): number {
     const key = normalizeMonthKey(word);
     if (!key) return 0;
     if (key === "sept") return 9;
     for (const loc of locale && !/^en\b/i.test(locale) ? ["en", locale] : ["en"]) {
         const m = monthLookupFor(loc)[key];
         if (m !== undefined) return m + 1;
+    }
+    // The column's own language, when the whole column was read in one (analyseCadence): it settles a
+    // word two languages spell differently, which a value alone cannot.
+    const inColumn = columnMonths?.get(key);
+    if (inColumn !== undefined) return inColumn + 1;
+    const readings = monthWordReadings(word);
+    if (readings.length > 0) {
+        if (readings.every(r => r.month === readings[0].month)) return readings[0].month + 1;
+        const own = supportedLanguage(String(locale ?? "").split(/[-_]/)[0])?.code;
+        const mine = readings.find(r => r.lang === own);
+        if (mine) return mine.month + 1;
     }
     return 0;
 }
@@ -192,7 +208,7 @@ function parseByPattern(s: string, pattern: string): Stamp | null {
  * `locale` is read only by the month-NAME branch, the last one tried: "Ene 2024" is a month in
  * Spanish and nothing in English.
  */
-export function parseTemporalPoint(raw: string, pattern?: string, locale?: string): Stamp | null {
+export function parseTemporalPoint(raw: string, pattern?: string, locale?: string, columnMonths?: ReadonlyMap<string, number>): Stamp | null {
     const s = (raw ?? "").trim();
     if (s === "") return null;
 
@@ -246,13 +262,21 @@ export function parseTemporalPoint(raw: string, pattern?: string, locale?: strin
     // likely the 25th of April as the year 2025, and a wrong reading turns days into years.
     m = WORD_THEN_YEAR.exec(s);
     if (m) {
-        const mo = monthFromWord(m[1], locale);
-        return mo ? stamp(+m[2], mo, 1) : null;
+        const mo = monthFromWord(m[1], locale, columnMonths);
+        if (mo) return stamp(+m[2], mo, 1);
     }
     m = YEAR_THEN_WORD.exec(s);
     if (m) {
-        const mo = monthFromWord(m[2], locale);
-        return mo ? stamp(+m[1], mo, 1) : null;
+        const mo = monthFromWord(m[2], locale, columnMonths);
+        if (mo) return stamp(+m[1], mo, 1);
+    }
+    // THE SHAPES THOSE TWO NEVER SAW: a filler word or a year marker around the pair (`enero de 2024`,
+    // `январь 2024 г.`) and the CJK marker form (`2024年1月`, `2024년 1월`). The same reader as the
+    // profiler's time-axis test, so a column called a month axis is a column measured as one.
+    const period = splitMonthPeriod(s);
+    if (period) {
+        const mo = "month" in period ? period.month : monthFromWord(period.word, locale, columnMonths);
+        if (mo) return stamp(period.year, mo, 1);
     }
     return null;
 }
@@ -350,10 +374,25 @@ export function analyseCadence(
     let seen = 0;
     let parsed = 0;
     const byMs = new Map<number, Stamp>();
-    for (const v of values) {
+    // A COLUMN IS READ IN ONE LANGUAGE (the one-language rule): the month words of every value are
+    // resolved together, so a word two languages spell differently (`listopad` is October in Croatian and
+    // November in Polish) is read the way the rest of its column is. Skipped for a column read by a
+    // pattern, and for one whose words are not all months (the per-value reading then stands).
+    const list = Array.from(values);
+    let columnMonths: Map<string, number> | undefined;
+    if (!opts?.pattern) {
+        const words: string[] = [];
+        for (const v of list) {
+            if (v === null || v === undefined || v === "") continue;
+            const period = splitMonthPeriod(String(v));
+            if (period && "word" in period) words.push(period.word);
+        }
+        if (words.length > 0) columnMonths = readMonthWords(words, opts?.locale) ?? undefined;
+    }
+    for (const v of list) {
         if (v === null || v === undefined || v === "") continue;
         seen++;
-        const p = parseTemporalPoint(String(v), opts?.pattern, opts?.locale);
+        const p = parseTemporalPoint(String(v), opts?.pattern, opts?.locale, columnMonths);
         if (p) { parsed++; byMs.set(p.ms, p); }
     }
     const pts = [...byMs.values()].sort((a, b) => a.ms - b.ms);

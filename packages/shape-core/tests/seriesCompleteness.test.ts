@@ -373,9 +373,16 @@ describe("month names are measurable periods", () => {
         expect(parseTemporalPoint("2025 Dec")!.iso).toBe("2025-12-01");
         expect(parseTemporalPoint("Ene 2024", undefined, "es-ES")!.iso).toBe("2024-01-01");
         expect(parseTemporalPoint("Jan 2024", undefined, "es-ES")!.iso).toBe("2024-01-01");
+        // Another language's month needs no locale either when its word names one month in every language
+        // that has it: `Ene` is January wherever it is a month at all. A word two languages read as two
+        // months (Croatian `lip` is June, Polish `lip` is July) is read in the locale's language or not at all.
+        expect(parseTemporalPoint("Ene 2024")!.iso).toBe("2024-01-01");
+        expect(parseTemporalPoint("lip 2024")).toBeNull();
+        expect(parseTemporalPoint("lip 2024", undefined, "pl-PL")!.iso).toBe("2024-07-01");
+        expect(parseTemporalPoint("lip 2024", undefined, "hr-HR")!.iso).toBe("2024-06-01");
         // And no further: a two-digit year ("Apr 25" is as likely the 25th of April), a word that is
-        // not a month, a month with no year, and another language's month with no locale to read it.
-        for (const v of ["Apr 25", "Widgets 2024", "FY 2024", "April", "Ene 2024"]) expect(parseTemporalPoint(v), v).toBeNull();
+        // not a month, and a month with no year.
+        for (const v of ["Apr 25", "Widgets 2024", "FY 2024", "April"]) expect(parseTemporalPoint(v), v).toBeNull();
     });
 
     it("a text-month column now carries a cadence, and a per-series fact over it", () => {

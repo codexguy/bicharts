@@ -16,7 +16,7 @@ import { detectGeo } from "./geoDetector";
 import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } from "./geoExtent";
 
 import { detectFormatSignature } from "./formatDetector";
-import { monthLookupFor, normalizeMonthKey } from "./monthNames";
+import { monthLookupFor, monthWordReadings, normalizeMonthKey, splitMonthPeriod } from "./monthNames";
 import { monthFirstLocale, readTextDateColumn } from "./textDate";
 import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
@@ -283,6 +283,50 @@ function looksLikeLocalizedMonthPeriod(s: string, monthMap: Record<string, numbe
     return key.length > 0 && monthMap[key] !== undefined;
 }
 
+// ANOTHER LANGUAGE'S MONTH, BESIDE A YEAR, WITH NO LOCALE NAMED: `Januar 2024`, `enero de 2024`,
+// `janvier 2024`, `январь 2024 г.`, `2024年1月`, `2024년 1월`. The month words of every supported language
+// are one table (monthNames.ts), and a column is read in ONE language of it. Counted among the values
+// the English pattern and the named locale missed, on the precedent the period codes below set:
+//   - English month words (and the words English shares with the language) join the count but never
+//     make one, so a column only English reads is decided exactly as before: the language must own at
+//     least one month word English does not (`maj`, `okt`, `Januar`);
+//   - and the column must show that language THREE DISTINCT month words, so `Pro 2024` and `Pro 2025`
+//     (two product labels; `pro` is also a Croatian month abbreviation) are not a month axis;
+//   - the language is decided on every value, the count is of the values still missed;
+//   - the CJK marker form (`2024年1月`) needs no such company: a year, a number and 月 is a month.
+function monthPeriodLabels(seen: readonly string[], missed: readonly string[]): number {
+    const words = new Map<string, Set<string>>();       // every month word the language reads in the column
+    const owned = new Map<string, Set<string>>();       // the ones English does not
+    for (const v of seen) {
+        const period = splitMonthPeriod(v);
+        if (!period || "month" in period) continue;
+        const readings = monthWordReadings(period.word);
+        const english = readings.some(r => r.lang === "en");
+        const key = normalizeMonthKey(period.word);
+        for (const lang of new Set(readings.map(r => r.lang))) {
+            if (lang === "en") continue;
+            if (!words.has(lang)) { words.set(lang, new Set()); owned.set(lang, new Set()); }
+            words.get(lang)!.add(key);
+            if (!english) owned.get(lang)!.add(key);
+        }
+    }
+    const candidates = [...words.keys()].filter(lang => words.get(lang)!.size >= 3 && owned.get(lang)!.size >= 1);
+    let marked = 0;
+    const perLanguage = new Map<string, number>(candidates.map(lang => [lang, 0]));
+    for (const v of missed) {
+        const period = splitMonthPeriod(v);
+        if (!period) continue;
+        if ("month" in period) { marked++; continue; }
+        const readings = monthWordReadings(period.word);
+        if (readings.length === 0) continue;
+        const english = readings.some(r => r.lang === "en");
+        for (const lang of candidates) {
+            if (english || readings.some(r => r.lang === lang)) perLanguage.set(lang, perLanguage.get(lang)! + 1);
+        }
+    }
+    return marked + Math.max(0, ...perLanguage.values());
+}
+
 // ANOTHER LANGUAGE'S QUARTER AND WEEK LABELS, BESIDE A YEAR (vocab/periodCodes.ts): `T1 2024`, `2024-K3`,
 // `1er trimestre 2024`, `KW 12/2024`, `2024年第1四半期`, `3 кв. 2023`. Counted among the values the English
 // period pattern missed, in the ONE language that reads the most of them. English labels the pattern
@@ -366,7 +410,7 @@ export function classifyTemporal(args: {
             if (n >= 60) break;
         }
         if (n >= 2 && hit / n >= 0.8) return true;
-        if (n >= 2 && (hit + localizedPeriodLabels(missed)) / n >= 0.8) return true;
+        if (n >= 2 && (hit + localizedPeriodLabels(missed) + monthPeriodLabels(seen, missed)) / n >= 0.8) return true;
         // FULL DATES AS TEXT (2026-08-19) - "2024-03-15", "15/03/2024". The period regex is
         // for periods; a day-level date stored as a string is a time axis too, and the
         // commonest way a real date arrives untyped. Same 80% floor, same sample.
