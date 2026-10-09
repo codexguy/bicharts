@@ -278,6 +278,79 @@ made for: every word shares a comment with many others, so the default lit most 
 click. The cross-filter sent out is the same under both rules. `onSelectionPaint` reports how each
 paint of a declaring chart decided, including when no mark matched and the default was used.
 
+## Remembering what the reader did
+
+A chart keeps its resting state (a sort, an expanded row, a 3D camera angle) in a small bag. It
+reads the bag from `options.uiState` and writes it through `options.setUiState`, and generated code
+never learns where the bag goes. Where it goes is your host's choice, and so is which keys may
+outlive what: a redraw, a close and reopen, or a new version of the chart.
+
+`createChartHost` still takes one `viewState` provider, as before. When your host needs more than
+one store, describe it with a `ViewStateService`:
+
+```ts
+import { sessionViewStateProvider, type ViewStateService } from "@bicharts/chart-host";
+
+const viewState: ViewStateService = {
+    viewing: sessionViewStateProvider(el),   // survives a redraw; a page switch starts clean
+    durable: workbookStore,                  // optional: survives close and reopen
+    policy: {                                // the keys your host scopes, by name
+        camera: { lifetime: "durable", dropOnNewVersion: true, dropOnFreshViewing: false, durableWhen: "rememberView" },
+        userStopped: { lifetime: "durable", dropOnNewVersion: false, dropOnFreshViewing: true },
+    },
+    versionKey: "cameraVersion",             // optional: how a version change is noticed
+};
+```
+
+**What you provide.** `viewing` and `policy` are required (`policy: {}` is fine). Everything else is
+optional, and leaving it out says something about your host:
+
+- no `durable` store: the host can't remember across a close (a static preview, a server-side
+  render). `viewStateIsDurable(service)` is the one definition of "remembers the view", so it can't
+  be claimed without a store to back it. `noopViewStateService()` says "nothing is stored" out loud.
+- no `chartKeys`: keys your policy doesn't name belong to the chart. They're kept, durably, through a
+  new version and a fresh viewing, and the chart validates what it reads. Set `chartKeys` to give
+  them another rule. A host that forgets everything when its chart changes sets `dropOnNewVersion`.
+- no `versionKey`: you apply the version rule yourself, where you learn the chart changed.
+- no `durableMaxChars`: the durable store accepts any size.
+
+**What a key can be.** `lifetime: "viewing"` keeps a key out of the durable store; `"durable"` puts it
+in both. `dropOnNewVersion` drops it when the chart on screen is another version (a camera is aimed
+at one chart's axes). `dropOnFreshViewing` drops it when the bag is read at the start of a viewing
+instead of in the one that wrote it. `durableWhen` names a preference that must be on for the key to
+reach the durable store; the viewing store keeps it either way.
+
+**The rules are plain functions** in `@bicharts/chart-host/view-state`, with no DOM, timers or
+storage of their own:
+
+```ts
+import { resolveViewState, commitViewState } from "@bicharts/chart-host/view-state";
+
+const { bag, dropped } = resolveViewState(viewState, { codeVersion, freshViewing });   // before a render
+commitViewState(next, viewState, prefs);                                               // when the chart writes
+```
+
+`resolveViewState` builds the bag the chart is handed: the viewing store, else the durable one, with
+the policy applied. `commitViewState` decides what a write reaches: the viewing store gets all of
+it, the durable store gets what the policy allows. Both report what they did and neither throws.
+`viewStateAfterSwap(service, bag)` applies the version rule for a host that sees the swap itself.
+
+**Check your stores** with the conformance suite in the testing subpath. It confirms `load` never
+throws and reads `{}` when empty, that `save` replaces, that nested values round-trip, that the
+viewing store survives your host being re-created on the same element, and that the durable store
+holds what it's given across a reopen:
+
+```ts
+import { assertViewStateConformance } from "@bicharts/chart-host/testing";
+
+const report = await assertViewStateConformance(service, {
+    recreate: () => buildService(sameElement),   // the host drawing again
+    reopen: () => buildService(newElement),      // a new viewing over the same saved file
+    settle: () => flushPendingWrites(),          // only if your durable save is debounced
+});
+expect(report.skipped).toEqual([]);              // nothing went unchecked
+```
+
 ## Architecture — three layers, and why it matters if you contribute
 
 Read this before adding code. The package has **three** concerns, and they are independent.
