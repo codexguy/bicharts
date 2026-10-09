@@ -118,7 +118,43 @@ describe("twoSetPairing - which pair wins", () => {
     };
     const cols = () => [col("Ticket", "String"), col("Account", "String"), col("Source", "String"), col("Amount", "Integer", true)];
 
-    it("the pair with the fewest repeated keys beats the pair with the most keys in both", () => {
+    it("a real key with some repeats beats a narrow column whose every value repeats: pairs are ranked by the SHARE of keys that repeat", () => {
+        // 30 of the 400 customers have a second row in the first snapshot, so CustomerID is not clean. A
+        // five-valued Region column has only five keys that CAN repeat, and every one of them does (10 repeated
+        // keys against CustomerID's 30). Ranked by the raw count Region won and the refusal would have named it;
+        // by share CustomerID repeats in 30 of 760 keys and Region in 10 of 10.
+        const regions = ["North", "South", "East", "West", "Central"];
+        const cols = [...headlineColumns(), col("Region", "String")];
+        const rows = headlineRows("Jan 2026", "Feb 2026").map(r => [...r, regions[Number(String(r[0]).slice(1)) % 5]]);
+        for (let i = 0; i < 30; i++) {
+            const c = customer(i);
+            rows.push([c.id, "Jan 2026", c.name, c.city, c.limit, c.balance + 1000, regions[i % 5]]);
+        }
+        const out = profile(cols, rows).cols;
+        const p = out.find(c => (c as any).twoSetPairing)!.twoSetPairing!;
+        expect(p.key).toBe("CustomerID");
+        expect(p.duplicateKeysA).toBe(30);
+        expect(p.duplicateKeysB).toBe(0);
+        expect(p.keysBoth).toBe(360);
+        expect(pairingOf(out, "Region"), "Region carries nothing: it is not the winner").toBeUndefined();
+    });
+
+    it("among pairs with the same share of repeated keys, the one with the most keys in both wins, wherever it sits in the table", () => {
+        // Two clean keys (no key repeats): Small shares 5 of its keys between the sets and comes first in the
+        // table, Wide shares 20.
+        const rows: any[][] = [];
+        for (let s = 0; s < 2; s++) {
+            for (let i = 0; i < 20; i++) {
+                rows.push([s === 0 ? "S" + i : (i < 5 ? "S" + i : "T" + i), "W" + i, s === 0 ? "A" : "B", i + s]);
+            }
+        }
+        const cs = [col("Small", "String"), col("Wide", "String"), col("Source", "String"), col("Amount", "Integer", true)];
+        const p = profile(cs, rows).cols.find(c => (c as any).twoSetPairing)!.twoSetPairing!;
+        expect(p.key).toBe("Wide");
+        expect(p.keysBoth).toBe(20);
+    });
+
+    it("the pair with the smaller share of repeated keys beats the pair with the most keys in both", () => {
         const { cols: out } = profile(cols(), tickets());
         const p = out.find(c => (c as any).twoSetPairing)!.twoSetPairing!;
         // Account is in both sets 38 times over, but two of its accounts repeat inside each set; Ticket is

@@ -18,11 +18,14 @@
 // index of its first appearance, a set cell becomes 0 (blank), 1 (A) or 2 (B), and a per-key bit mask
 // records "seen in A", "seen in B" and "seen twice in A / in B".
 //
-// THE WINNER is the pair with the fewest keys that repeat inside a set (the fewest `duplicateKeysA +
-// duplicateKeysB`), then the most keys in both sets, then the earlier key candidate, then the earlier set
-// candidate. Only pairs with at least one key in both sets compete: a pair that shares nothing is no
-// pairing, and it must not hide one that shares something. Nothing is emitted above
-// TWO_SET_PAIRING_MAX_ROWS rows, where a census reads the row count as "not computed".
+// THE WINNER is the pair with the smallest SHARE of keys that repeat inside a set, (duplicateKeysA +
+// duplicateKeysB) / (keysA + keysB), then the most keys in both sets, then the earlier key candidate, then
+// the earlier set candidate. It is a share and not a count on purpose: a column with five values has only
+// five keys that CAN repeat, so by raw count it beats the real record key of a table where a few hundred
+// records repeat, and the chart's refusal ("X repeats inside Jan") would name the wrong column. Only pairs
+// with at least one key in both sets compete: a pair that shares nothing is no pairing, and it must not
+// hide one that shares something. Nothing is emitted above TWO_SET_PAIRING_MAX_ROWS rows, where a census
+// reads the row count as "not computed".
 //
 // A repeated key is compared by its first row inside each set, and a row repeated byte for byte never
 // reaches this pass in a host that collapses duplicates (the engine's default), so the duplicate counts
@@ -146,6 +149,18 @@ function tally(ids: Int32Array, set: Uint8Array, keyCount: number): Tally {
     return t;
 }
 
+/**
+ * Does pair `a` beat the current best `b`? A smaller SHARE of repeated keys, (dupA + dupB) / (keysA + keysB),
+ * then more keys in both sets; an exact tie keeps the earlier candidate (the caller only replaces on a strict win).
+ * Compared by cross-multiplication, so no division and no rounding decide it; both sides have keysBoth >= 1, so
+ * both denominators are positive.
+ */
+function beats(a: Tally, b: Tally): boolean {
+    const lhs = (a.dupA + a.dupB) * (b.keysA + b.keysB);
+    const rhs = (b.dupA + b.dupB) * (a.keysA + a.keysB);
+    return lhs < rhs || (lhs === rhs && a.keysBoth > b.keysBoth);
+}
+
 const isBlank = (v: any) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 
 /** Cell equality for the comparison: blank equals blank only; numbers exactly; dates by instant; text on the trimmed cell. */
@@ -189,9 +204,7 @@ export function measureTwoSetPairing(input: TwoSetInput): TwoSetResult | null {
             if (setCands[s].i === keyIdx) continue;
             const t = tally(enc.ids, sets[s].code, enc.dict.size);
             if (t.keysBoth < 1) continue;
-            const dup = t.dupA + t.dupB;
-            if (!best || dup < best.tally.dupA + best.tally.dupB
-                || (dup === best.tally.dupA + best.tally.dupB && t.keysBoth > best.tally.keysBoth)) {
+            if (!best || beats(t, best.tally)) {
                 best = { tally: t, keyIdx, setNo: s, ids: enc.ids, dict: enc.dict };
             }
         }
