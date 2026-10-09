@@ -16,7 +16,7 @@
 
 import {
     CONTROL_CLASS, MARK_CLASS, MARK_SELECTED_CLASS, MARK_KEY_ATTR, ROW_IDX_ATTR,
-    SELECTION_RULE_ATTR, SELECTION_RULE_CLICKED_MARKS,
+    SELECTION_RULE_ATTR, SELECTION_RULE_CLICKED_MARKS, XFILTER_REFRESH_EVENT,
 } from "./contract";
 
 /**
@@ -33,6 +33,45 @@ export function rowIdxsFromMark(el: Element | null): number[] {
         if (!isNaN(n) && n >= 0) out.push(n);
     }
     return out;
+}
+
+// ---- A ROW SET A CHART PUBLISHES (the `rows` form of the cross-filter event) ----------------------
+//
+// A selection the chart computed itself - a region the reader drew, a range they brushed - has no
+// element to point at, so it travels as the row indices. Whatever arrives on the event is UNTRUSTED
+// (a chart is committed source and may be any generation), so it is read once, here, before it reaches
+// the host's selection.
+
+/** The most rows one published set may name: the largest window any host hands a chart. A set past it
+ *  is cut there rather than refused, because the cap bounds the work an event can ask for and a table
+ *  never holds a row beyond it. */
+export const ROW_SET_MAX = 250_000;
+
+/** The rows a published set names: whole non-negative numbers only, each once, in the order given, at
+ *  most ROW_SET_MAX. Anything else in the array is dropped, and a value that is not an array names none. */
+export function validRowSet(rows: unknown): number[] {
+    if (!Array.isArray(rows)) return [];
+    const seen = new Set<number>();
+    const out: number[] = [];
+    for (const r of rows) {
+        if (typeof r !== "number" || !Number.isSafeInteger(r) || r < 0 || seen.has(r)) continue;
+        seen.add(r);
+        out.push(r || 0);                         // -0 is the row 0
+        if (out.length >= ROW_SET_MAX) break;
+    }
+    return out;
+}
+
+/**
+ * Publish a selection as a row set: fires the cross-filter event on `container`, carrying `rows` (valid
+ * ones only) and the `source` the host passes on to its subscribers. An empty set is a clear. For a
+ * chart that computes its own selection; a chart that selects by marks needs nothing, the host reads
+ * data-row-idx itself.
+ */
+export function dispatchRowSet(container: Element, rows: readonly number[], source = "chart"): void {
+    const win: any = container.ownerDocument?.defaultView ?? globalThis;
+    const Ev = win.CustomEvent ?? (globalThis as any).CustomEvent;
+    container.dispatchEvent(new Ev(XFILTER_REFRESH_EVENT, { detail: { rows: validRowSet(rows), source }, bubbles: true }));
 }
 
 /** The keys held during a click. Cmd counts as Ctrl. */

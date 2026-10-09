@@ -171,8 +171,25 @@ export const NO_ROW_MARKS_ATTR = "data-lch-no-row-marks";
 export const SNAPSHOT_SVG_ATTR = "data-lch-snapshot";
 
 // Bubbling CustomEvent a chart dispatches on its container when its own selection
-// changes (e.g. a scrubber period). detail = { clear:true, source } | { mark, source }.
+// changes (e.g. a scrubber period). detail = { clear:true, source } | { mark, source } | { rows, source }.
+//   clear - the chart's selection was cleared.
+//   mark  - an element the chart drew (an axis or scrubber tick) carrying data-row-idx: the host reads
+//           the rows off it, and treats it as the tick that anchors the selection's affordance.
+//   rows  - a selection the chart COMPUTED (a region the reader drew, a range they brushed), carried as
+//           row indices with no element to point at. Untrusted: the host keeps whole non-negative
+//           numbers, each once, up to a cap (validRowSet in selection.ts), and an empty array is a
+//           clear. Like `mark`, it is the chart's own selection, so an empty click on the canvas calls
+//           the container's __llmXfClear slot first. dispatchRowSet in selection.ts fires it.
+// A host that predates the rows form sees neither clear nor mark and does nothing: the chart's own
+// drawing still works and only the cross-filter is missing, which is a capability difference and not
+// something a version number can tell.
 export const XFILTER_REFRESH_EVENT = "llm-xfilter-refresh";
+/** What the event carries. `source` names who selected ("user" when a reader's gesture did); the host
+ *  passes it on to its subscribers, and "chart" stands in when it is absent. */
+export type XfilterRefreshDetail =
+    | { clear: true; source?: string }
+    | { mark: Element; source?: string }
+    | { rows: readonly number[]; source?: string };
 
 // Lifecycle slots the generated code sets on the container; the host calls/reads them.
 export const CONTAINER_SLOT_ANIM_STOP = "__llmAnimStop";           // call before unmount/re-render

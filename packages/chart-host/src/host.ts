@@ -30,7 +30,7 @@ import { stripJsComments } from "./codeComments";
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, markKeyOf, planSelectionPaint,
-    nextClickedMarks, trackPress, clickWasDrag, clearPress,
+    nextClickedMarks, trackPress, clickWasDrag, clearPress, validRowSet,
     type ClickedMarks, type SelectionRule, type SelectionPaintMode } from "./selection";
 
 /** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
@@ -799,7 +799,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     };
 
     // The chart's own dispatch (scrubber ticks, period changes) — the primary
-    // mechanism for animated charts. detail = {clear,source} | {mark,source}.
+    // mechanism for animated charts. detail = {clear,source} | {mark,source} | {rows,source}.
     // xfAt timestamps it so the click handler can tell "the chart already handled this
     // gesture" from "a static chart marked an axis label and dispatched nothing".
     let xfAt = 0;
@@ -813,6 +813,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // an honest 'user' when the reader clicked it.
         if (d.clear) notify([], d.source || "chart");
         else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark, true);
+        // A selection the chart COMPUTED (a drawn region, a brushed range) has no element to point at, so it
+        // carries the row indices themselves. Untrusted, so read through validRowSet; an empty set is a clear.
+        // fromChart, like a mark: the chart owns this selection, so an empty click calls its clear slot first.
+        else if (Array.isArray(d.rows)) notify(validRowSet(d.rows), d.source || "chart", null, true);
     };
     // Plain mark clicks (static charts + choropleth regions): the chart does NOT
     // dispatch the event for these — the host reads data-row-idx itself.

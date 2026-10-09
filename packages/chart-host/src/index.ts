@@ -43,6 +43,7 @@ export {
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode, type FlipDirection,
     type ApproximatePositions, type ValueAxisBaseline, type SeasonalMarkers,
     type ColorScaleScope, type RenderOptions, type ViewStateProvider, type ChartControlChange,
+    type XfilterRefreshDetail,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // THE OPTIONS VOCABULARY (2026-09-25): the reader-facing options every host shares, one row each - the
@@ -106,6 +107,7 @@ export {
     createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
     DRAG_NOT_CLICK_PX, gestureWasDrag, trackPress, pressOf, clearPress, clickWasDrag, CONTAINER_SLOT_PRESS_AT,
     type PressPoint,
+    dispatchRowSet, validRowSet, ROW_SET_MAX,
     selectionRuleOf, markKeyOf, planSelectionPaint, nextClickedMarks, sameRowSet,
     type SelectionRule, type ClickedMarks, type SelectionPaintMark, type SelectionPaintMode, type SelectionPaintPlan,
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,
