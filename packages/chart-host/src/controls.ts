@@ -14,6 +14,12 @@
 // defaults.
 
 import type { ChartHost } from "./host";
+import { LASSO_KNOB_KEY } from "./lasso";
+
+// The bag also holds the reader's lasso (see lasso.ts), so that it persists in the same write as the sliders.
+// It is state the host keeps, not a control the chart drew: it is not listed, not part of `values`, and it
+// survives `reset`.
+const isKnob = (key: string) => key !== LASSO_KNOB_KEY;
 
 export interface ControlInfo {
     /** The knob's name in the chart's bag ("rate", "horizon"). */
@@ -76,7 +82,9 @@ export function createControls(initial?: Readonly<Record<string, unknown>>): Con
         get values() {
             const out: Record<string, unknown> = {};
             for (const i of info) out[i.key] = i.value;
-            if (!info.length && ui.knobs && typeof ui.knobs === "object") Object.assign(out, ui.knobs);
+            if (!info.length && ui.knobs && typeof ui.knobs === "object") {
+                for (const [k, v] of Object.entries(ui.knobs as Record<string, unknown>)) if (isKnob(k)) out[k] = v;
+            }
             return out;
         },
         get info() { return info; },
@@ -91,7 +99,10 @@ export function createControls(initial?: Readonly<Record<string, unknown>>): Con
             for (const a of Array.from(appliers)) a();
         },
         reset() {
+            // The sliders go back to their defaults; the reader's lasso is not one of them.
+            const kept = (ui.knobs as Record<string, unknown> | undefined)?.[LASSO_KNOB_KEY];
             delete ui.knobs;
+            if (kept !== undefined) ui.knobs = { [LASSO_KNOB_KEY]: kept };
             for (const a of Array.from(appliers)) a();
         },
         onChange(cb) { subs.add(cb); return () => { subs.delete(cb); }; },
@@ -110,7 +121,7 @@ export function createControls(initial?: Readonly<Record<string, unknown>>): Con
 export function readControls(container: HTMLElement): ControlInfo[] {
     const bag = (container as any).__lchKnobs;
     if (!bag || typeof bag !== "object") return [];
-    const keys = Object.keys(bag);
+    const keys = Object.keys(bag).filter(isKnob);
     if (!keys.length) return [];
     const groups = Array.from(container.querySelectorAll("g.llm-slider"));
     return keys.map((key, i) => {

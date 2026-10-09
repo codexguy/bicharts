@@ -11,6 +11,7 @@
 
 import { CONTROL_CLASS, MARK_CLASS, ROW_IDX_ATTR } from "./contract";
 import { clipWindowOf } from "./fitDom";
+import { LASSO_OUTLINE_CLASS } from "./lasso";
 
 export interface MarkAnnotation {
     /** The column holding the key (with `value`). */
@@ -100,7 +101,9 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
         const MO = (win as any)?.MutationObserver as typeof MutationObserver | undefined;
         if (on && !observer && MO) {
             observer = new MO(records => {
-                if (records.some(r => !(r.target as Element).closest?.(`.${ANNOTATION_LAYER_CLASS}`))) redrawSoon();
+                // Blind to the layer's own changes, and to the lasso outline, whose path changes on every pointer move
+                // and moves no mark.
+                if (records.some(r => !(r.target as Element).closest?.(`.${ANNOTATION_LAYER_CLASS}, .${LASSO_OUTLINE_CLASS}`))) redrawSoon();
             });
             observer.observe(container, { subtree: true, attributes: true, attributeFilter: ["transform", "d", "cx", "cy", "x", "y", "points"] });
         } else if (!on && observer) { observer.disconnect(); observer = null; }
