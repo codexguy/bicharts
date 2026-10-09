@@ -91,6 +91,19 @@ describe("the legend-fit entry", () => {
         }
     });
 
+    it("no pass picks an svg by tag: a scene with several svgs (a carousel's peeks) has one chart svg, and chartSvgOf names it", () => {
+        const FIRST_SVG = /querySelector(?:All)?\s*(?:<[^>]+>)?\s*\(\s*["'`]svg\b|getElementsByTagName\s*\(\s*["'`]svg\b|\.select\s*\(\s*["'`]svg\b/;
+        const offenders: string[] = [];
+        for (const f of sourceFiles(resolve(srcRoot, "legendFit"))) {
+            readFileSync(f, "utf8").split(/\r?\n/).forEach((line, i) => {
+                if (/^\s*(\/\/|\*)/.test(line)) return;
+                if (FIRST_SVG.test(line)) offenders.push(`${relative(srcRoot, f)}:${i + 1}: ${line.trim()}`);
+            });
+        }
+        expect(offenders).toEqual([]);
+        expect(readFileSync(resolve(srcRoot, "legendFit/frameFitDom.ts"), "utf8")).toMatch(/const svg = chartSvgOf\(host\)/);
+    });
+
     it("the moved code reads the shared helpers from the package, never from a host's private module", () => {
         for (const f of sourceFiles(resolve(srcRoot, "legendFit"))) {
             const imports = [...readFileSync(f, "utf8").matchAll(/from\s+["']([^"']+)["']/g)].map(m => m[1]);
