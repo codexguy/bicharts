@@ -176,6 +176,9 @@ export {
     // answer, so every host has to write SOMETHING; leaving each one to remember that is how
     // three surfaces came to render a bare chart name under a heading claiming to know why.
     qualifyRefusalReason, QUALIFY_REFUSAL_UNSPECIFIED,
+    // ...and the refusals that are about the TILE rather than the fields. The server's code decides
+    // which rows those are; the heading over them is one string, so every host says the same thing.
+    refusalIsTileBound, QUALIFY_TILE_REFUSAL_CODES, QUALIFY_TOO_SMALL_HEADING,
     type QualifyRefusalRow, type QualifyRefusalGroupState, type QualifyRefusalHeading,
 } from "./qualifyGroups";
 

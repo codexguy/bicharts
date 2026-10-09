@@ -13,6 +13,9 @@
 // weight-0 preview type is not allowed to make.
 //
 // Heading TEXT is not here: hosts localize, and the visual runs every string through Localize.
+// The one exception is the tile block of the refused list (QUALIFY_TOO_SMALL_HEADING below): it is
+// new, it has to read the same in every host, and a host that localizes passes it through its own
+// lookup like the rest.
 
 /** One row of a qualify result, in the only shape this logic cares about. */
 export interface QualifyGroupRow {
@@ -100,6 +103,10 @@ export function qualifyGroupHeadingFor(
 //  under exactly the relaxations an explicit pick receives. A host that inferred the split from
 //  reason text, or from a name list, would be re-deriving a decision it was already handed — the
 //  precise mistake that, measured against real traffic, misread 25.5% of honoured picks.
+//
+//  A THIRD BLOCK FOR THE TILE. `isVeto` says whether the reader may pick a row; it does not say
+//  what would change the answer. A refusal whose code names the tile's size or shape is answered
+//  by resizing, not by rebinding, so it gets its own heading (see QUALIFY_TILE_REFUSAL_CODES).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** One row of a qualify result's `refused` array, in the only shape this logic cares about. */
@@ -109,19 +116,72 @@ export interface QualifyRefusalRow {
     reason?: string | null;
     /** True = a required channel is ABSENT. Absent/false = a threshold we are willing to waive. */
     isVeto?: boolean | null;
+    /**
+     * WHICH GATE wrote `reason`, as the server's stable code. Absent from a server that predates
+     * the code, which reads as "not known to be about the tile": the row keeps the grouping the
+     * list always had.
+     */
+    reasonCode?: string | null;
 }
 
 /** Which heading to write BEFORE a refused row, if any. */
-export type QualifyRefusalHeading = "poorFit" | "cannotDraw";
+export type QualifyRefusalHeading = "poorFit" | "tooSmall" | "cannotDraw";
 
 /** Carried across the refusal loop. One per render. */
 export interface QualifyRefusalGroupState {
     poorFit: boolean;
+    tooSmall: boolean;
     cannotDraw: boolean;
 }
 
 export function newQualifyRefusalGroupState(): QualifyRefusalGroupState {
-    return { poorFit: false, cannotDraw: false };
+    return { poorFit: false, tooSmall: false, cannotDraw: false };
+}
+
+/**
+ * THE REFUSAL CODES THAT MEAN "THE TILE", NOT "THE FIELDS".
+ *
+ * Each refusal carries the code of the gate that wrote its sentence. These four gates compare what
+ * a chart type needs with the size and shape of the tile and nothing else: too narrow, too short,
+ * not square enough, not tall enough. The data can be exactly right and the type is still turned
+ * down, and the one thing that changes the answer is a bigger tile.
+ *
+ * Without this split those rows sat under "Can't be drawn from the fields as bound" or "Poor fit
+ * for these fields" - headings that send the reader to rebind data that is fine.
+ *
+ * ONLY GATES THAT LOOK AT THE TILE ALONE ARE LISTED. A gate that weighs the tile against the data
+ * (a row-per-category floor, a panel budget) can be answered by either, so naming it a tile
+ * problem would be the same false instruction turned around. A code is added here when the server
+ * starts sending one that is purely about the tile; an unknown code keeps the grouping it had.
+ */
+export const QUALIFY_TILE_REFUSAL_CODES: readonly string[] = Object.freeze([
+    "TILE_TOO_NARROW",
+    "TILE_TOO_SHORT",
+    "TILE_NOT_SQUARE",
+    "TILE_NOT_TALL",
+]);
+
+/**
+ * THE HEADING OVER THE TILE BLOCK, in the one place every host reads it from, so the wording
+ * cannot drift between them and a test pins it once.
+ *
+ * It says what the reader can do about it, not what category the row is in, and it says nothing
+ * about the fields: the rows under it are exactly the ones the fields are not the problem for.
+ * English source text - a host that localizes looks it up like its other headings.
+ */
+export const QUALIFY_TOO_SMALL_HEADING = "Needs a bigger tile";
+
+/**
+ * IS THIS REFUSAL ABOUT THE TILE'S SIZE OR SHAPE? Decided from the server's code, never from the
+ * sentence: a host that matched the English would go blind the day the sentences are translated,
+ * and would re-derive a verdict it was already handed.
+ *
+ * A row with no code (an older server) is NOT tile-bound. That is the safe direction: it keeps
+ * the two-heading grouping the list had before the code existed.
+ */
+export function refusalIsTileBound(row: QualifyRefusalRow | null | undefined): boolean {
+    const code = row?.reasonCode;
+    return typeof code === "string" && QUALIFY_TILE_REFUSAL_CODES.includes(code);
 }
 
 /**
@@ -137,22 +197,35 @@ export function refusalIsSelectable(row: QualifyRefusalRow | null | undefined): 
 }
 
 /**
- * The refused rows in RENDER ORDER: everything pickable first, then the vetoes.
+ * The refused rows in RENDER ORDER: the pickable ones first, then the ones the tile alone turned
+ * down, then the vetoes the fields cause.
  *
  * A STABLE PARTITION, not a sort — within each block the server's alphabetical order survives, so
  * two answers over the same shape stay diffable. Rows without a name are dropped: a control
  * labelled with nothing cannot be chosen and a reason with no subject cannot be read.
  *
- * The two blocks are ordered pickable-first because the reader opened this section to DO something.
+ * The blocks are ordered pickable-first because the reader opened this section to DO something.
  * Putting the inert half above the actionable half makes them scroll past every chart they cannot
  * have to reach the ones they can.
+ *
+ * THE TILE BLOCK SITS BETWEEN THE TWO, and its own rows are pickable-first too. A tile refusal is
+ * a veto or a waivable one like any other (the reader may still pick the waivable ones), but what
+ * it asks of the reader is different: resize, not rebind. Every row the code marks as about the
+ * tile goes there whichever way its veto flag points, so none is left under a heading that names
+ * the fields.
  */
 export function orderRefusalsForDisplay<T extends QualifyRefusalRow>(
     rows: readonly T[] | null | undefined,
 ): T[] {
     if (!Array.isArray(rows)) return [];
     const named = rows.filter(r => !!r && typeof r.name === "string" && r.name.trim() !== "");
-    return [...named.filter(refusalIsSelectable), ...named.filter(r => !refusalIsSelectable(r))];
+    const tile = named.filter(refusalIsTileBound);
+    const rest = named.filter(r => !refusalIsTileBound(r));
+    return [
+        ...rest.filter(refusalIsSelectable),
+        ...tile.filter(refusalIsSelectable), ...tile.filter(r => !refusalIsSelectable(r)),
+        ...rest.filter(r => !refusalIsSelectable(r)),
+    ];
 }
 
 /**
@@ -166,6 +239,12 @@ export function orderRefusalsForDisplay<T extends QualifyRefusalRow>(
 export function qualifyRefusalHeadingFor(
     row: QualifyRefusalRow, state: QualifyRefusalGroupState,
 ): QualifyRefusalHeading | null {
+    // THE TILE CHECK COMES FIRST: a tile refusal is judged by its code before its veto flag, since
+    // the flag only says whether the reader may pick it, not what the reader would have to change.
+    if (refusalIsTileBound(row)) {
+        if (!state.tooSmall) { state.tooSmall = true; return "tooSmall"; }
+        return null;
+    }
     if (refusalIsSelectable(row)) {
         if (!state.poorFit) { state.poorFit = true; return "poorFit"; }
         return null;

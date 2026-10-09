@@ -3,8 +3,10 @@ import {
     orderRefusalsForDisplay, refusalIsSelectable, hasRefusalsToShow,
     qualifyRefusalHeadingFor, newQualifyRefusalGroupState,
     qualifyRefusalReason, QUALIFY_REFUSAL_UNSPECIFIED,
+    refusalIsTileBound, QUALIFY_TILE_REFUSAL_CODES, QUALIFY_TOO_SMALL_HEADING,
     type QualifyRefusalRow,
 } from "../packages/chart-host/src/qualifyGroups";
+import * as barrel from "../packages/chart-host/src/index";
 
 // Same shape of test as qualifyGroups: run a list through the ordering AND the boundary rule the
 // way a host's render loop does, and assert on the rendered SEQUENCE. Every defect these two
@@ -143,5 +145,144 @@ describe("qualifyRefusalReason", () => {
         expect(qualifyRefusalReason("", "pas un bon choix ici")).toBe("pas un bon choix ici");
         expect(qualifyRefusalReason("the server's words", "pas un bon choix ici"))
             .toBe("the server's words");
+    });
+});
+
+// A REFUSAL ABOUT THE TILE IS NOT A REFUSAL ABOUT THE FIELDS.
+//
+// A chart type turned down because the tile is too narrow, too short, not square enough or not
+// tall enough used to be filed under "Can't be drawn from the fields as bound" (a veto) or "Poor
+// fit for these fields" (a waivable refusal). Both headings send the reader to rebind data that is
+// fine, when the one thing that would change the answer is the size of the tile. The server tags
+// each of those refusals with a stable code beside its sentence, so the split is read from the
+// code and never guessed from the English.
+const tile = (name: string, code: string, isVeto = true): QualifyRefusalRow =>
+    ({ name, reason: `${name} needs more room`, reasonCode: code, isVeto });
+const fieldsVeto = (name: string, code = "NEEDS_DATE"): QualifyRefusalRow =>
+    ({ name, reason: `${name} needs a date`, reasonCode: code, isVeto: true });
+const fieldsWaivable = (name: string, code = "TOO_FEW_RAW_ROWS"): QualifyRefusalRow =>
+    ({ name, reason: `${name} would be ugly`, reasonCode: code, isVeto: false });
+
+describe("refusalIsTileBound", () => {
+    it("is true for each of the four tile codes", () => {
+        for (const code of ["TILE_TOO_NARROW", "TILE_TOO_SHORT", "TILE_NOT_SQUARE", "TILE_NOT_TALL"]) {
+            expect(refusalIsTileBound({ name: "Basic Sankey", reasonCode: code }), code).toBe(true);
+        }
+        expect([...QUALIFY_TILE_REFUSAL_CODES].sort())
+            .toEqual(["TILE_NOT_SQUARE", "TILE_NOT_TALL", "TILE_TOO_NARROW", "TILE_TOO_SHORT"]);
+    });
+
+    // Reading any other code as a tile problem would tell a reader to resize a visual whose data is
+    // what failed - the same false instruction the fields heading gives, turned around.
+    it("is false for every other code, including a gate that merely mentions the viewport", () => {
+        for (const code of ["NEEDS_DATE", "ROWS_CRAMPED", "GATE_REFUSAL", "DECLARED_REQUIREMENT", "TILE", "tile_too_narrow"]) {
+            expect(refusalIsTileBound({ name: "Gantt chart", reasonCode: code }), code).toBe(false);
+        }
+    });
+
+    // An older server sends no code at all. That must read as "not known to be about the tile",
+    // which is the grouping the list always had.
+    it("is false when the server sent no code", () => {
+        for (const reasonCode of [undefined, null, "", "   "]) {
+            expect(refusalIsTileBound({ name: "Gantt chart", reasonCode })).toBe(false);
+        }
+        expect(refusalIsTileBound({ name: "Gantt chart" })).toBe(false);
+        expect(refusalIsTileBound(null)).toBe(false);
+        expect(refusalIsTileBound(undefined)).toBe(false);
+    });
+
+    it("does not change whether the reader may pick the row", () => {
+        expect(refusalIsSelectable(tile("Basic Sankey", "TILE_TOO_NARROW", true))).toBe(false);
+        expect(refusalIsSelectable(tile("Basic Sankey", "TILE_TOO_NARROW", false))).toBe(true);
+    });
+});
+
+describe("the tile heading", () => {
+    // Every host renders these words, so they are pinned here once rather than in each host.
+    it("is plain words about the tile, and says nothing about the fields", () => {
+        expect(QUALIFY_TOO_SMALL_HEADING).toBe("Needs a bigger tile");
+        expect(QUALIFY_TOO_SMALL_HEADING.toLowerCase()).not.toContain("field");
+    });
+
+    it("is exported from the package barrel with the helpers that go with it", () => {
+        // Defined first: two undefined values are "the same object", and a missing export must fail.
+        expect(barrel.QUALIFY_TOO_SMALL_HEADING).toBeTypeOf("string");
+        expect(barrel.QUALIFY_TILE_REFUSAL_CODES).toBeTypeOf("object");
+        expect(barrel.refusalIsTileBound).toBeTypeOf("function");
+        expect(barrel.QUALIFY_TOO_SMALL_HEADING).toBe(QUALIFY_TOO_SMALL_HEADING);
+        expect(barrel.QUALIFY_TILE_REFUSAL_CODES).toBe(QUALIFY_TILE_REFUSAL_CODES);
+        expect(barrel.refusalIsTileBound).toBe(refusalIsTileBound);
+    });
+});
+
+describe("the rendered sequence with tile refusals", () => {
+    it("groups tile refusals under their own heading, apart from a fields veto", () => {
+        expect(render([
+            tile("Basic Sankey", "TILE_TOO_NARROW"),
+            fieldsVeto("Gantt chart"),
+            tile("Radar chart", "TILE_NOT_SQUARE"),
+        ])).toEqual(["[tooSmall]", "Basic Sankey*", "Radar chart*", "[cannotDraw]", "Gantt chart*"]);
+    });
+
+    it("still files a fields veto under cannotDraw and a fields waivable under poorFit", () => {
+        expect(render([fieldsVeto("Gantt chart"), fieldsWaivable("Bullet")]))
+            .toEqual(["[poorFit]", "Bullet", "[cannotDraw]", "Gantt chart*"]);
+    });
+
+    it("gives each of the four codes the same heading", () => {
+        for (const code of ["TILE_TOO_NARROW", "TILE_TOO_SHORT", "TILE_NOT_SQUARE", "TILE_NOT_TALL"]) {
+            expect(render([tile("Basic Sankey", code)]), code).toEqual(["[tooSmall]", "Basic Sankey*"]);
+        }
+    });
+
+    // A tile refusal the gate would honour on request stays pickable, and it is a statement about
+    // the tile all the same: "Poor fit for these fields" would be a false claim over it.
+    it("moves a pickable tile refusal out of poorFit and keeps its control", () => {
+        expect(render([fieldsWaivable("Bullet"), tile("Basic Sankey", "TILE_TOO_NARROW", false)]))
+            .toEqual(["[poorFit]", "Bullet", "[tooSmall]", "Basic Sankey"]);
+    });
+
+    it("orders poorFit, then the tile block (pickable first), then cannotDraw, keeping the server's order inside each", () => {
+        expect(render([
+            fieldsVeto("A"),
+            tile("B", "TILE_TOO_SHORT"),
+            fieldsWaivable("C"),
+            tile("D", "TILE_NOT_TALL", false),
+            fieldsVeto("E"),
+            tile("F", "TILE_TOO_NARROW", false),
+            fieldsWaivable("G"),
+        ])).toEqual([
+            "[poorFit]", "C", "G",
+            "[tooSmall]", "D", "F", "B*",
+            "[cannotDraw]", "A*", "E*",
+        ]);
+    });
+
+    it("writes no tile heading when nothing is about the tile", () => {
+        expect(render([fieldsWaivable("B"), fieldsVeto("A")]))
+            .toEqual(["[poorFit]", "B", "[cannotDraw]", "A*"]);
+    });
+
+    it("writes the tile heading once, however many tile rows follow", () => {
+        const out = render([
+            tile("A", "TILE_TOO_NARROW"), tile("B", "TILE_TOO_SHORT"), tile("C", "TILE_NOT_SQUARE"), tile("D", "TILE_NOT_TALL"),
+        ]);
+        expect(out.filter(s => s === "[tooSmall]")).toHaveLength(1);
+        expect(out).toEqual(["[tooSmall]", "A*", "B*", "C*", "D*"]);
+    });
+
+    it("renders the old two-heading list unchanged for a server that sends no codes", () => {
+        expect(render([waivable("B"), veto("A"), waivable("D"), veto("C")]))
+            .toEqual(["[poorFit]", "B", "D", "[cannotDraw]", "A*", "C*"]);
+    });
+
+    it("counts a tile-only list as something to show", () => {
+        expect(hasRefusalsToShow([tile("Basic Sankey", "TILE_TOO_NARROW")])).toBe(true);
+    });
+
+    it("drops a nameless tile row like any other nameless row", () => {
+        const out = orderRefusalsForDisplay(
+            [{ reasonCode: "TILE_TOO_NARROW", isVeto: true }, tile("Basic Sankey", "TILE_TOO_NARROW")] as QualifyRefusalRow[]);
+        expect(out.map(r => r.name)).toEqual(["Basic Sankey"]);
     });
 });
