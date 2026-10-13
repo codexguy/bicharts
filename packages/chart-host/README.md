@@ -351,6 +351,30 @@ const report = await assertViewStateConformance(service, {
 expect(report.skipped).toEqual([]);              // nothing went unchecked
 ```
 
+**A zoomed or panned view** is not in the bag: d3-zoom keeps it on the DOM node, and every redraw
+(a resize, a cross-filter, a restyle) opens the chart at full extent again. `@bicharts/chart-host/zoom-memory`
+remembers it. You supply where the view lives; the hook does the rest on every render:
+
+```ts
+import { createZoomMemoryHook, type ZoomMemoryHost } from "@bicharts/chart-host/zoom-memory";
+
+const zoomHost: ZoomMemoryHost = {
+    liveZoomState: null, zoomWatchKey: "", zoomWatchAttached: false, zoomSettleTimer: 0, zoomContainer: el,
+    rememberAcrossSessions: () => prefs.rememberZoom,             // the persisted tier is on now?
+    readPersistedZoom: () => localStorage.getItem("chart-zoom"),
+    persistZoom: json => localStorage.setItem("chart-zoom", json), // "" forgets
+    log: () => {},
+};
+const zoomMemory = createZoomMemoryHook(zoomHost);   // once per container, reused by every host on it
+const host = createChartHost(el, { code, data, d3, zoomMemory });
+```
+
+The view survives every redraw in the session whatever the preference says, and a close and reopen
+only while `rememberAcrossSessions()` is true. It is keyed by the chart's code and the viewport size
+(to the nearest 32 px), so a regenerated chart or a real resize opens at full extent instead of
+somewhere arbitrary. A chart with several zoomable panels is left alone. In React, pass the hook as
+the `zoomMemory` prop of `<BicChart>`.
+
 ## Keeping a drawn chart readable inside its frame
 
 A generated chart cannot know how wide its own legend text will come out, where its tick labels will

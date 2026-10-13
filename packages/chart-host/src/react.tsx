@@ -62,6 +62,13 @@ export interface BicChartProps {
      */
     viewState?: ChartHostConfig["viewState"];
     /**
+     * REMEMBER THE READER'S ZOOM AND PAN on a chart that calls d3.zoom(), across re-renders and, if
+     * the hook's store keeps it, across a reload. Build it with createZoomMemoryHook() from
+     * "@bicharts/chart-host/zoom-memory", once per chart (module scope or useMemo) with somewhere to
+     * keep the view. Absent, nothing is remembered. See createChartHost's `zoomMemory`.
+     */
+    zoomMemory?: ChartHostConfig["zoomMemory"];
+    /**
      * CAN THE LABELS ON THE MARKS BE READ? Default on: after every render a label sitting on a
      * mark it cannot be read against is recoloured black or white. Pass `false` for a page that
      * owns its label colours, or `{ pageBg }` to name the canvas the chart sits on - a dark or
@@ -211,7 +218,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast, layoutPass,
+    const { code, renderFn, options, d3, geoKind, viewState, zoomMemory, labelContrast, onLabelContrast, layoutPass,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
             className, style, selects, controls, ariaLabel } = props;
     const ref = useRef<HTMLDivElement | null>(null);
@@ -299,7 +306,7 @@ export function BicChart(props: BicChartProps) {
         const ctl = controls ? attachControls(() => hostRef.current, el, controls) : null;
         controlsRef.current = ctl;
         const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
-        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState,
+        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory,
                                            labelContrast, layoutPass,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
                                            // A GETTER, not a wrapper: the host decides whether to

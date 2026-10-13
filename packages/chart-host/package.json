@@ -64,6 +64,11 @@
       "import": "./dist/legend-fit.mjs",
       "default": "./dist/legend-fit.mjs"
     },
+    "./zoom-memory": {
+      "types": "./dist/types/zoomMemory/index.d.ts",
+      "import": "./dist/zoom-memory.mjs",
+      "default": "./dist/zoom-memory.mjs"
+    },
     "./dax": {
       "types": "./dist/types/dax.d.ts",
       "import": "./dist/dax.mjs",

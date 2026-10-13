@@ -84,6 +84,8 @@ const result = await build({
         // The post-render passes that keep a drawn chart readable inside its frame (slide a legend off the plot, thin
         // colliding tick labels, extend the viewBox, fit the labels it cannot rescue); off the main entry (its eager budget).
         "legend-fit": join(here, "src/legendFit/index.ts"),
+        // Remembered zoom/pan on a d3-zoom chart, the hook a host hands createChartHost; off the main entry (its eager budget).
+        "zoom-memory": join(here, "src/zoomMemory/index.ts"),
     },
     bundle: true,
     splitting: true,

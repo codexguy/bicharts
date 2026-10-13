@@ -53,6 +53,8 @@ import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
 import { installLasso, type LassoHandle } from "./lasso";
+// TYPES ONLY: the zoom memory is its own entry ("@bicharts/chart-host/zoom-memory"), off the main entry's eager closure.
+import type { ZoomMemoryHook, ZoomCapture } from "./zoomMemory/zoomMemoryDom";
 
 export type RenderFn = (container: HTMLElement, data: any, options: RenderOptions) => void;
 
@@ -128,6 +130,14 @@ export interface ChartHostConfig {
      *  session store parked on the container — the behaviour every host had before 1.6.0.
      *  A raw `options.setUiState` still wins over this, so an existing caller is untouched. */
     viewState?: ViewStateProvider;
+    /**
+     * REMEMBER THE READER'S ZOOM AND PAN on a chart that calls d3.zoom(), across every re-render (and across a
+     * close and reopen, if the host's store says so). Build it with createZoomMemoryHook() from
+     * "@bicharts/chart-host/zoom-memory", ONCE per container, and hand the same hook to every host created on
+     * that container. Absent (the default), d3.zoom is never wrapped and nothing is listened for. It applies to a
+     * chart compiled from `code` only: a precompiled `renderFn` closed over its own d3.
+     */
+    zoomMemory?: ZoomMemoryHook | null;
     /** D3 v7 instance handed to the compiled code. Default: (globalThis as any).d3. */
     d3?: any;
     /** Attach geometry for this geoKind as options.geo (choropleths / basemaps). Resolved
@@ -559,6 +569,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     const doc: any = container.ownerDocument;
     const win: any = doc?.defaultView ?? (globalThis as any);
     const d3 = config.d3 ?? (globalThis as any).d3 ?? win?.d3;
+    // THE d3 THE CHART IS HANDED, taken once: compileRenderFn's own writableD3 hands an extensible object back
+    // unchanged, so the zoom memory below wraps the very object the chart's code reaches.
+    const chartD3 = writableD3(d3);
     let data = config.data;
     // A generated chart is COMMITTED SOURCE that outlives the tool that wrote it, so a host
     // on a different major version of the grammar is a real possibility. Warn once, loudly
@@ -949,11 +962,24 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
 
     const stopAnim = () => { const s = (container as any)[CONTAINER_SLOT_ANIM_STOP]; if (typeof s === "function") { try { s(); } catch { /* chart timer already dead */ } } };
 
+    // THE ZOOM MEMORY (config.zoomMemory): what the current render captured, and the key its view is kept under.
+    const zoomMemory = config.zoomMemory ?? null;
+    let zoomCap: ZoomCapture | null = null;
+    let zoomKey = "";
+    // A gesture still settling is recorded from the chart it was made on, before that chart's DOM goes away.
+    const flushZoom = () => { if (zoomMemory) { try { zoomMemory.flush(); } catch { /* never costs a render */ } } };
+
     // EVERYTHING THAT HAPPENS AFTER THE CHART HAS DRAWN, in one place and with exactly one
     // definition. A chart that draws asynchronously must receive the IDENTICAL treatment a
     // synchronous one gets, and the only way to guarantee that as passes are added is for both
     // lanes to call the same function rather than each keep a copy that drifts.
     const runPostRenderPasses = () => {
+        // THE REMEMBERED ZOOM, FIRST and synchronously: it has to land before the browser paints, or the reader sees
+        // the chart at full extent and then jump, and before every pass below, so they measure the view the reader
+        // will actually see.
+        if (zoomMemory && zoomCap) {
+            try { zoomMemory.restore(container, zoomCap, zoomKey, chartD3); } catch { /* never costs a render */ }
+        }
         // ONE PAGE, ONE ID SPACE - first, before any pass reads the DOM. The chart's clip paths and gradients get this
         // host's suffix and its url(#...) references follow, so a second chart of the same size can't be clipped by
         // the first one's rectangle. A clash it prevented is said once, in the console, where a developer looks.
@@ -1113,10 +1139,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             const seq = ++renderSeq;
             stopAnim();                          // contract: stop the old timer before repaint
             disposeLasso();                      // its surface is about to go; its listeners must go with it
+            flushZoom();                         // a pending zoom gesture is read off the old chart first
             container.innerHTML = "";            // the host owns clearing between renders
             if (!renderFn) {
                 if (!config.code) throw new Error("createChartHost: provide code or renderFn");
-                renderFn = compileRenderFn(config.code, win, doc, d3);
+                renderFn = compileRenderFn(config.code, win, doc, chartD3);
             }
             // Attach geometry + unmatched when configured and not explicitly supplied.
             // render() is SYNCHRONOUS by contract, so geoKind resolves against whatever the
@@ -1155,8 +1182,23 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // measuring this chart. RenderFn is declared `=> void`, which in TypeScript permits
             // a function returning anything, so the value is read back as unknown.
             let outcome: unknown;
+            // REMEMBERED ZOOM: d3.zoom is wrapped while the chart's code runs (that is when it creates its zoom
+            // behavior) and released after, whatever happens. Only for a chart compiled here from `code`: a
+            // precompiled renderFn closed over a d3 this host never saw.
+            zoomCap = null;
+            if (zoomMemory && config.code && !config.renderFn) {
+                try {
+                    zoomKey = zoomMemory.keyFor(config.code, resolved.width ?? container.clientWidth,
+                                                resolved.height ?? container.clientHeight);
+                    zoomCap = zoomMemory.capture(chartD3);
+                } catch { zoomCap = null; }
+            }
             try {
-                outcome = renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
+                try {
+                    outcome = renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
+                } finally {
+                    try { zoomCap?.release(); } catch { /* a release that fails leaves d3.zoom wrapped, never the chart broken */ }
+                }
             } catch (err) {
                 const fatal = renderFailure(err);
                 if (fatal) { settle(Promise.reject(fatal)); throw fatal; }
@@ -1272,6 +1314,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             subs.clear();
             annotationLayer.destroy();
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
+            flushZoom();                         // a pending zoom gesture is read off the chart before it goes
             container.innerHTML = "";
         },
     };
