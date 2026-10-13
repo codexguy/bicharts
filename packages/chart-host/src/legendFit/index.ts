@@ -52,3 +52,6 @@ export {
     FRAME_FIT_TEXT_CAP, fitTextToFrame, fitDeferredLabels, fitLabelToRoom, isClippedOrScrolled,
     type FrameFitOutcome, type DeferredLabelFitReport,
 } from "./frameFitDom";
+
+// Both DOM passes as one function a host hands to createChartHost as `layoutPass`.
+export { createLegendFitPass, type LegendFitPassOptions, type LegendFitReport, type LegendFitStrictness } from "./pass";

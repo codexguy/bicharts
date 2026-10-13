@@ -243,6 +243,15 @@ export interface ChartHostConfig {
     /** What the label-contrast pass did after each render - counts, so a host can log them. */
     onLabelContrast?: (report: LabelContrastReport) => void;
     /**
+     * A LAYOUT PASS the host brings, run after every render (both the synchronous and the promise lane, and every
+     * setOptions / setData re-render) AFTER the label-contrast pass and BEFORE the hit-target heal, the selection
+     * repaint, the censuses and the fit - the order a pass that moves the legend or grows the viewBox needs, because
+     * the fit must measure the final layout. Absent by default: the main entry carries no such pass. Build one with
+     * createLegendFitPass() from "@bicharts/chart-host/legend-fit". It must not throw (a throw is swallowed and the
+     * render stands); it reports through its own callback, never through this host.
+     */
+    layoutPass?: (container: HTMLElement) => void;
+    /**
      * What the id-scoping pass did after each render: how many of the chart's ids got this host's suffix, and which
      * of them also existed elsewhere in the page (a clash it prevented - two same-size charts naming one clip path).
      */
@@ -976,6 +985,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 const r = applyLabelContrast(container, lc);
                 config.onLabelContrast?.(r);
             } catch { /* a contrast pass must never break a render that already succeeded */ }
+        }
+        // THE HOST'S LAYOUT PASS (legend reconcile, frame fit), after the labels have their colors and before anything
+        // measures marks or the frame. Never fatal.
+        if (config.layoutPass) {
+            try { config.layoutPass(container); } catch { /* a layout pass must never break a render that already succeeded */ }
         }
         // A DECLARED mark that cannot receive a click is not a mark. Heal the two
         // habits that leave one unhittable (an inert <g> whose painted children are

@@ -38,6 +38,8 @@ const EXPECTED_EXPORTS = [
     "FRAME_FIT_TEXT_CAP", "findColorbarFurniture", "findSignatureLegendGroups", "fitDeferredLabels",
     "fitLabelToRoom", "fitTextToFrame", "isClippedOrScrolled", "reconcileLegendInSvg",
     "smallestRenderedTextPx", "styleDeclaresScroll",
+    // both DOM passes as one host layout pass
+    "createLegendFitPass",
 ];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

@@ -394,6 +394,27 @@ a throw must never fail a chart that already drew. The geometry behind each phas
 `planAxisTickThin`, `planFrameFit`, ...) is exported as plain functions over boxes, for a host that
 measures on its own terms.
 
+**Running them after every render.** `createLegendFitPass()` is both passes in the order that works
+(the legend first, then the frame fit, which measures what the legend pass left), with nothing to log
+and no policy. Hand it to the host as `layoutPass`, and the host runs it after every render, re-render
+and async settle, after the label colors are fixed and before anything measures the marks or the
+frame:
+
+```ts
+import { createChartHost } from "@bicharts/chart-host";
+import { createLegendFitPass } from "@bicharts/chart-host/legend-fit";
+
+const layoutPass = createLegendFitPass({
+    legend: true,            // or "narrow" to act only on large overlaps, or false
+    frameFit: true,
+    onReport: r => console.debug(r.legend, r.frame),   // what each run did; log what you like
+});
+const host = createChartHost(el, { code, data, d3, layoutPass });
+```
+
+In React it is the `layoutPass` prop of `<BicChart>`. Build the pass once, at module scope or in a
+`useMemo`: a new function on every render is a new host config, and the chart is rebuilt.
+
 ## Architecture — three layers, and why it matters if you contribute
 
 Read this before adding code. The package has **three** concerns, and they are independent.

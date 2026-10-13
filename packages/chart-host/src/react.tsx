@@ -71,6 +71,13 @@ export interface BicChartProps {
     /** What the label-contrast pass did after each render - counts, for a page that logs. */
     onLabelContrast?: ChartHostConfig["onLabelContrast"];
     /**
+     * A LAYOUT PASS run after every render, after label contrast and before the fit - e.g.
+     * `createLegendFitPass()` from "@bicharts/chart-host/legend-fit", which slides a legend clear of
+     * the plot and fits text to the frame. Absent by default. Build it ONCE (module scope or useMemo):
+     * a new function each render rebuilds the host. See createChartHost's `layoutPass`.
+     */
+    layoutPass?: ChartHostConfig["layoutPass"];
+    /**
      * THE CHART STOPPED BECAUSE THE DATA LACKS A COLUMN IT IS BUILT ON. Supplied: the chart's
      * container is left empty and this is called with the chart's reason, instead of the throw
      * reaching React - so a page can say what is missing where the chart would be. Absent: the
@@ -204,7 +211,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast,
+    const { code, renderFn, options, d3, geoKind, viewState, labelContrast, onLabelContrast, layoutPass,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
             className, style, selects, controls, ariaLabel } = props;
     const ref = useRef<HTMLDivElement | null>(null);
@@ -293,7 +300,7 @@ export function BicChart(props: BicChartProps) {
         controlsRef.current = ctl;
         const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
         const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState,
-                                           labelContrast,
+                                           labelContrast, layoutPass,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
                                            // A GETTER, not a wrapper: the host decides whether to
                                            // swallow the sentinel throw by whether this is SET, so
@@ -334,10 +341,10 @@ export function BicChart(props: BicChartProps) {
             host.destroy();
             hostRef.current = null;
         };
-        // labelContrast is a HOST config, read once at creation, so flipping it is a rebuild
-        // (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
+        // labelContrast and layoutPass are HOST config, read once at creation, so changing either is a
+        // rebuild (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind, labelContrast, controls]);
+    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, controls]);
 
     // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
     // filter replaced. The first paint restores a selection made before this chart mounted (a
@@ -370,7 +377,7 @@ export function BicChart(props: BicChartProps) {
             if (bindingRef.current === b) bindingRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selects, code, renderFn, d3, geoKind, labelContrast]);
+    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the
