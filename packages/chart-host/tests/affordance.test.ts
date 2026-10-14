@@ -353,6 +353,96 @@ describe("dim opacity option", () => {
         expect(dimVar()).toBe("0.6");
     });
 
+    // Two hosts alive on one element (a page that builds the next before it tears the old down). The first to write saves
+    // what the page had; the last to let go puts it back. Neither may take another host's write for the page's.
+    it("two hosts on one element: the page's own value comes back whichever lets go first", () => {
+        for (const order of [[0, 1], [1, 0]]) {
+            container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+            const hosts = [dimHost({ dimOpacity: 0.3 }), dimHost({ dimOpacity: 0.4 })];
+            hosts[0].render();
+            hosts[1].render();
+            expect(dimVar()).toBe("0.4");
+            hosts[order[0]].destroy();
+            hosts[order[1]].destroy();
+            expect(dimVar()).toBe("0.6");
+        }
+    });
+
+    it("two hosts on one element with no page value: nothing is left behind by either", () => {
+        const a = dimHost({ dimOpacity: 0.3 });
+        const b = dimHost({ dimOpacity: 0.4 });
+        a.render();
+        b.render();
+        a.destroy();
+        b.destroy();
+        expect(dimVar()).toBe("");
+    });
+
+    it("a host created after the last one let go saves the page's value afresh", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const a = dimHost({ dimOpacity: 0.3 });
+        a.render();
+        a.destroy();
+        expect(dimVar()).toBe("0.6");
+        container.style.setProperty(DIM_OPACITY_VAR, "0.7");          // the page moved its own value in between
+        const b = dimHost({ dimOpacity: 0.4 });
+        b.render();
+        expect(dimVar()).toBe("0.4");
+        b.destroy();
+        expect(dimVar()).toBe("0.7");
+    });
+
+    it("the option going away on one of two hosts leaves the other's hold on the page's value", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const a = dimHost({ dimOpacity: 0.3 });
+        const b = dimHost({ dimOpacity: 0.4 });
+        a.render();
+        b.render();
+        a.setOptions({ dimOpacity: undefined });
+        b.destroy();
+        expect(dimVar()).toBe("0.6");
+        a.destroy();
+        expect(dimVar()).toBe("0.6");
+    });
+
+    // jsdom's style declaration drops the priority of a custom property, so this one carries its own: it records what the
+    // host asked for, which is the whole of the host's part.
+    it("a page's value set with !important comes back with its priority", () => {
+        const real = container.style;
+        const props = new Map<string, { value: string; priority: string }>();
+        Object.defineProperty(container, "style", {
+            configurable: true,
+            value: new Proxy(real, {
+                get: (t, k) => {
+                    if (k === "getPropertyValue") return (n: string) => props.get(n)?.value ?? "";
+                    if (k === "getPropertyPriority") return (n: string) => props.get(n)?.priority ?? "";
+                    if (k === "setProperty") return (n: string, v: string, pr = "") => { props.set(n, { value: v, priority: pr }); };
+                    if (k === "removeProperty") return (n: string) => { props.delete(n); return ""; };
+                    const v = (t as any)[k];
+                    return typeof v === "function" ? v.bind(t) : v;
+                },
+                set: (t, k, v) => { (t as any)[k] = v; return true; },
+            }),
+        });
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6", "important");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        expect(props.get(DIM_OPACITY_VAR)).toEqual({ value: "0.3", priority: "" });
+        h.destroy();
+        expect(props.get(DIM_OPACITY_VAR)).toEqual({ value: "0.6", priority: "important" });
+    });
+
+    it("setOptions() and setData() on a destroyed host neither throw nor draw", () => {
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        h.destroy();
+        expect(() => h.setOptions({ dimOpacity: 0.5 })).not.toThrow();
+        expect(() => h.setData(DATA as any)).not.toThrow();
+        expect(marks()).toHaveLength(0);
+        expect(h.options.dimOpacity).toBe(0.3);
+        expect(dimVar()).toBe("");
+    });
+
     it("a selection handed to a destroyed host paints nothing on the container", () => {
         const h = dimHost({ dimOpacity: 0.3 });
         h.render();

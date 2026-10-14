@@ -421,17 +421,18 @@ only while `rememberAcrossSessions()` is true. It is keyed by the chart's code a
 (to the nearest 32 px), so a regenerated chart or a real resize opens at full extent instead of
 somewhere arbitrary. A chart with several zoomable panels is left alone. The `ZoomMemoryHost` is the
 memory: keep one per chart for as long as the chart is on the page, and hand its hook to every host
-built for that chart, on the same element or, after a remount, a new one. In React, pass the hook as
-the `zoomMemory` prop of `<BicChart>`, built once (`zoomHost` as above, kept outside the render):
+built for that chart, on the same element or, after a remount, a new one (a destroyed host releases
+the hook's watcher, so the next one can take it). In React, pass the hook as the `zoomMemory` prop of
+`<BicChart>`, built once (`zoomHost` as above, kept outside the render):
 
 ```tsx
 const [zoomMemory] = useState(() => createZoomMemoryHook(zoomHost));   // once, however often this renders
 return <BicChart code={code} data={data} d3={d3} zoomMemory={zoomMemory} />;
 ```
 
-A hook built inline (`zoomMemory={createZoomMemoryHook(zoomHost)}`) over that same `ZoomMemoryHost` is
-treated as the same memory and rebuilds nothing; a hook over a different `ZoomMemoryHost` rebuilds the
-chart's host with it.
+A hook that arrives after mount, or goes away, rebuilds the chart's host; swapping one hook for another
+on a mounted `<BicChart>` is ignored (remount it with a `key` for a chart that needs a different
+`ZoomMemoryHost`), so a hook built inline in the props changes nothing.
 
 **A scrolled chart** keeps its place with no setup. A chart taller than its frame scrolls, and every
 redraw empties the container, which used to send the reader back to the top. The host now parks the

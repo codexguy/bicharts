@@ -137,9 +137,10 @@ export interface ChartHostConfig {
     /**
      * REMEMBER THE READER'S ZOOM AND PAN on a chart that calls d3.zoom(), across every re-render (and across a
      * close and reopen, if the host's store says so). Build it with createZoomMemoryHook() from
-     * "@bicharts/chart-host/zoom-memory", ONCE per container, and hand the same hook to every host created on
-     * that container. Absent (the default), d3.zoom is never wrapped and nothing is listened for. It applies to a
-     * chart compiled from `code` only: a precompiled `renderFn` closed over its own d3.
+     * "@bicharts/chart-host/zoom-memory", ONCE per chart, and hand the same hook to every host built for that chart
+     * (on the same element or, after a remount, a new one): a host that is destroyed releases the hook's watcher, so
+     * the hook can go to the next. Absent (the default), d3.zoom is never wrapped and nothing is listened for. It
+     * applies to a chart compiled from `code` only: a precompiled `renderFn` closed over its own d3.
      */
     zoomMemory?: ZoomMemoryHook | null;
     /** D3 v7 instance handed to the compiled code. Default: (globalThis as any).d3. */
@@ -585,6 +586,12 @@ const ASYNC_RENDER_TIMEOUT_MS = 15000;
 const isThenable = (v: unknown): v is PromiseLike<unknown> =>
     !!v && (typeof v === "object" || typeof v === "function") && typeof (v as any).then === "function";
 
+// THE PAGE'S OWN INLINE --lch-dim-opacity on a container (value and priority, null when there was none), saved by the first
+// host to write there and put back by the last to let go. Per element, not per host: two hosts can overlap on one (the
+// next is built before the old is torn down), and a second one reading the container would take the first one's write for
+// the page's and put it back after the page's own was restored.
+const dimVarPage = new WeakMap<object, { was: { value: string; priority: string } | null; holders: number }>();
+
 export function createChartHost(container: HTMLElement, config: ChartHostConfig): ChartHost {
     const doc: any = container.ownerDocument;
     const win: any = doc?.defaultView ?? (globalThis as any);
@@ -693,17 +700,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // this marks the promise handled without consuming it — an await still rejects.
         p.catch(() => { /* the caller's await is the real channel */ });
     };
-    // Whether THIS host wrote --lch-dim-opacity on the container, and the page's own inline value (and priority) it
-    // replaced, null when there was none: letting go puts back what the page had instead of removing it.
+    // Whether THIS host holds the container's --lch-dim-opacity (it wrote it), so it lets go of only its own hold: the last
+    // host to let go puts back what the page had (dimVarPage) instead of removing it.
     let dimVarSet = false;
-    let dimVarWas: { value: string; priority: string } | null = null;
     const releaseDimVar = () => {
         if (!dimVarSet) return;
         dimVarSet = false;
-        const was = dimVarWas;
-        dimVarWas = null;
+        const page = dimVarPage.get(container);
+        if (!page || --page.holders > 0) return;
+        dimVarPage.delete(container);
         try {
-            if (was) container.style?.setProperty(DIM_OPACITY_VAR, was.value, was.priority);
+            if (page.was) container.style?.setProperty(DIM_OPACITY_VAR, page.was.value, page.was.priority);
             else container.style?.removeProperty(DIM_OPACITY_VAR);
         } catch { /* frozen element */ }
     };
@@ -807,11 +814,16 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             const want = resolved.dimOpacity;
             if (typeof want === "number") {
                 if (!dimVarSet) {
-                    const value = container.style?.getPropertyValue?.(DIM_OPACITY_VAR) ?? "";
-                    dimVarWas = value ? { value, priority: container.style?.getPropertyPriority?.(DIM_OPACITY_VAR) ?? "" } : null;
+                    let page = dimVarPage.get(container);
+                    if (!page) {
+                        const value = container.style?.getPropertyValue?.(DIM_OPACITY_VAR) ?? "";
+                        page = { was: value ? { value, priority: container.style?.getPropertyPriority?.(DIM_OPACITY_VAR) ?? "" } : null, holders: 0 };
+                        dimVarPage.set(container, page);
+                    }
+                    page.holders++;
+                    dimVarSet = true;
                 }
                 container.style?.setProperty(DIM_OPACITY_VAR, String(want));
-                dimVarSet = true;
             } else releaseDimVar();
             // The clicked tick is marked under BOTH origins — it colours no marks, so it
             // is outside the period rule by construction and is the only feedback a
@@ -1201,6 +1213,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let zoomKey = "";
     // A gesture still settling is recorded from the chart it was made on, before that chart's DOM goes away.
     const flushZoom = () => { if (zoomMemory) { try { zoomMemory.flush(); } catch { /* never costs a render */ } } };
+    // A destroyed host lets the hook go of its container, so a hook handed to the next host (or replaced) is not left
+    // watching an element nobody draws into.
+    const releaseZoom = () => { if (zoomMemory) { try { zoomMemory.release?.(container); } catch { /* never costs a teardown */ } } };
 
     // THE READER'S SCROLL survives a redraw of the SAME chart: remembered on the container before it is cleared (here and in
     // destroy(), so a host re-created on the same element finds it), restored by the fit only when the chart is the same one.
@@ -1592,6 +1607,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // for the next host on this element
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
             flushZoom();                         // a pending zoom gesture is read off the chart before it goes
+            releaseZoom();
             followGlyphs(false);
             container.innerHTML = "";
             // The position the glyph layer needed goes back to what the page left, unless the page has changed it since.

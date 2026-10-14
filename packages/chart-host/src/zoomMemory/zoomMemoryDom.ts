@@ -33,21 +33,23 @@ import { noteZoomMemoryHost } from "../zoomHookIdentity";
 
 /**
  * WHAT A HOST SUPPLIES: where the remembered view lives, and whether it may outlive the session.
- * One per chart container, kept for as long as the container is, so it outlives a host that is destroyed
- * and re-created on the same element (a redraw on every resize, say).
+ * One per chart, kept for as long as the chart is on the page, so it outlives a host that is destroyed
+ * and re-created (on the same element for a redraw on every resize, say, or on a new one after a remount).
  */
 export interface ZoomMemoryHost {
     /** The in-session tier, always on: survives every re-render, never written anywhere. */
     liveZoomState: ZoomState | null;
     /** The key the watcher stamps on what it records (the latest render's). */
     zoomWatchKey: string;
-    /** Whether the watcher's listeners are on zoomContainer (they attach once). */
+    /** Whether the watcher's listeners are on zoomContainer (they attach once per element, and come off when the
+     *  host that drew into it is destroyed). */
     zoomWatchAttached: boolean;
     /** The pending settle timer, 0 when none. */
     zoomSettleTimer: number;
     /** The element the chart draws into; it outlives each render, so listeners attach to it once. Null until
-     *  known: createZoomMemoryHook's restore adopts the render's container then, and moves to a new one when a
-     *  render arrives on a different element (a remount). */
+     *  known: createZoomMemoryHook's restore adopts the render's container then, moves to a new one when a
+     *  render arrives on a different element (a remount), and gives it back when the host is destroyed. An element
+     *  set here beforehand is the page's choice: the hook watches it and neither replaces nor gives it back. */
     zoomContainer: Element | null;
     /** Is the persisted tier on NOW? Read on every restore and every write, so a change applies to the next. */
     rememberAcrossSessions(): boolean;
@@ -218,6 +220,9 @@ const WATCHED_EVENTS = ["wheel", "pointerup", "pointercancel", "click", "dblclic
 // element. Kept here rather than on ZoomMemoryHost so that interface, which hosts implement, is unchanged; weak, so a
 // host object dropped by its page takes its entry with it.
 const attachedWatchers = new WeakMap<ZoomMemoryHost, { ctr: Element; settle: () => void }>();
+// The element the hook itself stored in host.zoomContainer, as against one the page put there: only the first is the
+// hook's to replace on a remount and to give back when its host is destroyed.
+const adoptedContainers = new WeakMap<ZoomMemoryHost, Element>();
 
 /** Take the watcher off the element it is on and drop a settle still pending there, so the next attachZoomWatcher
  *  attaches afresh. The session view is kept. */
@@ -299,28 +304,42 @@ export interface ZoomMemoryHook {
     flush(): void;
     /** forgetZoom: drop the session view and a pending gesture. */
     forget(): void;
+    /** Let go of the watcher on `container`, the element a destroyed host drew into (after flush, which records a
+     *  gesture still settling), so the next host handed this hook attaches afresh and a hook that is replaced leaves
+     *  nothing on the element. Without `container`, wherever the watcher is. A watcher that has since moved to another
+     *  element is left alone. Optional: a hook written by hand without it works as before. */
+    release?(container?: Element): void;
 }
 
 /** Bind the zoom memory to one host object. Build it once per chart and hand the same hook to every
  *  host created for it, so the session tier outlives each one - on the same element, or on a new one
- *  after a remount, where the watcher moves with it. */
+ *  after a remount, where the watcher moves with it. A host that is destroyed releases the watcher. */
 export function createZoomMemoryHook(host: ZoomMemoryHost): ZoomMemoryHook {
     const hook: ZoomMemoryHook = {
         keyFor: (code, width, height) => zoomStateKey(SIMPLE_STRING_HASH(String(code ?? "")), width, height),
         capture: d3 => captureZoomBehaviors(d3, host),
         restore: (container, capture, key, d3) => {
             // A NEW ELEMENT (a component remounted with the same hook): the watcher moves to it, and the old one is let
-            // go, listeners and all, instead of being watched - and kept alive - while the chart draws elsewhere.
-            if (host.zoomContainer && host.zoomContainer !== container) {
+            // go, listeners and all, instead of being watched - and kept alive - while the chart draws elsewhere. Only an
+            // element this hook took itself is replaced: one the page set on the memory beforehand stays.
+            const mine = adoptedContainers.get(host);
+            if (host.zoomContainer && host.zoomContainer === mine && mine !== container) {
                 detachZoomWatcher(host);
                 host.zoomContainer = null;
             }
-            if (!host.zoomContainer) host.zoomContainer = container;
+            if (!host.zoomContainer) { host.zoomContainer = container; adoptedContainers.set(host, container); }
             restoreZoomForRender(d3, host, capture, key);
             attachZoomWatcher(host, key);
         },
         flush: () => flushPendingZoom(host),
         forget: () => forgetZoom(host),
+        release: container => {
+            // The watcher is on another host's element by now (the next host drew first): not this one's to take off.
+            if (container && attachedWatchers.get(host)?.ctr !== container) return;
+            detachZoomWatcher(host);
+            if (host.zoomContainer && host.zoomContainer === adoptedContainers.get(host)) host.zoomContainer = null;
+            adoptedContainers.delete(host);
+        },
     };
     // So a binding can tell a hook rebuilt over the same host (written inline in a component's props) from a new memory.
     noteZoomMemoryHost(hook, host);
