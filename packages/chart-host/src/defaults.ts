@@ -102,9 +102,16 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         cultureCode: p.cultureCode,
         allowTooltips: p.allowTooltips,
         noDataText: p.noDataText,
-        // A finite number is clamped to DIM_OPACITY_MIN-1; absent, blank or junk stays undefined so the stylesheet - and a
-        // page's own CSS override - still decides. Never defaulted here: that would override every page's CSS.
-        dimOpacity: (() => { const n = numberOr(p.dimOpacity, NaN); return Number.isFinite(n) ? clamp(n, DIM_OPACITY_MIN, 1) : undefined; })(),
+        // A finite number, or a string that is numeric once trimmed, is clamped to DIM_OPACITY_MIN-1; anything else (absent,
+        // blank, a boolean, an array, an object) stays undefined so the stylesheet - and a page's own CSS override - still
+        // decides. Not numberOr: Number() reads true as 1 and false, [] and whitespace as 0, which would dim to the floor.
+        // Above 1 is clamped to 1, which dims nothing; it is never reinterpreted as a percentage, so the option keeps one
+        // unit (a share of full opacity) for every value. Never defaulted here: that would override every page's CSS.
+        dimOpacity: (() => {
+            const v = p.dimOpacity as unknown;
+            const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+            return Number.isFinite(n) ? clamp(n, DIM_OPACITY_MIN, 1) : undefined;
+        })(),
         // A recognised glyph or none: an unknown string must never reach the painter as a live mode, and "none" is
         // undefined rather than a value, so a host that passes nothing and one that passes "none" resolve alike.
         selectionGlyph: ((): RenderOptions["selectionGlyph"] => {

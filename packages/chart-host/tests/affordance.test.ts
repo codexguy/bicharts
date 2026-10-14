@@ -7,7 +7,8 @@ import { createChartHost } from "../src/host";
 import {
     MARK_CLASS, LEGEND_MARK_CLASS, ROW_IDX_ATTR, HOST_CONTAINER_CLASS,
     SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT,
-    LIFT_SELECTED_CLASS,
+    LIFT_SELECTED_CLASS, CONTAINER_SLOT_XF_CLEAR, CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_INITIAL_XF_MARK,
+    CONTAINER_SLOT_CLICKED_MARKS,
 } from "../src/contract";
 
 // The SELECTION AFFORDANCE — what a selection LOOKS like, and how a user gets OUT of one.
@@ -336,5 +337,67 @@ describe("dim opacity option", () => {
         expect(dimVar()).toBe("0.3");
         h.destroy();
         expect(dimVar()).toBe("");
+    });
+
+    it("a page's own inline value under a host WITH the option comes back when the host lets go", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        click(marks()[1]);
+        expect(dimVar()).toBe("0.3");
+        h.setOptions({ dimOpacity: undefined });
+        expect(dimVar()).toBe("0.6");
+        h.setOptions({ dimOpacity: 0.2 });
+        expect(dimVar()).toBe("0.2");
+        h.destroy();
+        expect(dimVar()).toBe("0.6");
+    });
+
+    it("a selection handed to a destroyed host paints nothing on the container", () => {
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        h.destroy();
+        h.selection.highlight([0]);
+        expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(false);
+        expect(dimVar()).toBe("");
+        h.selection.clear();
+        expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(false);
+        expect(dimVar()).toBe("");
+    });
+});
+
+// A HOST REBUILT ON THE SAME ELEMENT. The chart's slots on the container (its clear, its animation stop, its initial
+// mark) and the clicked-marks record belong to whichever host drew last; a reference to the destroyed one (a stale
+// closure, a late callback) must reach none of them.
+describe("a destroyed host leaves the host rebuilt on its element alone", () => {
+    it("clear(), animation.stop(), setAnnotations() and initialMark() on the old host touch nothing of the new one", () => {
+        const old = host();
+        old.render();
+        old.destroy();
+        const live = host();
+        const seen: Array<[number[], string]> = [];
+        live.selection.onChange((rows, src) => seen.push([rows, src]));
+        live.render();
+        const calls: string[] = [];
+        (container as any)[CONTAINER_SLOT_XF_CLEAR] = () => calls.push("clear");
+        (container as any)[CONTAINER_SLOT_ANIM_STOP] = () => calls.push("stop");
+        (container as any)[CONTAINER_SLOT_INITIAL_XF_MARK] = marks()[2];
+        click(marks()[1]);
+        const clicked = (container as any)[CONTAINER_SLOT_CLICKED_MARKS];
+        expect(live.selection.current).toEqual([1]);
+
+        old.selection.clear();
+        old.animation.stop();
+        old.setAnnotations([{ column: "City", value: "B", label: "1" }]);
+        const oldMark = old.initialMark();
+
+        expect(calls).toEqual([]);
+        expect(live.selection.current).toEqual([1]);
+        expect(seen).toEqual([[[1], "user"]]);
+        expect((container as any)[CONTAINER_SLOT_CLICKED_MARKS] === clicked).toBe(true);
+        expect(container.querySelector(".bic-annotations") === null).toBe(true);
+        expect(oldMark === null).toBe(true);
+        expect(marks()[1].classList.contains(MARK_SELECTED_CLASS)).toBe(true);
+        live.destroy();
     });
 });

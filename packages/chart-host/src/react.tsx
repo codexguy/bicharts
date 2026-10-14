@@ -32,6 +32,7 @@ import { bindFilter, createFilter, createFilterScope, payloadRowReader, viewToke
 
 export { assembleD3 } from "./host";
 import { attachControls, createControls, type Controls, type ControlsAttachment } from "./controls";
+import { sameZoomMemory } from "./zoomHookIdentity";
 export { createControls, type Controls, type ControlInfo } from "./controls";
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
 export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
@@ -64,8 +65,11 @@ export interface BicChartProps {
     /**
      * REMEMBER THE READER'S ZOOM AND PAN on a chart that calls d3.zoom(), across re-renders and, if
      * the hook's store keeps it, across a reload. Build it with createZoomMemoryHook() from
-     * "@bicharts/chart-host/zoom-memory", once per chart (module scope or useMemo) with somewhere to
-     * keep the view. Absent, nothing is remembered. See createChartHost's `zoomMemory`.
+     * "@bicharts/chart-host/zoom-memory" over one ZoomMemoryHost per chart (module scope, useRef or
+     * useMemo) with somewhere to keep the view. Absent, nothing is remembered. Host config: a hook that
+     * arrives after mount, or one over a different ZoomMemoryHost, rebuilds the host; a new hook over the
+     * same ZoomMemoryHost (built inline in the props) is the same memory and rebuilds nothing.
+     * See createChartHost's `zoomMemory`.
      */
     zoomMemory?: ChartHostConfig["zoomMemory"];
     /**
@@ -272,6 +276,13 @@ export function BicChart(props: BicChartProps) {
     // Whether the selection this chart shows now was made by the reader on it (not painted in).
     const userSelectedRef = useRef(false);
     const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
+    // THE ZOOM MEMORY IN FORCE. A hook is a binding over a ZoomMemoryHost, so a new hook over the same host (one written
+    // inline, createZoomMemoryHook(h) in the props) is the same memory and keeps the hook already in use: by identity
+    // alone every parent render rebuilt the host and rebound the filter, and a callback that sets the parent's state
+    // (onSelectionGlyphs) could loop. A hook over another host, or one that arrives after mount, replaces it.
+    const zoomRef = useRef(zoomMemory);
+    if (!sameZoomMemory(zoomRef.current, zoomMemory)) zoomRef.current = zoomMemory;
+    const zoomInForce = zoomRef.current;
     const builtWithRef = useRef<{ data?: unknown; optKey?: string } | null>(null);
 
     // Keep the newest callback without making it a rebuild trigger.
@@ -317,7 +328,7 @@ export function BicChart(props: BicChartProps) {
         const ctl = controls ? attachControls(() => hostRef.current, el, controls) : null;
         controlsRef.current = ctl;
         const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
-        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory,
+        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory: zoomInForce,
                                            labelContrast, layoutPass, restoreScroll,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
                                            onSelectionGlyphs: r => onSelectionGlyphsRef.current?.(r),
@@ -360,10 +371,11 @@ export function BicChart(props: BicChartProps) {
             host.destroy();
             hostRef.current = null;
         };
-        // labelContrast, layoutPass and restoreScroll are HOST config, read once at creation, so changing one is a
-        // rebuild (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
+        // labelContrast, layoutPass, restoreScroll and zoomMemory are HOST config, read once at creation, so changing one
+        // is a rebuild (cheap: the code identity is unchanged, only the config) rather than a silent no-op - a zoom
+        // memory hook that arrives after mount would otherwise never be used.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, controls]);
+    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomInForce, controls]);
 
     // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
     // filter replaced. The first paint restores a selection made before this chart mounted (a
@@ -396,7 +408,7 @@ export function BicChart(props: BicChartProps) {
             if (bindingRef.current === b) bindingRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll]);
+    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomInForce]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the

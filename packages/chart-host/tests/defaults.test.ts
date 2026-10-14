@@ -495,6 +495,18 @@ describe("resolveOptions - dimOpacity", () => {
         expect(resolveOptions({ dimOpacity: null }).dimOpacity).toBeUndefined();
     });
 
+    it("only a number or a numeric string counts: whitespace, booleans, arrays and objects stay undefined", () => {
+        for (const junk of ["  ", "\t", false, true, [], [0.3], {}, NaN, Infinity, -Infinity])
+            expect(resolveOptions({ dimOpacity: junk as any }).dimOpacity).toBeUndefined();
+        expect(resolveOptions({ dimOpacity: " 0.5 " }).dimOpacity).toBe(0.5);
+        expect(resolveOptions({ dimOpacity: "0" }).dimOpacity).toBe(DIM_OPACITY_MIN);
+    });
+
+    it("a value above 1 is clamped to full opacity, never read as a percentage", () => {
+        expect(resolveOptions({ dimOpacity: 25 }).dimOpacity).toBe(1);
+        expect(resolveOptions({ dimOpacity: "40" }).dimOpacity).toBe(1);
+    });
+
     it("is a host setting, not an option-pane knob", () => {
         expect(Object.keys(OPTIONS_VOCABULARY)).not.toContain("dimOpacity");
     });

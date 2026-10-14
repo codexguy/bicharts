@@ -137,6 +137,53 @@ describe("createChartHost - zoomMemory present", () => {
         b.destroy();
     });
 
+    it("one hook, a host re-created on a NEW element (a remount): the hook follows the new element and lets go of the old", () => {
+        vi.useFakeTimers();
+        const applied: any[] = [];
+        const zh = zoomHost();
+        const hook = createZoomMemoryHook(zh);
+        const a = createChartHost(container, { data: payload, code: CODE, d3: fakeD3(applied), options: OPTIONS, zoomMemory: hook });
+        a.render();
+        (container.querySelector(".pad") as any).__zoom = { k: 3, x: -15, y: -5 };
+        container.dispatchEvent(new Event("wheel"));
+        a.destroy();
+        expect(zh.liveZoomState).toMatchObject({ k: 3 });
+
+        const next = document.createElement("div");
+        document.body.appendChild(next);
+        const b = createChartHost(next, { data: payload, code: CODE, d3: fakeD3(applied), options: OPTIONS, zoomMemory: hook });
+        b.render();
+        expect(zh.zoomContainer).toBe(next);
+        expect(applied.map(t => t.k)).toEqual([3]);                  // the view the reader left is restored on the new element
+        expect((next.querySelector(".pad") as any).__zoom.k).toBe(3);
+
+        container.dispatchEvent(new Event("wheel"));                 // the old element no longer arms anything
+        expect(zh.zoomSettleTimer).toBe(0);
+
+        (next.querySelector(".pad") as any).__zoom = { k: 5, x: -30, y: -10 };
+        next.dispatchEvent(new Event("wheel"));                      // the new one does
+        vi.advanceTimersByTime(400);
+        expect(zh.liveZoomState).toMatchObject({ k: 5, x: -30, y: -10 });
+        b.destroy();
+    });
+
+    it("the hook moving to a new element drops a settle still pending on the old one", () => {
+        vi.useFakeTimers();
+        const zh = zoomHost();
+        const hook = createZoomMemoryHook(zh);
+        const cap = { behaviors: [], release: () => undefined };
+        hook.restore(container, cap, "k1", fakeD3());
+        container.dispatchEvent(new Event("wheel"));                 // armed on the old element
+        expect(zh.zoomSettleTimer).not.toBe(0);
+        const next = document.createElement("div");
+        hook.restore(next, cap, "k1", fakeD3());
+        expect(zh.zoomContainer).toBe(next);
+        expect(zh.zoomSettleTimer).toBe(0);
+        expect(zh.zoomWatchAttached).toBe(true);                     // and the watcher is on the new element
+        next.dispatchEvent(new Event("wheel"));
+        expect(zh.zoomSettleTimer).not.toBe(0);
+    });
+
     it("a host given a precompiled renderFn never captures or restores", () => {
         const capture = vi.fn(), restore = vi.fn();
         const hook: ZoomMemoryHook = { keyFor: () => "k", capture, restore, flush: () => undefined, forget: () => undefined };

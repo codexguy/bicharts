@@ -29,6 +29,7 @@ import {
     transformsDiffer,
     zoomStateKey,
 } from "./zoomMemory";
+import { noteZoomMemoryHost } from "../zoomHookIdentity";
 
 /**
  * WHAT A HOST SUPPLIES: where the remembered view lives, and whether it may outlive the session.
@@ -45,7 +46,8 @@ export interface ZoomMemoryHost {
     /** The pending settle timer, 0 when none. */
     zoomSettleTimer: number;
     /** The element the chart draws into; it outlives each render, so listeners attach to it once. Null until
-     *  known: createZoomMemoryHook's restore adopts the render's container then. */
+     *  known: createZoomMemoryHook's restore adopts the render's container then, and moves to a new one when a
+     *  render arrives on a different element (a remount). */
     zoomContainer: Element | null;
     /** Is the persisted tier on NOW? Read on every restore and every write, so a change applies to the next. */
     rememberAcrossSessions(): boolean;
@@ -203,11 +205,33 @@ export function attachZoomWatcher(host: ZoomMemoryHost, key: string): void {
     };
     // wheel + pointerup cover zoom and drag-pan; click + keyup cover a zoom pad's buttons and their
     // keyboard equivalents; dblclick is d3-zoom's built-in zoom-in.
-    for (const evt of ["wheel", "pointerup", "pointercancel", "click", "dblclick", "keyup"]) {
+    for (const evt of WATCHED_EVENTS) {
         try { ctr.addEventListener(evt, settle, true); } catch { /* ignore */ }
     }
+    attachedWatchers.set(host, { ctr, settle });
     host.zoomWatchAttached = true;
     host.log("zoom-watcher-attached", {});
+}
+
+const WATCHED_EVENTS = ["wheel", "pointerup", "pointercancel", "click", "dblclick", "keyup"];
+// The listeners attachZoomWatcher put on, per host object, so they can be taken off again when the hook moves to a new
+// element. Kept here rather than on ZoomMemoryHost so that interface, which hosts implement, is unchanged; weak, so a
+// host object dropped by its page takes its entry with it.
+const attachedWatchers = new WeakMap<ZoomMemoryHost, { ctr: Element; settle: () => void }>();
+
+/** Take the watcher off the element it is on and drop a settle still pending there, so the next attachZoomWatcher
+ *  attaches afresh. The session view is kept. */
+function detachZoomWatcher(host: ZoomMemoryHost): void {
+    const w = attachedWatchers.get(host);
+    if (w) {
+        for (const evt of WATCHED_EVENTS) {
+            try { w.ctr.removeEventListener(evt, w.settle, true); } catch { /* ignore */ }
+        }
+        attachedWatchers.delete(host);
+    }
+    if (host.zoomSettleTimer) clearTimeout(host.zoomSettleTimer);
+    host.zoomSettleTimer = 0;
+    host.zoomWatchAttached = false;
 }
 
 /** Read the live transform off the DOM and remember it. */
@@ -277,13 +301,20 @@ export interface ZoomMemoryHook {
     forget(): void;
 }
 
-/** Bind the zoom memory to one host object. Build it once per container and hand the same hook to every
- *  host created on that container, so the session tier outlives each one. */
+/** Bind the zoom memory to one host object. Build it once per chart and hand the same hook to every
+ *  host created for it, so the session tier outlives each one - on the same element, or on a new one
+ *  after a remount, where the watcher moves with it. */
 export function createZoomMemoryHook(host: ZoomMemoryHost): ZoomMemoryHook {
-    return {
+    const hook: ZoomMemoryHook = {
         keyFor: (code, width, height) => zoomStateKey(SIMPLE_STRING_HASH(String(code ?? "")), width, height),
         capture: d3 => captureZoomBehaviors(d3, host),
         restore: (container, capture, key, d3) => {
+            // A NEW ELEMENT (a component remounted with the same hook): the watcher moves to it, and the old one is let
+            // go, listeners and all, instead of being watched - and kept alive - while the chart draws elsewhere.
+            if (host.zoomContainer && host.zoomContainer !== container) {
+                detachZoomWatcher(host);
+                host.zoomContainer = null;
+            }
             if (!host.zoomContainer) host.zoomContainer = container;
             restoreZoomForRender(d3, host, capture, key);
             attachZoomWatcher(host, key);
@@ -291,4 +322,7 @@ export function createZoomMemoryHook(host: ZoomMemoryHost): ZoomMemoryHook {
         flush: () => flushPendingZoom(host),
         forget: () => forgetZoom(host),
     };
+    // So a binding can tell a hook rebuilt over the same host (written inline in a component's props) from a new memory.
+    noteZoomMemoryHost(hook, host);
+    return hook;
 }

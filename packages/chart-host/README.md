@@ -269,9 +269,11 @@ cue, a hierarchy level) is never flattened by a fix meant for another chart.
 
 **How far the rest dims, per chart.** `options.dimOpacity` (a share of full opacity, `0.01`-`1`;
 `DIM_OPACITY_MIN` is the floor) sets the level for one host without writing CSS, and it is live
-through `setOptions`. The host writes it as `--lch-dim-opacity` on its own container and removes
-only what it wrote, so with the option absent nothing is written and the CSS above decides: the
-stylesheet's `0.25`, or whatever your page sets on the variable.
+through `setOptions`. It takes a number or a numeric string; a value above 1 is clamped to 1 (no
+dim), never read as a percentage, and anything else is ignored. The host writes it as
+`--lch-dim-opacity` on its own container and, when the option goes away or the host is destroyed,
+puts back the value your page had set inline there, so with the option absent nothing is written
+and the CSS above decides: the stylesheet's `0.25`, or whatever your page sets on the variable.
 
 ```js
 createChartHost(el, { code, data, options: { dimOpacity: 0.15 } });
@@ -410,15 +412,26 @@ const zoomHost: ZoomMemoryHost = {
     persistZoom: json => localStorage.setItem("chart-zoom", json), // "" forgets
     log: () => {},
 };
-const zoomMemory = createZoomMemoryHook(zoomHost);   // once per container, reused by every host on it
+const zoomMemory = createZoomMemoryHook(zoomHost);   // once per chart, reused by every host built for it
 const host = createChartHost(el, { code, data, d3, zoomMemory });
 ```
 
 The view survives every redraw in the session whatever the preference says, and a close and reopen
 only while `rememberAcrossSessions()` is true. It is keyed by the chart's code and the viewport size
 (to the nearest 32 px), so a regenerated chart or a real resize opens at full extent instead of
-somewhere arbitrary. A chart with several zoomable panels is left alone. In React, pass the hook as
-the `zoomMemory` prop of `<BicChart>`.
+somewhere arbitrary. A chart with several zoomable panels is left alone. The `ZoomMemoryHost` is the
+memory: keep one per chart for as long as the chart is on the page, and hand its hook to every host
+built for that chart, on the same element or, after a remount, a new one. In React, pass the hook as
+the `zoomMemory` prop of `<BicChart>`, built once (`zoomHost` as above, kept outside the render):
+
+```tsx
+const [zoomMemory] = useState(() => createZoomMemoryHook(zoomHost));   // once, however often this renders
+return <BicChart code={code} data={data} d3={d3} zoomMemory={zoomMemory} />;
+```
+
+A hook built inline (`zoomMemory={createZoomMemoryHook(zoomHost)}`) over that same `ZoomMemoryHost` is
+treated as the same memory and rebuilds nothing; a hook over a different `ZoomMemoryHost` rebuilds the
+chart's host with it.
 
 **A scrolled chart** keeps its place with no setup. A chart taller than its frame scrolls, and every
 redraw empties the container, which used to send the reader back to the top. The host now parks the

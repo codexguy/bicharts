@@ -693,8 +693,20 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // this marks the promise handled without consuming it — an await still rejects.
         p.catch(() => { /* the caller's await is the real channel */ });
     };
-    // Whether THIS host wrote --lch-dim-opacity on the container, so it removes only its own value.
+    // Whether THIS host wrote --lch-dim-opacity on the container, and the page's own inline value (and priority) it
+    // replaced, null when there was none: letting go puts back what the page had instead of removing it.
     let dimVarSet = false;
+    let dimVarWas: { value: string; priority: string } | null = null;
+    const releaseDimVar = () => {
+        if (!dimVarSet) return;
+        dimVarSet = false;
+        const was = dimVarWas;
+        dimVarWas = null;
+        try {
+            if (was) container.style?.setProperty(DIM_OPACITY_VAR, was.value, was.priority);
+            else container.style?.removeProperty(DIM_OPACITY_VAR);
+        } catch { /* frozen element */ }
+    };
     let current: number[] | null = null;
     // The axis tick / group header that created the CURRENT selection, and whether that
     // tick is a PERIOD (see periodTickSuppressesFeedback in contract.ts). Held as the
@@ -778,6 +790,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // Paint the current selection onto the marks. Re-run after EVERY render, because
     // the chart rebuilds its DOM and the classes would otherwise be lost on repaint.
     const paintSelection = () => {
+        // A destroyed host owns nothing on the container any more: a late highlight or clear must not paint on it.
+        if (destroyed) return;
         try {
             const sel = current;
             const active = !!sel && sel.length > 0;
@@ -788,10 +802,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             const dim = active && !selectionIsPeriod;
             container.classList?.[dim ? "add" : "remove"](SELECTION_ACTIVE_CLASS);
             // THE DIM LEVEL, when the host chose one. Written on the container so the injected rule's var() reads it; a
-            // page that styles the variable itself keeps its value, because this removes only what it wrote.
+            // page that styles the variable itself keeps its value: in a stylesheet it is never touched, and inline on
+            // the container it is saved on the first write and put back when the option goes away.
             const want = resolved.dimOpacity;
-            if (typeof want === "number") { container.style?.setProperty(DIM_OPACITY_VAR, String(want)); dimVarSet = true; }
-            else if (dimVarSet) { container.style?.removeProperty(DIM_OPACITY_VAR); dimVarSet = false; }
+            if (typeof want === "number") {
+                if (!dimVarSet) {
+                    const value = container.style?.getPropertyValue?.(DIM_OPACITY_VAR) ?? "";
+                    dimVarWas = value ? { value, priority: container.style?.getPropertyPriority?.(DIM_OPACITY_VAR) ?? "" } : null;
+                }
+                container.style?.setProperty(DIM_OPACITY_VAR, String(want));
+                dimVarSet = true;
+            } else releaseDimVar();
             // The clicked tick is marked under BOTH origins — it colours no marks, so it
             // is outside the period rule by construction and is the only feedback a
             // scrubbed period gets. Cleared when the selection empties or the anchor is
@@ -1022,6 +1043,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // click / a clear. It decides BOTH the affordance anchor and, with the container's own
     // timeline slots, whether the marks dim at all.
     const notify = (rowIdxs: number[], source: string, tick?: any, fromChart = false) => {
+        if (destroyed) return;
         current = rowIdxs;
         selectionFromChart = rowIdxs.length > 0 && fromChart;
         activeTickEl = rowIdxs.length ? (tick ?? null) : null;
@@ -1494,19 +1516,26 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                     }));
             }));
         },
+        // A DESTROYED HOST OWNS NOTHING ON THE CONTAINER any more. A host rebuilt on the same element has taken over
+        // the chart's slots (its clear, its animation stop, its initial mark) and the clicked-marks record, so every
+        // method below that reaches the container returns first: a stale reference to the old host (a closure, a late
+        // callback) must not clear, stop or annotate the chart that is on screen now.
         setOptions(partial) {
+            if (destroyed) return;
             raw = { ...raw, ...partial };
             resolved = resolveForHost(raw);
             host.render();
         },
         setData(next) {
+            if (destroyed) return;
             data = next;
             host.render();
         },
         get options() { return resolved; },
         setAnnotations(list) {
+            if (destroyed) return;
             annotationLayer.set(list);
-            if (!destroyed) try { drawAnnotations(); } catch { /* never breaks the chart on screen */ }
+            try { drawAnnotations(); } catch { /* never breaks the chart on screen */ }
         },
         get annotationReport() { return annotationLayer.report; },
         // A GETTER, not a captured value: `rendered` names the LATEST render, so a host that
@@ -1515,6 +1544,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         selection: {
             onChange(cb) { subs.add(cb); return () => subs.delete(cb); },
             clear() {
+                if (destroyed) return;
                 const s = (container as any)[CONTAINER_SLOT_XF_CLEAR];
                 if (typeof s === "function") { try { s(); } catch { /* chart already clear */ } }
                 setClickedMarks(null);
@@ -1526,6 +1556,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 notify([], "host");
             },
             highlight(rowIdxs) {
+                if (destroyed) return;
                 // HIGHLIGHT, DON'T FILTER — the second half of a coordinated dashboard, and
                 // until now the half a host had to hand-roll out of the lch-* class grammar
                 // after reading this package's source. (Measured 2026-08-01: ~5 minutes of a
@@ -1543,8 +1574,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             },
             get current() { return current; },
         },
-        animation: { stop: stopAnim },
-        initialMark() { return ((container as any)[CONTAINER_SLOT_INITIAL_XF_MARK] as Element) ?? null; },
+        animation: { stop() { if (!destroyed) stopAnim(); } },
+        initialMark() { return destroyed ? null : ((container as any)[CONTAINER_SLOT_INITIAL_XF_MARK] as Element) ?? null; },
         destroy() {
             if (destroyed) return;
             destroyed = true;
@@ -1555,8 +1586,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             clearPress(container);
             disposeLasso();
             subs.clear();
-            // A host rebuilt on the same element must not inherit a dim level this one wrote.
-            if (dimVarSet) { try { container.style?.removeProperty(DIM_OPACITY_VAR); } catch { /* frozen element */ } dimVarSet = false; }
+            // A host rebuilt on the same element must not inherit a dim level this one wrote; the page's own comes back.
+            releaseDimVar();
             annotationLayer.destroy();
             if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // for the next host on this element
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
