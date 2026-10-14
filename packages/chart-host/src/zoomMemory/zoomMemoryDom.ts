@@ -29,7 +29,6 @@ import {
     transformsDiffer,
     zoomStateKey,
 } from "./zoomMemory";
-import { noteZoomMemoryHost } from "../zoomHookIdentity";
 
 /**
  * WHAT A HOST SUPPLIES: where the remembered view lives, and whether it may outlive the session.
@@ -341,7 +340,5 @@ export function createZoomMemoryHook(host: ZoomMemoryHost): ZoomMemoryHook {
             adoptedContainers.delete(host);
         },
     };
-    // So a binding can tell a hook rebuilt over the same host (written inline in a component's props) from a new memory.
-    noteZoomMemoryHost(hook, host);
     return hook;
 }
