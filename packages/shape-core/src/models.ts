@@ -1,7 +1,9 @@
 import type { TemporalCadence } from "./cadence";
 import type { SeriesCompleteness } from "./seriesCompleteness";
+import type { MeasurePersistence } from "./measurePersistence";
 export type { TemporalCadence, TemporalRun } from "./cadence";
 export type { SeriesCompleteness, SeriesCoverage } from "./seriesCompleteness";
+export type { MeasurePersistence } from "./measurePersistence";
 
 export type LLMRequestModifier =
     {
@@ -323,6 +325,18 @@ export type LLMColumnWithValue =
         // is a category value and ships only where that column's values already ship verbatim.
         // A consumer must phrase the fact without either.
         seriesCompleteness?: SeriesCompleteness,
+        // HOW THIS MEASURE MOVES ALONG THE TIME AXIS (measurePersistence.ts). Two scale-free ratios of the
+        // measure's series in date order - the median step over the median value, and the von Neumann
+        // ratio of the residuals of a straight-line fit - plus the series count and the median points
+        // per series. A level read at a point in time (a closing price, a gauge, a balance) carries each
+        // value over from the last; an amount that accrues (revenue, units) does not, and the two look
+        // alike in a column's summary statistics. The series run along the first temporal column that is
+        // not a measure or a date part, cut by the same key `seriesCompleteness` reads.
+        //
+        // ABSENT when the table has no such time column, when no series has six points with some
+        // variation, and on any column that is not a measure. Counts and ratios, so it ships at every
+        // privacy tier. MEASUREMENT only: what counts as persistent enough is the consumer's policy.
+        persistence?: MeasurePersistence,
         // Per-column value-set OVERLAP statistic (2026-06-07). For each OTHER
         // non-measure column, the PERCENT of THIS column's distinct values that
         // also appear in that column. A STATISTIC about values (never the values

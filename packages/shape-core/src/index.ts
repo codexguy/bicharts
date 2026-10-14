@@ -46,6 +46,12 @@ export type {
     SeriesCompleteness, SeriesCoverage, SeriesKeyCandidate, SeriesKeyVerdict,
 } from "./seriesCompleteness";
 
+// MEASURE PERSISTENCE - how a measure moves from one point of a time axis to the next, as two ratios
+// and two counts. IndexedText attaches it to each measure as `persistence`; the function is public so
+// a host holding rows of its own reaches the same answer.
+export { measurePersistence } from "./measurePersistence";
+export type { MeasurePersistence } from "./measurePersistence";
+
 // WHICH AGGREGATIONS ARE HONEST for a column (2026-09-01). The two axes a presentation surface
 // needs and that no single enum carried: what KIND of scale this is, and whether SUM means
 // anything over it. Public because the answer has to be identical in the selection card, in the

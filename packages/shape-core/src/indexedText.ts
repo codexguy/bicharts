@@ -27,8 +27,9 @@ import { localizedIdentifierWordIn } from "./vocab/identifierWords";
 import { maskSampleText } from "./sampleMask";
 import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishAggAliasContradicted, englishImplicitAggNames, foldAccents, localizedHostAggHint } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
-import { measureCadence } from "./cadence";
+import { measureCadence, parseTemporalPoint } from "./cadence";
 import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
+import { measurePersistenceFromStamps, MEASURE_PERSISTENCE_MIN_POINTS } from "./measurePersistence";
 import { measureTwoSetPairing } from "./twoSetPairing";
 import { measureScoreSeparation } from "./scoreSeparation";
 
@@ -1562,6 +1563,8 @@ export class IndexedText implements IValueCollection {
 
         this.applySeriesCompleteness(pl, locale, colValueSets);
 
+        this.applyMeasurePersistence(locale, colValueSets);
+
         this._computedStatsForLevel = privacyLevel;
         return this._cols;
     }
@@ -1633,23 +1636,8 @@ export class IndexedText implements IValueCollection {
             .filter(({ c }) => c.isTemporal && !c.isMeasure && c.temporalCadence && c.temporalCadence.grain !== "irregular");
         if (temporal.length === 0) return;
 
-        const idx: number[] = [];
-        const cands: SeriesKeyCandidate[] = [];
-        this._cols.forEach((c, i) => {
-            const set = colValueSets[i];
-            if (!set) return;                       // a measure, or wider than any series key
-            idx.push(i);
-            cands.push({
-                name: c.name, dataType: c.dataType, isMeasure: !!c.isMeasure,
-                isTemporal: !!c.isTemporal, isDatePart: !!c.isDatePart, isReassembledDate: !!c.isReassembledDate,
-                isBinaryFlag: !!c.isBinaryFlag, geoKind: c.geoKind,
-                identifierNamed: isIdentifierName(c.name),
-                values: set, rows: this._rows.length, locale,
-            });
-        });
-        const pick = pickSeriesColumn(cands);
-        if (pick < 0) return;
-        const si = idx[pick];
+        const si = this.seriesKeyIndex(locale, colValueSets);
+        if (si < 0) return;
         const sc = this._cols[si];
         const series = this._rows.map(r => this.STR(r[si]));
         // A value ships only where this column's values already would: a non-text column's top
@@ -1667,6 +1655,72 @@ export class IndexedText implements IValueCollection {
                 includeNames,
             });
             if (out) c.seriesCompleteness = out;
+        }
+    }
+
+    // THE SERIES KEY, chosen once for every pass that cuts a time axis into series (seriesCompleteness.ts,
+    // measurePersistence.ts), so the two descriptors always describe the same series. -1 = no column qualifies.
+    private seriesKeyIndex(locale: string | undefined, colValueSets: (Set<string> | null)[]): number {
+        const idx: number[] = [];
+        const cands: SeriesKeyCandidate[] = [];
+        this._cols.forEach((c, i) => {
+            const set = colValueSets[i];
+            if (!set) return;                       // a measure, or wider than any series key
+            idx.push(i);
+            cands.push({
+                name: c.name, dataType: c.dataType, isMeasure: !!c.isMeasure,
+                isTemporal: !!c.isTemporal, isDatePart: !!c.isDatePart, isReassembledDate: !!c.isReassembledDate,
+                isBinaryFlag: !!c.isBinaryFlag, geoKind: c.geoKind,
+                identifierNamed: isIdentifierName(c.name),
+                values: set, rows: this._rows.length, locale,
+            });
+        });
+        const pick = pickSeriesColumn(cands);
+        return pick < 0 ? -1 : idx[pick];
+    }
+
+    // MEASURE PERSISTENCE pass - how each measure moves along the table's time axis, see measurePersistence.ts.
+    // The time column is the FIRST temporal column that is not a measure or a date part and holds at least six
+    // distinct points: cadence is not required (trading days skip weekends and are still a series), and no
+    // privacy tier gates it (ratios and counts). It parses the time column once, then measures every numeric
+    // measure against it, cut by the same series key seriesCompleteness reads.
+    private applyMeasurePersistence(locale: string | undefined, colValueSets: (Set<string> | null)[]): void {
+        // A second call at another tier re-measures; a descriptor from the last one must not survive it.
+        for (const c of this._cols) if (c.persistence !== undefined) delete c.persistence;
+        const measures: number[] = [];
+        this._cols.forEach((c, i) => {
+            if (c.isMeasure && (c.dataType === "Integer" || c.dataType === "Decimal" || c.dataType === "Double")) measures.push(i);
+        });
+        if (measures.length === 0 || this._rows.length < MEASURE_PERSISTENCE_MIN_POINTS) return;
+
+        let ti = -1;
+        let stamps: (number | null)[] = [];
+        for (let i = 0; i < this._cols.length && ti < 0; i++) {
+            const c = this._cols[i];
+            if (!c.isTemporal || c.isMeasure || c.isDatePart) continue;
+            const parsed = this._rows.map(r => parseTemporalPoint(this.STR(r[i]), c.temporalTextPattern, locale)?.ms ?? null);
+            if (new Set(parsed.filter((m): m is number => m !== null)).size < MEASURE_PERSISTENCE_MIN_POINTS) continue;
+            ti = i;
+            stamps = parsed;
+        }
+        if (ti < 0) return;
+
+        const si = this.seriesKeyIndex(locale, colValueSets);
+        const series = si >= 0 ? this._rows.map(r => this.STR(r[si])) : undefined;
+        for (const mi of measures) {
+            const values = this._rows.map(r => {
+                const raw = r[mi];
+                if (raw === null || raw === undefined || raw === "") return null;
+                const v = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/,/g, ""));
+                return Number.isFinite(v) ? v : null;
+            });
+            const out = measurePersistenceFromStamps({ stamps, series, values });
+            if (!out) continue;
+            this._cols[mi].persistence = {
+                timeColumn: this._cols[ti].name,
+                ...(si >= 0 ? { seriesColumn: this._cols[si].name } : {}),
+                ...out,
+            };
         }
     }
 
