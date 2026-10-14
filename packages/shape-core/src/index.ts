@@ -21,6 +21,7 @@ export {
     detectTextDatePattern,
     classifyAdditivity,
     classifyNumericValueNature,
+    promotesToMeasure,
     hostAggHint,
     isIdentifierName,
 } from "./indexedText";

@@ -591,6 +591,22 @@ export function classifyNumericValueNature(i: {
     return "Categorical";
 }
 
+/**
+ * THE MEASURE-INFERENCE VERDICT for one column - the one rule both the stats pass and inferredMeasureFlags use, so a
+ * host that renders without profiling hands its code the same flags the shape carried. A column already a measure,
+ * one the caller declared a dimension, and anything but an Integer/Decimal are never promoted.
+ */
+export function promotesToMeasure(col: LLMColumnWithValue, declaredDimension: boolean,
+    s: { distinct: number; nonblank: number; prec: number; minval: unknown; maxval: unknown }): boolean {
+    if (!col || col.isMeasure || declaredDimension) return false;
+    if (col.dataType !== "Integer" && col.dataType !== "Decimal") return false;
+    return classifyNumericValueNature({
+        dataType: col.dataType, isMeasure: false, name: col.name,
+        distinct: s.distinct, nonblank: s.nonblank, prec: s.prec,
+        maxval: typeof s.maxval === "number" ? s.maxval : 0, minval: typeof s.minval === "number" ? s.minval : 0,
+    }) === "Continuous";
+}
+
 export interface IValueCollection {
     addRow(colvals: any[], originalIdx?: number): boolean;
     setColumns(cols: LLMColumnWithValue[]): void;
@@ -603,6 +619,7 @@ export interface IValueCollection {
     getCSVHeaderLine(): string;
     getColumnsWithStats(privacyLevel: string, locale?: string): LLMColumnWithValue[];
     getColumns(): LLMColumnWithValue[];
+    inferredMeasureFlags?(): boolean[];
     toObjectArray(): Record<string, any>[];
     // Returns the original dataView.table row index for the i-th accumulated row,
     // or -1 if no original index was supplied. Used to build per-row Power BI
@@ -682,6 +699,8 @@ export class IndexedText implements IValueCollection {
     // object, not its name or position: setColumns may rename a column (the doubled-prefix
     // collapse) and a later setColumns brings new objects, which are rightly not declared.
     private _declaredDimensions: WeakSet<LLMColumnWithValue> = new WeakSet();
+    // inferredMeasureFlags() result; null until asked and again whenever rows, columns or declarations change.
+    private _inferredMeasureFlags: boolean[] | null = null;
 
     /**
      * Collapse value-identical rows on addRow. DEFAULT TRUE — the long-standing behaviour,
@@ -734,6 +753,39 @@ export class IndexedText implements IValueCollection {
     }
 
     /**
+     * Which columns are measures as the shape would say - the flags the stats pass ends with - WITHOUT running that pass and
+     * without changing any column. A host that renders code generated against the shape (and has not profiled since its
+     * data was last indexed) reads this to hand the code the flags it was written for. One scan of the numeric columns
+     * not already measures; cached until rows or columns change.
+     */
+    public inferredMeasureFlags(): boolean[] {
+        if (this._inferredMeasureFlags) return this._inferredMeasureFlags;
+        const out = this._cols.map(c => !!(c && c.isMeasure));
+        this._cols.forEach((col, cidx) => {
+            if (!col || col.isMeasure || this._declaredDimensions.has(col)) return;
+            if (col.dataType !== "Integer" && col.dataType !== "Decimal") return;
+            // The scan mirrors the stats loop's own reads (STR(val) != "" for blank, the distinct key is STR(val),
+            // min/max over the raw values, precision for Decimal only): that is what keeps the two verdicts equal.
+            const vals = new Set<string>();
+            let nonblank = 0, prec = 0;
+            let minval: any = null, maxval: any = null;
+            for (const row of this._rows) {
+                const val = row[cidx];
+                const strVal = this.STR(val);
+                if (strVal == "") continue;
+                vals.add(strVal);
+                nonblank++;
+                if (minval === null || val < minval) minval = val;
+                if (maxval === null || val > maxval) maxval = val;
+                if (col.dataType == "Decimal") { const dp = this.getPrecision(val); if (dp > prec) prec = dp; }
+            }
+            out[cidx] = promotesToMeasure(col, false, { distinct: vals.size, nonblank, prec, minval, maxval });
+        });
+        this._inferredMeasureFlags = out;
+        return out;
+    }
+
+    /**
      * Mark columns as dimensions BY DECLARATION, so measure inference in getColumnsWithStats
      * never promotes them. Pass the same objects given to setColumns, before the stats pass.
      *
@@ -744,6 +796,7 @@ export class IndexedText implements IValueCollection {
      * calls this for its `dimensions` option; a host that never calls it is unaffected.
      */
     public declareDimensions(cols: Iterable<LLMColumnWithValue>): void {
+        this._inferredMeasureFlags = null;
         for (const c of cols) if (c) this._declaredDimensions.add(c);
     }
 
@@ -946,40 +999,33 @@ export class IndexedText implements IValueCollection {
             // coordinate declared a dimension, the 40-valued destination latitude/longitude came
             // back measures while the 12-valued origin ones did not, and a flow chart sized its
             // arcs by a latitude. A column the caller declared (declareDimensions) is skipped.
-            if (!col.isMeasure && !this._declaredDimensions.has(col)
-                && (col.dataType === "Integer" || col.dataType === "Decimal")) {
-                const nature = classifyNumericValueNature({
-                    dataType: col.dataType, isMeasure: false, name: col.name,
-                    distinct: vals.size, nonblank, prec, maxval: typeof maxval === "number" ? maxval : 0, minval: typeof minval === "number" ? minval : 0,
-                });
-                if (nature === "Continuous") {
-                    col.isMeasure = true;
-                    // A PROMOTED MEASURE IS NOT A PLACE, AND THE GEO GUARD RAN TOO EARLY TO
-                    // KNOW IT. The geo block inside updateColumnStats20 above is guarded by
-                    // `!col.isMeasure`, which is exactly right — and it evaluated BEFORE this
-                    // promotion, while the column still looked like a dimension. So a numeric
-                    // quantity a host hands over unbound gets stamped with a geoKind and is
-                    // THEN promoted to a measure, ending up carrying both.
-                    //
-                    // Observed in the field: a column of physical measurements, unbound and so
-                    // arriving isMeasure=false, was stamped geoKind "us-zip5" at geoMatchPct
-                    // 100 — its values were five-digit integers, which land squarely in the US
-                    // ZIP range and are indistinguishable from ZIPs on values alone. Downstream
-                    // that is not a cosmetic mislabel: eligibility reads geoKind to admit point
-                    // maps, so geographic charts were offered for data with no geography in it,
-                    // and the chart picker weighted them heavily.
-                    //
-                    // Clearing here rather than reordering the detection keeps the guard's own
-                    // stated intent — a measure is not a place — and touches nothing else: a
-                    // column that was ALREADY a measure never reached the detection, and one
-                    // that stays a dimension keeps every signal it earned.
-                    col.geoKind = undefined;
-                    col.geoMatchPct = undefined;
-                    col.geoAmbiguous = undefined;
-                    col.dominantGeoRegion = undefined;
-                    col.dominantGeoRegionPct = undefined;
-                    col.geoRegionCount = undefined;
-                }
+            if (promotesToMeasure(col, this._declaredDimensions.has(col), { distinct: vals.size, nonblank, prec, minval, maxval })) {
+                col.isMeasure = true;
+                // A PROMOTED MEASURE IS NOT A PLACE, AND THE GEO GUARD RAN TOO EARLY TO
+                // KNOW IT. The geo block inside updateColumnStats20 above is guarded by
+                // `!col.isMeasure`, which is exactly right — and it evaluated BEFORE this
+                // promotion, while the column still looked like a dimension. So a numeric
+                // quantity a host hands over unbound gets stamped with a geoKind and is
+                // THEN promoted to a measure, ending up carrying both.
+                //
+                // Observed in the field: a column of physical measurements, unbound and so
+                // arriving isMeasure=false, was stamped geoKind "us-zip5" at geoMatchPct
+                // 100 — its values were five-digit integers, which land squarely in the US
+                // ZIP range and are indistinguishable from ZIPs on values alone. Downstream
+                // that is not a cosmetic mislabel: eligibility reads geoKind to admit point
+                // maps, so geographic charts were offered for data with no geography in it,
+                // and the chart picker weighted them heavily.
+                //
+                // Clearing here rather than reordering the detection keeps the guard's own
+                // stated intent — a measure is not a place — and touches nothing else: a
+                // column that was ALREADY a measure never reached the detection, and one
+                // that stays a dimension keeps every signal it earned.
+                col.geoKind = undefined;
+                col.geoMatchPct = undefined;
+                col.geoAmbiguous = undefined;
+                col.dominantGeoRegion = undefined;
+                col.dominantGeoRegionPct = undefined;
+                col.geoRegionCount = undefined;
             }
 
             // Capture distinct value-set for the overlap pass (skip measures and
@@ -2145,6 +2191,7 @@ export class IndexedText implements IValueCollection {
         }
 
         this._rows.push(trimmedCells(colvals));
+        this._inferredMeasureFlags = null;
         this._origIndices.push(originalIdx === undefined || originalIdx === null ? -1 : originalIdx);
         return true;
     }
@@ -2155,6 +2202,7 @@ export class IndexedText implements IValueCollection {
     }
 
     public reset(): void {
+        this._inferredMeasureFlags = null;
         this._cols = [];
         this._rows = [];
         this._origIndices = [];
@@ -2185,6 +2233,7 @@ export class IndexedText implements IValueCollection {
      * repeated setColumns calls are safe.
      */
     public setColumns(cols: LLMColumnWithValue[]): void {
+        this._inferredMeasureFlags = null;
         this._cols = cols;
         if (!cols || cols.length === 0) return;
         const taken = new Set<string>(cols.map(c => this.STR(c?.name)));

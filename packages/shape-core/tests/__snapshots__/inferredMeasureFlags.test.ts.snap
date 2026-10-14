@@ -1,0 +1,1014 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the stats pass shape is unchanged by sharing the verdict > getColumnsWithStats output on the mixed table matches the snapshot taken before the change 1`] = `
+"[
+ {
+  "name": "Region",
+  "dataType": "String",
+  "isMeasure": false,
+  "sortedDirection": "none",
+  "modalShare": 0.2023121387283237,
+  "minGroupCount": 34,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 5,
+  "valueNature": "Categorical",
+  "avgValue": null,
+  "avgLength": 4.994219653179191,
+  "lowValue": null,
+  "highValue": null,
+  "medianValue": null,
+  "numericPrecision": 0,
+  "topCategories": [
+   35,
+   35,
+   35,
+   34,
+   34
+  ],
+  "formatSignature": "TITLE_CASE_WORDS",
+  "isFreeText": true,
+  "categoricalPairStats": [
+   {
+    "otherColumn": "Year",
+    "fillPct": 20,
+    "determinesOther": false,
+    "minCellCount": 17,
+    "distinctCombinations": 10
+   },
+   {
+    "otherColumn": "Month",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 60
+   },
+   {
+    "otherColumn": "Rating",
+    "fillPct": 20,
+    "determinesOther": true,
+    "minCellCount": 34,
+    "distinctCombinations": 5
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 1,
+    "distinctCombinations": 140
+   }
+  ]
+ },
+ {
+  "name": "Year",
+  "dataType": "Integer",
+  "isMeasure": false,
+  "sortedDirection": "none",
+  "modalShare": 0.10404624277456648,
+  "minGroupCount": 17,
+  "isTemporal": true,
+  "temporalCadence": {
+   "grain": "year",
+   "points": 10,
+   "expectedPoints": 10,
+   "coveragePct": 100,
+   "runs": 1,
+   "largestGapUnits": 1,
+   "gapFactor": 5,
+   "runBounds": [
+    {
+     "from": "2015-01-01",
+     "to": "2024-01-01",
+     "points": 10
+    }
+   ]
+  },
+  "blankCount": 0,
+  "distinctCount": 10,
+  "valueNature": "Ordinal",
+  "avgValue": 2019,
+  "avgLength": 4,
+  "lowValue": 2015,
+  "highValue": 2024,
+  "medianValue": 2019,
+  "numericPrecision": 0,
+  "skewness": 0.4708865299409833,
+  "stdDev": 2.918943509880387,
+  "sum": 349363,
+  "topCategories": [
+   18,
+   18,
+   18,
+   17,
+   17,
+   17,
+   17,
+   17,
+   17,
+   17
+  ],
+  "topCategoryValues": [
+   "2015",
+   "2016",
+   "2017",
+   "2018",
+   "2019"
+  ],
+  "quantiles": {
+   "p05": 2015,
+   "p25": 2017,
+   "p75": 2022,
+   "p95": 2024
+  },
+  "categoricalPairStats": [
+   {
+    "otherColumn": "Region",
+    "fillPct": 20,
+    "determinesOther": true,
+    "minCellCount": 17,
+    "distinctCombinations": 10
+   },
+   {
+    "otherColumn": "Month",
+    "fillPct": 50,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 60
+   },
+   {
+    "otherColumn": "Rating",
+    "fillPct": 20,
+    "determinesOther": true,
+    "minCellCount": 17,
+    "distinctCombinations": 10
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "fillPct": 50,
+    "determinesOther": false,
+    "minCellCount": 1,
+    "distinctCombinations": 140
+   }
+  ],
+  "primaryParentColumn": "Region",
+  "nestingRatio": 0.5
+ },
+ {
+  "name": "Month",
+  "dataType": "Integer",
+  "isMeasure": false,
+  "sortedDirection": "none",
+  "modalShare": 0.08670520231213873,
+  "minGroupCount": 14,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 12,
+  "valueNature": "Ordinal",
+  "avgValue": 6,
+  "avgLength": 1.2427745664739884,
+  "lowValue": 1,
+  "highValue": 12,
+  "medianValue": 6,
+  "numericPrecision": 0,
+  "skewness": 0.3828311713090479,
+  "stdDev": 3.483238145300808,
+  "sum": 1107,
+  "topCategories": [
+   15,
+   15,
+   15,
+   15,
+   15,
+   14,
+   14,
+   14,
+   14,
+   14
+  ],
+  "topCategoryValues": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "5"
+  ],
+  "quantiles": {
+   "p05": 1,
+   "p25": 3,
+   "p75": 9,
+   "p95": 12
+  },
+  "sharedValueRatioWithOthers": [
+   {
+    "otherColumn": "Rating",
+    "percentShared": 42
+   }
+  ],
+  "categoricalPairStats": [
+   {
+    "otherColumn": "Region",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 60
+   },
+   {
+    "otherColumn": "Year",
+    "fillPct": 50,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 60
+   },
+   {
+    "otherColumn": "Rating",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 60
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "fillPct": 25,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 84
+   }
+  ]
+ },
+ {
+  "name": "StoreID",
+  "dataType": "Integer",
+  "isMeasure": false,
+  "sortedDirection": "asc",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Categorical",
+  "avgValue": 10086,
+  "avgLength": 5,
+  "lowValue": 10000,
+  "highValue": 10172,
+  "medianValue": 10086,
+  "numericPrecision": 0,
+  "skewness": 0,
+  "stdDev": 49.93996395673509,
+  "sum": 1744878,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "10000",
+   "10001",
+   "10002",
+   "10003",
+   "10004"
+  ],
+  "quantiles": {
+   "p05": 10008,
+   "p25": 10043,
+   "p75": 10129,
+   "p95": 10163
+  },
+  "geoKind": "us-zip5",
+  "geoMatchPct": 100,
+  "geoAmbiguous": true,
+  "sharedValueRatioWithOthers": [
+   {
+    "otherColumn": "Zip",
+    "percentShared": 14
+   }
+  ]
+ },
+ {
+  "name": "Rating",
+  "dataType": "Integer",
+  "isMeasure": false,
+  "sortedDirection": "none",
+  "modalShare": 0.2023121387283237,
+  "minGroupCount": 34,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 5,
+  "valueNature": "Ordinal",
+  "avgValue": 3,
+  "avgLength": 1,
+  "lowValue": 1,
+  "highValue": 5,
+  "medianValue": 3,
+  "numericPrecision": 0,
+  "skewness": -0.018472978228542415,
+  "stdDev": 1.412168422384239,
+  "sum": 516,
+  "topCategories": [
+   35,
+   35,
+   35,
+   34,
+   34
+  ],
+  "topCategoryValues": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "5"
+  ],
+  "quantiles": {
+   "p05": 1,
+   "p25": 2,
+   "p75": 4,
+   "p95": 5
+  },
+  "sharedValueRatioWithOthers": [
+   {
+    "otherColumn": "Month",
+    "percentShared": 100
+   }
+  ],
+  "categoricalPairStats": [
+   {
+    "otherColumn": "Region",
+    "fillPct": 20,
+    "determinesOther": true,
+    "minCellCount": 34,
+    "distinctCombinations": 5
+   },
+   {
+    "otherColumn": "Year",
+    "fillPct": 20,
+    "determinesOther": false,
+    "minCellCount": 17,
+    "distinctCombinations": 10
+   },
+   {
+    "otherColumn": "Month",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 60
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 1,
+    "distinctCombinations": 140
+   }
+  ]
+ },
+ {
+  "name": "Sales",
+  "dataType": "Decimal",
+  "isMeasure": true,
+  "sortedDirection": "none",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Continuous",
+  "avgValue": 1332.1552601156072,
+  "avgLength": 6.502890173410405,
+  "lowValue": 12.5,
+  "highValue": 2688.05,
+  "medianValue": 1310.81,
+  "numericPrecision": 2,
+  "skewness": 0.03741698753370976,
+  "stdDev": 771.8482213998499,
+  "sum": 230462.86000000004,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "12.5",
+   "224.81",
+   "437.11",
+   "649.42",
+   "861.72"
+  ],
+  "quantiles": {
+   "p05": 140.38,
+   "p25": 668.4,
+   "p75": 1996.68,
+   "p95": 2554.67
+  },
+  "additivity": "unknown",
+  "relativeDispersion": 1.631,
+  "nonBlankGroups": [
+   {
+    "otherColumn": "Region",
+    "nonBlankGroupCount": 5
+   },
+   {
+    "otherColumn": "Year",
+    "nonBlankGroupCount": 10
+   },
+   {
+    "otherColumn": "Month",
+    "nonBlankGroupCount": 12
+   },
+   {
+    "otherColumn": "Rating",
+    "nonBlankGroupCount": 5
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "nonBlankGroupCount": 28
+   }
+  ],
+  "groupDiscrimination": [
+   {
+    "otherColumn": "Region",
+    "eta2": 0.0022
+   },
+   {
+    "otherColumn": "Year",
+    "eta2": 0.0064
+   },
+   {
+    "otherColumn": "Month",
+    "eta2": 0.0703
+   },
+   {
+    "otherColumn": "Rating",
+    "eta2": 0.0022
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "eta2": 0.0651
+   }
+  ],
+  "spreadDiscrimination": [
+   {
+    "otherColumn": "Region",
+    "spreadRatio": 0.1741
+   },
+   {
+    "otherColumn": "Year",
+    "spreadRatio": 0.2561
+   },
+   {
+    "otherColumn": "Month",
+    "spreadRatio": 0.6126
+   },
+   {
+    "otherColumn": "Rating",
+    "spreadRatio": 0.1741
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "spreadRatio": 0.4385
+   }
+  ],
+  "maxAbsMeasureCorrelation": 0.075
+ },
+ {
+  "name": "Units",
+  "dataType": "Integer",
+  "isMeasure": true,
+  "sortedDirection": "none",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Continuous",
+  "avgValue": 445,
+  "avgLength": 2.8728323699421967,
+  "lowValue": 0,
+  "highValue": 898,
+  "medianValue": 444,
+  "numericPrecision": 0,
+  "skewness": 0.005370396957171501,
+  "stdDev": 261.4772948508978,
+  "sum": 77018,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "0",
+   "131",
+   "262",
+   "393",
+   "524"
+  ],
+  "quantiles": {
+   "p05": 34,
+   "p25": 221,
+   "p75": 670,
+   "p95": 847
+  },
+  "additivity": "unknown",
+  "relativeDispersion": 1.614,
+  "nonBlankGroups": [
+   {
+    "otherColumn": "Region",
+    "nonBlankGroupCount": 5
+   },
+   {
+    "otherColumn": "Year",
+    "nonBlankGroupCount": 10
+   },
+   {
+    "otherColumn": "Month",
+    "nonBlankGroupCount": 12
+   },
+   {
+    "otherColumn": "Rating",
+    "nonBlankGroupCount": 5
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "nonBlankGroupCount": 28
+   }
+  ],
+  "groupDiscrimination": [
+   {
+    "otherColumn": "Region",
+    "eta2": 0.0105
+   },
+   {
+    "otherColumn": "Year",
+    "eta2": 0.0149
+   },
+   {
+    "otherColumn": "Month",
+    "eta2": 0.0391
+   },
+   {
+    "otherColumn": "Rating",
+    "eta2": 0.0105
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "eta2": 0.3422
+   }
+  ],
+  "spreadDiscrimination": [
+   {
+    "otherColumn": "Region",
+    "spreadRatio": 0.167
+   },
+   {
+    "otherColumn": "Year",
+    "spreadRatio": 0.1559
+   },
+   {
+    "otherColumn": "Month",
+    "spreadRatio": 0.4276
+   },
+   {
+    "otherColumn": "Rating",
+    "spreadRatio": 0.167
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "spreadRatio": 1.0958
+   }
+  ],
+  "maxAbsMeasureCorrelation": 0.072
+ },
+ {
+  "name": "OrderDateKey",
+  "dataType": "Integer",
+  "isMeasure": false,
+  "sortedDirection": "none",
+  "modalShare": 0.04046242774566474,
+  "minGroupCount": 6,
+  "isTemporal": true,
+  "temporalCadence": {
+   "grain": "day",
+   "points": 28,
+   "expectedPoints": 28,
+   "coveragePct": 100,
+   "runs": 1,
+   "largestGapUnits": 1,
+   "gapFactor": 5,
+   "runBounds": [
+    {
+     "from": "2024-01-01",
+     "to": "2024-01-28",
+     "points": 28
+    }
+   ]
+  },
+  "blankCount": 0,
+  "distinctCount": 28,
+  "valueNature": "Categorical",
+  "avgValue": 20240114,
+  "avgLength": 8,
+  "lowValue": 20240101,
+  "highValue": 20240128,
+  "medianValue": 20240114,
+  "numericPrecision": 0,
+  "skewness": 0.09954797894641809,
+  "stdDev": 8.19523335305241,
+  "sum": 3501539751,
+  "topCategories": [
+   7,
+   7,
+   7,
+   7,
+   7,
+   6,
+   6,
+   6,
+   6,
+   6
+  ],
+  "topCategoryValues": [
+   "20240101",
+   "20240102",
+   "20240103",
+   "20240104",
+   "20240105"
+  ],
+  "quantiles": {
+   "p05": 20240102,
+   "p25": 20240107,
+   "p75": 20240121,
+   "p95": 20240127
+  },
+  "categoricalPairStats": [
+   {
+    "otherColumn": "Region",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 1,
+    "distinctCombinations": 140
+   },
+   {
+    "otherColumn": "Year",
+    "fillPct": 50,
+    "determinesOther": false,
+    "minCellCount": 1,
+    "distinctCombinations": 140
+   },
+   {
+    "otherColumn": "Month",
+    "fillPct": 25,
+    "determinesOther": false,
+    "minCellCount": 2,
+    "distinctCombinations": 84
+   },
+   {
+    "otherColumn": "Rating",
+    "fillPct": 100,
+    "determinesOther": false,
+    "minCellCount": 1,
+    "distinctCombinations": 140
+   }
+  ]
+ },
+ {
+  "name": "Latitude",
+  "dataType": "Decimal",
+  "isMeasure": true,
+  "sortedDirection": "none",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Continuous",
+  "avgValue": 37.49,
+  "avgLength": 4.861271676300578,
+  "lowValue": 30,
+  "highValue": 44.98,
+  "medianValue": 37.49,
+  "numericPrecision": 2,
+  "skewness": -1.4790279049974205e-15,
+  "stdDev": 4.351882988906406,
+  "sum": 6485.77,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "30",
+   "30.61",
+   "31.22",
+   "31.83",
+   "32.44"
+  ],
+  "quantiles": {
+   "p05": 30.69,
+   "p25": 33.74,
+   "p75": 41.24,
+   "p95": 44.2
+  },
+  "additivity": "unknown",
+  "relativeDispersion": 0.32,
+  "nonBlankGroups": [
+   {
+    "otherColumn": "Region",
+    "nonBlankGroupCount": 5
+   },
+   {
+    "otherColumn": "Year",
+    "nonBlankGroupCount": 10
+   },
+   {
+    "otherColumn": "Month",
+    "nonBlankGroupCount": 12
+   },
+   {
+    "otherColumn": "Rating",
+    "nonBlankGroupCount": 5
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "nonBlankGroupCount": 28
+   }
+  ],
+  "groupDiscrimination": [
+   {
+    "otherColumn": "Region",
+    "eta2": 0.0083
+   },
+   {
+    "otherColumn": "Year",
+    "eta2": 0.0092
+   },
+   {
+    "otherColumn": "Month",
+    "eta2": 0.0911
+   },
+   {
+    "otherColumn": "Rating",
+    "eta2": 0.0083
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "eta2": 0.0507
+   }
+  ],
+  "spreadDiscrimination": [
+   {
+    "otherColumn": "Region",
+    "spreadRatio": 0.164
+   },
+   {
+    "otherColumn": "Year",
+    "spreadRatio": 0.164
+   },
+   {
+    "otherColumn": "Month",
+    "spreadRatio": 0.0467
+   },
+   {
+    "otherColumn": "Rating",
+    "spreadRatio": 0.164
+   },
+   {
+    "otherColumn": "OrderDateKey",
+    "spreadRatio": 0.3267
+   }
+  ],
+  "maxAbsMeasureCorrelation": 0.075
+ },
+ {
+  "name": "Zip",
+  "dataType": "Integer",
+  "isMeasure": false,
+  "sortedDirection": "asc",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Categorical",
+  "avgValue": 10602,
+  "avgLength": 5,
+  "lowValue": 10000,
+  "highValue": 11204,
+  "medianValue": 10602,
+  "numericPrecision": 0,
+  "skewness": 0,
+  "stdDev": 349.57974769714565,
+  "sum": 1834146,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "10000",
+   "10007",
+   "10014",
+   "10021",
+   "10028"
+  ],
+  "quantiles": {
+   "p05": 10056,
+   "p25": 10301,
+   "p75": 10903,
+   "p95": 11141
+  },
+  "geoKind": "us-zip5",
+  "geoMatchPct": 100,
+  "sharedValueRatioWithOthers": [
+   {
+    "otherColumn": "StoreID",
+    "percentShared": 14
+   }
+  ]
+ }
+]"
+`;
+
+exports[`the stats pass shape is unchanged by sharing the verdict > the coordinate table too, including the geo clears 1`] = `
+"[
+ {
+  "name": "Easting",
+  "dataType": "Decimal",
+  "isMeasure": true,
+  "sortedDirection": "asc",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Continuous",
+  "avgValue": 69.22850404624279,
+  "avgLength": 10.502890173410405,
+  "lowValue": 0.534,
+  "highValue": 137.8964,
+  "medianValue": 69.21520000000001,
+  "numericPrecision": 16,
+  "skewness": -0.00005855531215014246,
+  "stdDev": 39.86749802857635,
+  "sum": 11976.531200000003,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "0.534",
+   "1.346",
+   "2.1580000000000004",
+   "2.9699999999999998",
+   "3.782"
+  ],
+  "quantiles": {
+   "p05": 6.9341,
+   "p25": 34.8746,
+   "p75": 103.5558,
+   "p95": 130.6843
+  },
+  "additivity": "unknown",
+  "relativeDispersion": 1.587,
+  "maxAbsMeasureCorrelation": 0.023
+ },
+ {
+  "name": "Northing",
+  "dataType": "Decimal",
+  "isMeasure": true,
+  "sortedDirection": "none",
+  "modalShare": 0.005780346820809248,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 173,
+  "valueNature": "Continuous",
+  "avgValue": -0.07719999999999999,
+  "avgLength": 12.572254335260116,
+  "lowValue": -13.648,
+  "highValue": 13.4936,
+  "medianValue": -0.07719999999999949,
+  "numericPrecision": 17,
+  "skewness": -1.2353392500189996e-16,
+  "stdDev": 7.8805263123728,
+  "sum": -13.355599999999999,
+  "topCategories": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "topCategoryValues": [
+   "-13.648",
+   "-7.8094",
+   "-1.9708000000000006",
+   "3.867799999999999",
+   "9.706399999999999"
+  ],
+  "quantiles": {
+   "p05": -12.3856,
+   "p25": -6.8626,
+   "p75": 6.7082000000000015,
+   "p95": 12.0734
+  },
+  "additivity": "unknown",
+  "relativeDispersion": 281.26,
+  "maxAbsMeasureCorrelation": 0.073
+ },
+ {
+  "name": "Elevation",
+  "dataType": "Decimal",
+  "isMeasure": true,
+  "sortedDirection": "none",
+  "modalShare": 0.011560693641618497,
+  "minGroupCount": 1,
+  "isTemporal": false,
+  "blankCount": 0,
+  "distinctCount": 106,
+  "valueNature": "Continuous",
+  "avgValue": 4.6037396571886795,
+  "avgLength": 17.341040462427745,
+  "lowValue": 1.6898,
+  "highValue": 24.664366473988437,
+  "medianValue": 3.338354913294798,
+  "numericPrecision": 16,
+  "skewness": 3.07189515033623,
+  "stdDev": 4.702810437914305,
+  "sum": 796.4469606936416,
+  "topCategories": [
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2
+  ],
+  "topCategoryValues": [
+   "1.7077190751445086",
+   "1.851071676300578",
+   "1.9765052023121386",
+   "2.137776878612717",
+   "2.334886705202312"
+  ],
+  "quantiles": {
+   "p05": 1.8689907514450868,
+   "p25": 2.4065630057803467,
+   "p75": 4.198470520231214,
+   "p95": 18.336042774566472
+  },
+  "additivity": "unknown",
+  "relativeDispersion": 0.832,
+  "maxAbsMeasureCorrelation": 0.073
+ }
+]"
+`;
