@@ -105,6 +105,14 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // A finite number is clamped to DIM_OPACITY_MIN-1; absent, blank or junk stays undefined so the stylesheet - and a
         // page's own CSS override - still decides. Never defaulted here: that would override every page's CSS.
         dimOpacity: (() => { const n = numberOr(p.dimOpacity, NaN); return Number.isFinite(n) ? clamp(n, DIM_OPACITY_MIN, 1) : undefined; })(),
+        // A recognised glyph or none: an unknown string must never reach the painter as a live mode, and "none" is
+        // undefined rather than a value, so a host that passes nothing and one that passes "none" resolve alike.
+        selectionGlyph: ((): RenderOptions["selectionGlyph"] => {
+            const v = (p.selectionGlyph == null ? "" : String(p.selectionGlyph)).toLowerCase();
+            return v === "dot" || v === "check" ? v : undefined;
+        })(),
+        // A host FACT from the generate answer, true only for a literal true: silence never suppresses anything.
+        suppressSelectionGlyph: p.suppressSelectionGlyph === true ? true : undefined,
         onSelect: p.onSelect,
         // Control gestures (1.10.0). Passed straight through like onSelect: the host owns what a gesture MEANS,
         // and a host that supplies nothing leaves every control behaving exactly as before.

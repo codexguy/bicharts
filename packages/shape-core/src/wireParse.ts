@@ -88,6 +88,10 @@ export interface ParsedGenerateResponse {
     creditCost: number | null;
     isServiceError: boolean;
     isRateLimited: boolean;
+    /** True only when the server said this chart's family never takes a per-mark selection glyph (a flow or
+     *  relationship chart, where a selected series would get one on every point). A host hands it to chart-host
+     *  as options.suppressSelectionGlyph, and keeps it with the code so a re-draw from cache honors it too. */
+    suppressSelectionGlyph: boolean;
     /** A verdict the server reached before any model ran; asking again gets the same answer. */
     isRefusal: boolean;
     isVersionNotFound: boolean;
@@ -190,6 +194,7 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
         creditCost: numOrNull(f("creditCost")),
         isServiceError: flag(f("isServiceError")),
         isRateLimited: flag(f("isRateLimited")),
+        suppressSelectionGlyph: flag(f("suppressSelectionGlyph")),
         isRefusal: flag(f("isRefusal")),
         isVersionNotFound: flag(f("isVersionNotFound")),
         isGenerationCancelled: flag(f("isGenerationCancelled")),

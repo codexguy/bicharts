@@ -499,3 +499,30 @@ describe("resolveOptions - dimOpacity", () => {
         expect(Object.keys(OPTIONS_VOCABULARY)).not.toContain("dimOpacity");
     });
 });
+
+// THE SELECTED-MARK GLYPH and the generate answer's fact that a chart's family never takes one. Unset stays unset, so a
+// host that passes neither draws exactly as before; an unknown mode is no glyph, never a live one.
+describe("resolveOptions - selectionGlyph and suppressSelectionGlyph", () => {
+    it("dot and check are recognised in any case; anything else, none included, is undefined", () => {
+        expect(resolveOptions({ selectionGlyph: "DOT" }).selectionGlyph).toBe("dot");
+        expect(resolveOptions({ selectionGlyph: "check" }).selectionGlyph).toBe("check");
+        expect(resolveOptions({ selectionGlyph: "sparkle" }).selectionGlyph).toBeUndefined();
+        expect(resolveOptions({ selectionGlyph: "none" }).selectionGlyph).toBeUndefined();
+        const o = resolveOptions({}) as Record<string, unknown>;
+        expect("selectionGlyph" in o).toBe(true);
+        expect(o.selectionGlyph).toBeUndefined();
+    });
+
+    it("the suppression fact is true only for a literal true", () => {
+        expect(resolveOptions({ suppressSelectionGlyph: true }).suppressSelectionGlyph).toBe(true);
+        for (const v of ["true", 1, false, null, undefined]) {
+            expect(resolveOptions({ suppressSelectionGlyph: v }).suppressSelectionGlyph, String(v)).toBeUndefined();
+        }
+        expect("suppressSelectionGlyph" in (resolveOptions({}) as Record<string, unknown>)).toBe(true);
+    });
+
+    it("are host settings, not option-pane knobs", () => {
+        expect(Object.keys(OPTIONS_VOCABULARY)).not.toContain("selectionGlyph");
+        expect(Object.keys(OPTIONS_VOCABULARY)).not.toContain("suppressSelectionGlyph");
+    });
+});

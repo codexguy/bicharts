@@ -563,6 +563,10 @@ export interface RenderOptions {
     /** How far a selection dims the marks outside it, as a share of full opacity (DIM_OPACITY_MIN-1). Absent: the
      *  stylesheet decides - DIM_OPACITY_DEFAULT, or whatever the page sets on --lch-dim-opacity. */
     dimOpacity?: number;
+    /** A small glyph on each selected mark: "dot" or "check". Absent or "none": no glyph (the default). */
+    selectionGlyph?: "none" | "dot" | "check";
+    /** A host FACT from the generate answer: this chart's family never takes a selection glyph. */
+    suppressSelectionGlyph?: boolean;
     // Animation.
     animAutoPlay?: boolean;
     animPlaySpeedMs?: number;

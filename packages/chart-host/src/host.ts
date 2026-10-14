@@ -31,7 +31,8 @@ import { stripJsComments } from "./codeComments";
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, markKeyOf, planSelectionPaint,
     nextClickedMarks, trackPress, clickWasDrag, clearPress, validRowSet, sameRowSet,
-    type ClickedMarks, type SelectionRule, type SelectionPaintMode } from "./selection";
+    collectGlyphCentersWhere, paintSelectionGlyphs, clearSelectionGlyphs,
+    type ClickedMarks, type SelectionRule, type SelectionPaintMode, type GlyphCenter } from "./selection";
 
 /** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
 export interface SelectionPaintReport {
@@ -47,12 +48,12 @@ import { censusHitBands, type HitBandCensus } from "./hitBands";
 import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
 import { censusClippedText, type ClippedTextCensus } from "./clippedText";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
-import { fitRenderedChart, unpinScrolledAxis, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
+import { fitRenderedChart, unpinScrolledAxis, clipWindowOf, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
-import { installLasso, type LassoHandle } from "./lasso";
+import { installLasso, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
 // TYPES ONLY: the zoom memory is its own entry ("@bicharts/chart-host/zoom-memory"), off the main entry's eager closure.
 import type { ZoomMemoryHook, ZoomCapture } from "./zoomMemory/zoomMemoryDom";
 
@@ -118,7 +119,10 @@ export interface ChartHostConfig {
         dateCellsAreUtcDays?: boolean;
         /** Provenance the MCP stamps into data.sample.json. `hostContract` is checked
          *  against HOST_CONTRACT_VERSION so a major-version drift is LOUD, not silent. */
-        meta?: { hostContract?: string; chart?: string };
+        meta?: { hostContract?: string; chart?: string;
+            /** The generate answer's fact that this chart's family never takes a selection glyph. Promoted into
+             *  options.suppressSelectionGlyph, so a host that hands over the whole payload honors it unasked. */
+            suppressSelectionGlyph?: boolean };
     };
     /** Generated render() source — compiled exactly like the visual/preview/exec-gate. */
     code?: string;
@@ -252,6 +256,13 @@ export interface ChartHostConfig {
     labelContrast?: boolean | LabelContrastOptions;
     /** What the label-contrast pass did after each render - counts, so a host can log them. */
     onLabelContrast?: (report: LabelContrastReport) => void;
+    /**
+     * What the selection-glyph pass did after each paint of an active selection - counts, so a host can log them.
+     * Called only when options.selectionGlyph is "dot" or "check"; `suppressed` is true when the chart's family never
+     * takes a glyph (options.suppressSelectionGlyph, or the same fact in data.meta). A repaint that only follows marks
+     * moving without a render (a pan, a transition) is not reported again.
+     */
+    onSelectionGlyphs?: (report: { mode: "dot" | "check"; drawn: number; total: number; suppressed: boolean }) => void;
     /**
      * A LAYOUT PASS the host brings, run after every render (both the synchronous and the promise lane, and every
      * setOptions / setData re-render) AFTER the label-contrast pass and BEFORE the hit-target heal, the selection
@@ -815,6 +826,189 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         } catch { /* cosmetic */ }
     };
 
+    // THE SELECTED-MARK GLYPH (options.selectionGlyph): a small dot or check on each selected mark, in a layer this host
+    // owns inside the container. Kept OUT of paintSelection on purpose: that function returns early for a chart that
+    // declares a selection rule, and such a chart still gets its glyphs. It runs after every selection change and, on a
+    // render, after the layout pass and the fit, so neither of them ever measures a glyph as ink. A render clears the
+    // container, so the layer is rebuilt when it is needed and never outlives the draw it was painted on.
+    const GLYPH_LAYER_CLASS = "bic-selection-glyphs";
+    // The container's inline position before THIS host made it relative for the layer, or null when it never did, so
+    // destroy() hands the page back what it left.
+    let glyphPositionWas: string | null = null;
+    // MARKS THAT MOVE WITHOUT A RENDER - a pan or zoom, a transition, an animation frame, a legend toggle that hides a
+    // series. While glyphs are lit the chart is watched for the attribute writes that move or hide a mark, and the glyphs
+    // are repainted on the next frame, once however many writes land in it. Only a write ON a mark, or on an element that
+    // holds one (the zoom layer, the svg), counts: a hover focus dot or a tooltip moved on every pointer move would
+    // otherwise repaint every glyph once a frame. Blind to the layer's own changes and to the lasso outline. Connected
+    // only while there is something to follow; a render disconnects it, and the paint after the render reconnects it.
+    let glyphObserver: MutationObserver | null = null;
+    // A LAYOUT CHANGE THAT WRITES NOTHING - a hidden tab shown (its marks measured 0 x 0 while it was hidden), a
+    // responsive chart whose container the page resized - moves the marks with no attribute write at all. The container
+    // is watched for its size while glyphs are lit, where the browser can (ResizeObserver), with the mutation observer.
+    let glyphResize: ResizeObserver | null = null;
+    let glyphSize = "";
+    let glyphQueued = false;
+    let glyphQueuedReport = false;
+    // What the last report said, so a repaint after a layout change reports only when it drew a different count.
+    let glyphReported = "";
+    const sizeOfContainer = () => `${container.offsetWidth ?? 0}x${container.offsetHeight ?? 0}`;
+    const glyphBlind = `.${GLYPH_LAYER_CLASS}, .${LASSO_OUTLINE_CLASS}`;
+    const movesAMark = (r: MutationRecord) => {
+        const t = r.target as Element;
+        if (!t || t.closest?.(glyphBlind)) return false;
+        return !!(t.classList?.contains(MARK_CLASS) || t.querySelector?.(`.${MARK_CLASS}`));
+    };
+    const queueGlyphs = (reportIfChanged: boolean) => {
+        if (reportIfChanged) glyphQueuedReport = true;
+        if (glyphQueued) return;
+        glyphQueued = true;
+        const run = () => {
+            const r = glyphQueuedReport;
+            glyphQueued = false; glyphQueuedReport = false;
+            if (glyphObserver || glyphResize) paintGlyphLayer(r ? "if-changed" : false);
+        };
+        if (win?.requestAnimationFrame) win.requestAnimationFrame(run); else setTimeout(run, 16);
+    };
+    const followGlyphs = (on: boolean) => {
+        if (!on) {
+            if (glyphObserver) { glyphObserver.disconnect(); glyphObserver = null; }
+            if (glyphResize) { glyphResize.disconnect(); glyphResize = null; }
+            return;
+        }
+        const MO = win?.MutationObserver as typeof MutationObserver | undefined;
+        if (!glyphObserver && MO) {
+            glyphObserver = new MO(records => { if (!glyphQueued && records.some(movesAMark)) queueGlyphs(false); });
+            glyphObserver.observe(container, { subtree: true, attributes: true,
+                attributeFilter: ["transform", "d", "x", "y", "cx", "cy", "points", "width", "height",
+                                  "visibility", "opacity", "style", "class"] });
+        }
+        const RO = (win as any)?.ResizeObserver as typeof ResizeObserver | undefined;
+        if (!glyphResize && RO) {
+            // Its first call reports the size already drawn at; only a size that differs from the last paint's repaints.
+            glyphResize = new RO(() => { if (sizeOfContainer() !== glyphSize) queueGlyphs(true); });
+            glyphResize.observe(container);
+        }
+    };
+    // A MARK THE READER CAN'T SEE GETS NO GLYPH: hidden by visibility or opacity (a legend toggle hides a series that
+    // way, and its marks keep their selected class), or, by where its glyph would go, outside its svg's frame or a
+    // clip-path window on its way up (a point panned into the axis margin, or out of the plot entirely). The browser's
+    // checkVisibility answers the first where it exists; elsewhere the computed styles do.
+    const markShown = (m: Element): boolean => {
+        try {
+            const cv = (m as any).checkVisibility;
+            if (typeof cv === "function") return cv.call(m, { visibilityProperty: true, opacityProperty: true }) !== false;
+            const cs = win?.getComputedStyle;
+            if (typeof cs !== "function") return true;
+            const own = cs.call(win, m);
+            if (own.visibility === "hidden" || own.visibility === "collapse") return false;
+            for (let el: Element | null = m; el && el !== container; el = el.parentElement) {
+                const s = el === m ? own : cs.call(win, el);
+                if (s.display === "none" || (s.opacity !== "" && parseFloat(s.opacity) === 0)) return false;
+            }
+        } catch { /* a mark that won't say is shown */ }
+        return true;
+    };
+    const glyphWindows = (): ((m: Element, x: number, y: number) => boolean) => {
+        type Win = { left: number; top: number; right: number; bottom: number };
+        const windowOf = new Map<Element, Win | null>();
+        const read = (el: Element): Win | null => {
+            if (!windowOf.has(el)) {
+                let w: Win | null = null;
+                try {
+                    if ((el.tagName || "").toLowerCase() === "svg") {
+                        const r = el.getBoundingClientRect();
+                        if (r.width > 0 && r.height > 0) w = r;
+                    } else if (el.hasAttribute?.("clip-path")) w = clipWindowOf(el);
+                } catch { w = null; }
+                windowOf.set(el, w);
+            }
+            return windowOf.get(el) ?? null;
+        };
+        const EPS = 0.5;
+        return (m, x, y) => {
+            for (let el: Element | null = m; el && el !== container; el = el.parentElement) {
+                const w = read(el);
+                if (w && (x < w.left - EPS || x > w.right + EPS || y < w.top - EPS || y > w.bottom + EPS)) return false;
+            }
+            return true;
+        };
+    };
+    // `report` is false for a repaint that only follows moving marks: the selection and its counts are the ones already
+    // reported, and a pan would otherwise report once a frame. "if-changed", for a repaint after a layout change,
+    // reports when it drew a different count (a chart shown from a hidden tab), once, not for every frame of a resize.
+    const paintGlyphLayer = (report: boolean | "if-changed" = true) => {
+        if (destroyed) return;
+        let follow = false;
+        try {
+            let layer = container.querySelector<HTMLElement>(`:scope > .${GLYPH_LAYER_CLASS}`);
+            clearSelectionGlyphs(layer);
+            const mode = resolved.selectionGlyph;
+            if (mode !== "dot" && mode !== "check") { glyphReported = ""; return; }
+            // A PERIOD selection dims nothing, so it marks nothing either (periodTickSuppressesFeedback).
+            const active = !!current && current.length > 0 && !selectionIsPeriod;
+            if (!active) { glyphReported = ""; return; }
+            if (resolved.suppressSelectionGlyph) {
+                if (report === true) try { config.onSelectionGlyphs?.({ mode, drawn: 0, total: 0, suppressed: true }); } catch { /* a report never breaks a paint */ }
+                glyphReported = "";
+                return;
+            }
+            follow = true;
+            if (!layer) {
+                layer = doc.createElement("div") as HTMLElement;
+                layer.className = GLYPH_LAYER_CLASS;
+                layer.setAttribute("aria-hidden", "true");
+                // UNDER the note badges' layer (z-index 2) and the lasso's caption (2), and under the pinned axis copy
+                // (3, fitDom), whose opaque band covers the rows scrolled beneath it: a glyph on one of those rows must
+                // be covered with it, not float over the axis. A chart's own tooltip or control that sets a z-index
+                // above 1 stays over the glyphs too. Hidden overflow, at the size set below: see there.
+                Object.assign(layer.style, { position: "absolute", left: "0", top: "0", width: "0", height: "0",
+                    overflow: "hidden", pointerEvents: "none", zIndex: "1" });
+                // A positioned ancestor for the layer, set only when the page left the container static - the same
+                // rule the note badges and the axis pin follow. The fit can make this container scroll, and a layer
+                // anchored outside it would neither scroll with the marks nor be clipped with them.
+                try {
+                    const pos = win?.getComputedStyle?.(container)?.position || container.style.position;
+                    if (!pos || pos === "static") {
+                        const was = container.style.position;
+                        container.style.position = "relative";
+                        if (glyphPositionWas === null) glyphPositionWas = was;
+                    }
+                } catch { /* no layout */ }
+                container.appendChild(layer);
+            }
+            // THE LAYER COVERS WHAT THE CONTAINER SCROLLS, AND CLIPS THERE: a glyph at a plot's edge, half past it,
+            // would otherwise widen the container's scroll area (and, where it scrolls, give it a scrollbar to nothing).
+            // Collapsed first, so the size it reads is the chart's alone and a container that shrank is not held open.
+            layer.style.width = "0";
+            layer.style.height = "0";
+            const sw = container.scrollWidth || 0, sh = container.scrollHeight || 0;
+            layer.style.width = `${sw}px`;
+            layer.style.height = `${sh}px`;
+            glyphSize = sizeOfContainer();
+            const centers: GlyphCenter[] = [];
+            collectGlyphCentersWhere(container, layer.getBoundingClientRect(), centers, { shown: markShown, at: glyphWindows() });
+            // Ink and halo as the Power BI visual draws them: the theme's slots in high contrast, near-black on white otherwise.
+            const hc = !!resolved.isHighContrast;
+            const drawn = centers.length ? paintSelectionGlyphs(layer, centers, {
+                symbol: mode === "check" ? "✓" : "●",
+                color: hc ? (resolved.themeFg || "#111") : "#111",
+                halo: hc ? (resolved.themeBg || "#fff") : "#fff",
+            }) : 0;
+            const said = `${mode}:${drawn}:${centers.length}`;
+            if (report === true || (report === "if-changed" && said !== glyphReported)) {
+                glyphReported = said;
+                try { config.onSelectionGlyphs?.({ mode, drawn, total: centers.length, suppressed: false }); } catch { /* a report never breaks a paint */ }
+            }
+        } catch { /* cosmetic - a glyph must never break a paint */ }
+        finally {
+            try {
+                followGlyphs(follow);
+                // Writes made before this paint (the selection's own class changes among them) are already in it.
+                glyphObserver?.takeRecords();
+            } catch { /* following is a courtesy */ }
+        }
+    };
+
     // `tick` is the axis/group element that drove this selection, or null for a data-mark
     // click / a clear. It decides BOTH the affordance anchor and, with the container's own
     // timeline slots, whether the marks dim at all.
@@ -825,6 +1019,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         selectionIsPeriod = rowIdxs.length > 0
             && periodTickSuppressesFeedback(!!tick, chartOwnsTimeline(container));
         paintSelection();
+        paintGlyphLayer();
         for (const cb of subs) { try { cb(rowIdxs, source); } catch { /* subscriber error is not ours */ } }
     };
 
@@ -1104,6 +1299,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         }
         // NOTES ON MARKS, after the fit: the badges sit on the marks where they finally are.
         try { drawAnnotations(); } catch { /* a badge must never break a render that already succeeded */ }
+        // THE SELECTED-MARK GLYPHS, after the layout pass and the fit: they sit on the marks where they finally are.
+        paintGlyphLayer();
         // THE LASSO, last: it reads the marks' boxes and covers the plot, so it goes on once everything else has
         // measured and moved the chart. A chart that is not capable, a reader who switched it off, and a chart over
         // the row cap each get nothing here (the last gets its caption); and a lasso kept from before is re-applied
@@ -1145,6 +1342,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // runs — which is also the moment the old chart's DOM stops existing.
             const seq = ++renderSeq;
             stopAnim();                          // contract: stop the old timer before repaint
+            followGlyphs(false);                 // the draw's own writes are not marks moving; the paint after it reconnects
             disposeLasso();                      // its surface is about to go; its listeners must go with it
             flushZoom();                         // a pending zoom gesture is read off the old chart first
             container.innerHTML = "";            // the host owns clearing between renders
@@ -1183,6 +1381,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // A fact about the cells themselves: without it a date shim inside the chart re-examines rows the
             // host already re-anchored. Harmless (it would find nothing to move), but the declaration is the contract.
             if (resolved.dateCellsAreUtcDays === undefined && data.dateCellsAreUtcDays) resolved = { ...resolved, dateCellsAreUtcDays: true };
+            // The generate answer's glyph suppression, when the host handed over the whole payload rather than the option.
+            if (resolved.suppressSelectionGlyph === undefined && data.meta?.suppressSelectionGlyph === true)
+                resolved = { ...resolved, suppressSelectionGlyph: true };
             // THE RENDER ITSELF, AND WHAT IT HANDED BACK. A generated chart whose drawing
             // library has no synchronous API — one that must parse, lay out or fetch before it
             // can paint — returns a PROMISE, and anything measured before that settles is not
@@ -1324,7 +1525,13 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             annotationLayer.destroy();
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
             flushZoom();                         // a pending zoom gesture is read off the chart before it goes
+            followGlyphs(false);
             container.innerHTML = "";
+            // The position the glyph layer needed goes back to what the page left, unless the page has changed it since.
+            if (glyphPositionWas !== null) {
+                try { if (container.style.position === "relative") container.style.position = glyphPositionWas; } catch { /* frozen element */ }
+                glyphPositionWas = null;
+            }
         },
     };
     return host;

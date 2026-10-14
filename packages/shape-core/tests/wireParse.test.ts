@@ -53,6 +53,8 @@ const POINT_MAP_PARSED: ParsedGenerateResponse = {
     // The message codes, added with the fields: a body without them (this one, an older server's
     // shape) reads as "not said" - "" for a code, null for the retry flag, no notices.
     errorCode: "", refusalCode: "", retryable: null, notices: [], freemiumStatusCode: "",
+    // Added with the field (the body above has always sent false); nothing else in this pin moved.
+    suppressSelectionGlyph: false,
 };
 
 /** An origin-destination flow map: both ends named. */
@@ -147,6 +149,15 @@ describe("parseGenerateResponse", () => {
             expect([p.isServiceError, p.isRateLimited, p.isRefusal, p.isVersionNotFound, p.isGenerationCancelled], String(v))
                 .toEqual([false, false, false, false, false]);
         }
+    });
+
+    it("the family's selection-glyph suppression: true only when the server sent true, in either casing", () => {
+        expect(parseGenerateResponse({ suppressSelectionGlyph: true }).suppressSelectionGlyph).toBe(true);
+        expect(parseGenerateResponse({ SuppressSelectionGlyph: true }).suppressSelectionGlyph).toBe(true);
+        for (const v of ["true", 1, null, undefined, false]) {
+            expect(parseGenerateResponse({ suppressSelectionGlyph: v }).suppressSelectionGlyph, String(v)).toBe(false);
+        }
+        expect(parseGenerateResponse({}).suppressSelectionGlyph).toBe(false);
     });
 
     it("the account's thumbnail override: true or false when sent as a boolean, else absent", () => {

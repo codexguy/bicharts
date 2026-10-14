@@ -567,8 +567,23 @@ export interface GlyphCenter { x: number; y: number }
  * client rect). Throws what the platform throws; a host that must not fail its paint catches it.
  */
 export function collectD3GlyphCenters(container: Element, baseRect: { left: number; top: number }, out: GlyphCenter[]): void {
+    collectGlyphCentersWhere(container, baseRect, out);
+}
+
+/** Which selected marks get a glyph, for a host that draws its own layer: `shown` drops a mark before anything is
+ *  measured against it (a mark the reader can't see), `at` drops one by where its glyph would go, in client
+ *  coordinates (a mark panned or zoomed out of its plot). Either absent keeps every mark. */
+export interface GlyphCenterFilter {
+    shown?(mark: Element): boolean;
+    at?(mark: Element, clientX: number, clientY: number): boolean;
+}
+
+/** collectD3GlyphCenters with a filter. Package-internal: the exported function keeps every mark, as it always has. */
+export function collectGlyphCentersWhere(container: Element, baseRect: { left: number; top: number }, out: GlyphCenter[],
+                                         filter?: GlyphCenterFilter): void {
         const Point: any = (container.ownerDocument?.defaultView as any)?.DOMPoint ?? (globalThis as any).DOMPoint;
-        const marks = container.querySelectorAll<SVGElement | HTMLElement>(`.${MARK_CLASS}.${MARK_SELECTED_CLASS}`);
+        let marks: ArrayLike<SVGElement | HTMLElement> = container.querySelectorAll<SVGElement | HTMLElement>(`.${MARK_CLASS}.${MARK_SELECTED_CLASS}`);
+        if (filter?.shown) marks = Array.from(marks).filter(m => filter.shown!(m));
         // CONTAINER SUPPRESSION (a production D3 treemap, 2026-06-02):
         // hierarchical charts draw a parent backdrop rect (e.g. a channel
         // container with data-row-idx = ALL its children's rows) AND per-leaf
@@ -691,6 +706,7 @@ export function collectD3GlyphCenters(container: Element, baseRect: { left: numb
                 sx = isRect ? r.left + r.width * 0.80 : r.left + r.width / 2;
                 sy = isRect ? r.top + r.height * 0.20 : r.top + r.height / 2;
             }
+            if (filter?.at && !filter.at(el, sx, sy)) continue;
             out.push({ x: sx - baseRect.left, y: sy - baseRect.top });
         }
 }

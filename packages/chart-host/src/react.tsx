@@ -77,6 +77,9 @@ export interface BicChartProps {
     labelContrast?: ChartHostConfig["labelContrast"];
     /** What the label-contrast pass did after each render - counts, for a page that logs. */
     onLabelContrast?: ChartHostConfig["onLabelContrast"];
+    /** What the selection-glyph pass did after each paint, when `options.selectionGlyph` is set - counts, for a page
+     *  that logs. The glyph itself, the dim level and the suppression fact ride the `options` prop. */
+    onSelectionGlyphs?: ChartHostConfig["onSelectionGlyphs"];
     /**
      * A LAYOUT PASS run after every render, after label contrast and before the fit - e.g.
      * `createLegendFitPass()` from "@bicharts/chart-host/legend-fit", which slides a legend clear of
@@ -218,7 +221,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, viewState, zoomMemory, labelContrast, onLabelContrast, layoutPass,
+    const { code, renderFn, options, d3, geoKind, viewState, zoomMemory, labelContrast, onLabelContrast, onSelectionGlyphs, layoutPass,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
             className, style, selects, controls, ariaLabel } = props;
     const ref = useRef<HTMLDivElement | null>(null);
@@ -270,6 +273,8 @@ export function BicChart(props: BicChartProps) {
     onSelectRef.current = onSelect;
     const onLabelContrastRef = useRef(onLabelContrast);
     onLabelContrastRef.current = onLabelContrast;
+    const onSelectionGlyphsRef = useRef(onSelectionGlyphs);
+    onSelectionGlyphsRef.current = onSelectionGlyphs;
     const onInvalidSentinelRef = useRef(onInvalidSentinel);
     onInvalidSentinelRef.current = onInvalidSentinel;
     const onAnnotationClickRef = useRef(onAnnotationClick);
@@ -309,6 +314,7 @@ export function BicChart(props: BicChartProps) {
         const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory,
                                            labelContrast, layoutPass,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
+                                           onSelectionGlyphs: r => onSelectionGlyphsRef.current?.(r),
                                            // A GETTER, not a wrapper: the host decides whether to
                                            // swallow the sentinel throw by whether this is SET, so
                                            // an always-present wrapper would hide the throw from a

@@ -277,6 +277,41 @@ stylesheet's `0.25`, or whatever your page sets on the variable.
 createChartHost(el, { code, data, options: { dimOpacity: 0.15 } });
 ```
 
+**A glyph on each selected mark.** `options.selectionGlyph` (`"dot"` or `"check"`; absent or
+`"none"` draws nothing, the default) puts a small glyph on every selected mark, in a layer the host
+owns inside the container (`.bic-selection-glyphs`, each glyph `.lch-sel-glyph`, never hit-tested).
+It is painted after every selection change and, on a redraw, after the layout pass and the fit, so
+nothing measures it as part of the chart. Only a mark the reader can see gets one: a mark hidden by
+`visibility` or `opacity` (a legend toggle) and a mark outside its svg's frame or its plot's
+`clip-path` (a point panned into the axis margin) get none. While a selection is lit, a mark that
+moves or hides without a redraw (a pan or zoom, a transition, an animation frame, a legend toggle)
+takes its glyph with it on the next frame; a write that holds no mark (a hover dot, a tooltip)
+repaints nothing, and that repaint is not reported again. Where the browser has a `ResizeObserver`,
+a container resized without a redraw (a responsive chart, a hidden tab shown) is repainted too, and
+reported when it drew a different count. The layer clips at the container's scroll area, so a
+glyph never widens what the container scrolls, and it sits under the note badges, under a chart's
+own tooltip or control that sets a `z-index` above 1, and under a pinned axis, so a glyph on a row
+scrolled beneath the axis is covered with its row. When the page left the container
+`position: static`, the host makes it `relative` so the layer scrolls and clips with the marks, and
+`destroy()` puts back what the page had. A period picked on a chart's own timeline dims nothing and
+marks nothing.
+
+Some charts never take a glyph: on a flow or relationship chart a selected series would get one on
+every point. The generate answer says so (`suppressSelectionGlyph`, read by shape-core's
+`parseGenerateResponse`); pass it as `options.suppressSelectionGlyph`, or leave it in the payload's
+`meta` (`data.meta.suppressSelectionGlyph`) and the host promotes it, the way it promotes
+`geoPoint`. Keep it with the chart's code, so a redraw from a cache honors it too.
+`onSelectionGlyphs` reports what each paint did (`{ mode, drawn, total, suppressed }`), and is
+called only when a glyph mode is set:
+
+```js
+createChartHost(el, {
+  code, data,
+  options: { selectionGlyph: "dot", suppressSelectionGlyph: answer.suppressSelectionGlyph },
+  onSelectionGlyphs: r => console.debug("glyphs", r),
+});
+```
+
 **Which marks count as selected.** By default a mark is selected when *any* of the rows in its
 `data-row-idx` list is selected, which is what lights a legend swatch together with its series. A
 chart whose marks share rows declares the other rule by stamping
