@@ -654,7 +654,7 @@ export interface RenderOptions {
      *              holds a list of chart types, so a chart saved before the capability existed has none.
      *   enabled  - the reader's setting; on unless it is exactly false. Both must hold for a surface to be drawn.
      *   rowCap   - the most rows in view that still get a lasso; above it the whole lasso is off and a caption says
-     *              so. Absent is LASSO_ROW_CAP (provisional).
+     *              so. Absent is LASSO_ROW_CAP.
      *   actions  - what the host runs on release, in order, by name. Absent is ["select"]; a name the host does
      *              not know is skipped, so a list can be sent ahead of the build that understands it.
      */
