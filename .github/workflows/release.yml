@@ -97,3 +97,23 @@ jobs:
           npm pack -w @bicharts/chart-host --pack-destination /tmp
           ls -la /tmp/*.tgz
           echo "dry run only — nothing was published"
+
+  # A failed release must not wait for somebody to look at the Actions tab. The topic is a repository secret
+  # (NTFY_TOPIC_SEVERE); with no secret the step says so in the run log instead of failing the workflow twice.
+  notify-failure:
+    needs: [publish]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: page the operator
+        env:
+          TOPIC: ${{ secrets.NTFY_TOPIC_SEVERE }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW: ${{ github.workflow }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ -z "$TOPIC" ]; then
+            echo "::warning::NTFY_TOPIC_SEVERE is not set on this repository, so no page was sent."
+            exit 0
+          fi
+          curl -fsS -m 20 -X POST "https://ntfy.sh/$TOPIC"             -H "Title: Release FAILED: $WORKFLOW"             -H "Priority: urgent"             -H "Tags: rotating_light"             -H "Click: $RUN_URL"             -d "$WORKFLOW failed on $REF. Fix: open the run, read the failing step, fix it and re-run the workflow."
