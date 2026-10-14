@@ -673,6 +673,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // this marks the promise handled without consuming it — an await still rejects.
         p.catch(() => { /* the caller's await is the real channel */ });
     };
+    // Whether THIS host wrote --lch-dim-opacity on the container, so it removes only its own value.
+    let dimVarSet = false;
     let current: number[] | null = null;
     // The axis tick / group header that created the CURRENT selection, and whether that
     // tick is a PERIOD (see periodTickSuppressesFeedback in contract.ts). Held as the
@@ -765,6 +767,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // click, dims normally. See periodTickSuppressesFeedback in contract.ts.
             const dim = active && !selectionIsPeriod;
             container.classList?.[dim ? "add" : "remove"](SELECTION_ACTIVE_CLASS);
+            // THE DIM LEVEL, when the host chose one. Written on the container so the injected rule's var() reads it; a
+            // page that styles the variable itself keeps its value, because this removes only what it wrote.
+            const want = resolved.dimOpacity;
+            if (typeof want === "number") { container.style?.setProperty(DIM_OPACITY_VAR, String(want)); dimVarSet = true; }
+            else if (dimVarSet) { container.style?.removeProperty(DIM_OPACITY_VAR); dimVarSet = false; }
             // The clicked tick is marked under BOTH origins — it colours no marks, so it
             // is outside the period rule by construction and is the only feedback a
             // scrubbed period gets. Cleared when the selection empties or the anchor is
@@ -1312,6 +1319,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             clearPress(container);
             disposeLasso();
             subs.clear();
+            // A host rebuilt on the same element must not inherit a dim level this one wrote.
+            if (dimVarSet) { try { container.style?.removeProperty(DIM_OPACITY_VAR); } catch { /* frozen element */ } dimVarSet = false; }
             annotationLayer.destroy();
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
             flushZoom();                         // a pending zoom gesture is read off the chart before it goes

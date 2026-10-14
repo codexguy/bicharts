@@ -283,6 +283,7 @@ export const MARK_SELECTED_CLASS = "lch-mark-selected";      // on each mark in 
 export const ACTIVE_TICK_CLASS = "lch-tick-active";          // on the axis tick / group header driving the selection
 export const DIM_OPACITY_VAR = "--lch-dim-opacity";          // unselected-mark opacity (visual default 0.25)
 export const DIM_OPACITY_DEFAULT = 0.25;
+export const DIM_OPACITY_MIN = 0.01;                          // the least a host may dim to (options.dimOpacity)
 
 // ---- PERIOD vs CATEGORY: the two things `.d3-axis-filter` means ----
 //
@@ -559,6 +560,9 @@ export interface RenderOptions {
     cultureCode?: string;
     allowTooltips?: boolean;
     noDataText?: string;
+    /** How far a selection dims the marks outside it, as a share of full opacity (DIM_OPACITY_MIN-1). Absent: the
+     *  stylesheet decides - DIM_OPACITY_DEFAULT, or whatever the page sets on --lch-dim-opacity. */
+    dimOpacity?: number;
     // Animation.
     animAutoPlay?: boolean;
     animPlaySpeedMs?: number;

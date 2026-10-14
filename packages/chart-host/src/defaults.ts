@@ -21,6 +21,7 @@ import {
     VALUE_AXIS_BASELINE_DEFAULT,
     SEASONAL_MARKERS_DEFAULT,
     MAX_MAP_POINTS_DEFAULT,
+    DIM_OPACITY_MIN,
 } from "./contract";
 import { toRGBA, compositeOver, relativeLuminance } from "./labelContrast";
 
@@ -101,6 +102,9 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         cultureCode: p.cultureCode,
         allowTooltips: p.allowTooltips,
         noDataText: p.noDataText,
+        // A finite number is clamped to DIM_OPACITY_MIN-1; absent, blank or junk stays undefined so the stylesheet - and a
+        // page's own CSS override - still decides. Never defaulted here: that would override every page's CSS.
+        dimOpacity: (() => { const n = numberOr(p.dimOpacity, NaN); return Number.isFinite(n) ? clamp(n, DIM_OPACITY_MIN, 1) : undefined; })(),
         onSelect: p.onSelect,
         // Control gestures (1.10.0). Passed straight through like onSelect: the host owns what a gesture MEANS,
         // and a host that supplies nothing leaves every control behaving exactly as before.

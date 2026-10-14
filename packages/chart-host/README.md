@@ -267,6 +267,16 @@ would show its selected lines at 38%, which the eye reads as dimmed. Such a char
 painted at full opacity. Undeclared charts are unchanged, so alpha used as an encoding (a depth
 cue, a hierarchy level) is never flattened by a fix meant for another chart.
 
+**How far the rest dims, per chart.** `options.dimOpacity` (a share of full opacity, `0.01`-`1`;
+`DIM_OPACITY_MIN` is the floor) sets the level for one host without writing CSS, and it is live
+through `setOptions`. The host writes it as `--lch-dim-opacity` on its own container and removes
+only what it wrote, so with the option absent nothing is written and the CSS above decides: the
+stylesheet's `0.25`, or whatever your page sets on the variable.
+
+```js
+createChartHost(el, { code, data, options: { dimOpacity: 0.15 } });
+```
+
 **Which marks count as selected.** By default a mark is selected when *any* of the rows in its
 `data-row-idx` list is selected, which is what lights a legend swatch together with its series. A
 chart whose marks share rows declares the other rule by stamping

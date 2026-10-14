@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import { resolveOptions } from "../src/defaults";
-import { RenderOptions, MAX_MAP_POINTS_DEFAULT, ANIMATION_OPTION_KEYS } from "../src/contract";
+import { RenderOptions, MAX_MAP_POINTS_DEFAULT, ANIMATION_OPTION_KEYS, DIM_OPACITY_MIN } from "../src/contract";
 import { OPTIONS_VOCABULARY } from "../src/optionsVocabulary";
 
 // BYTE-COMPARE lock: resolveOptions must reproduce EXACTLY the normalization that was
@@ -472,5 +472,30 @@ describe("resolveOptions - the data-completeness facts", () => {
         expect(body).toMatch(/^ {4}rowsWithheld\?: number;/m);
         expect(body).toMatch(/^ {4}rowsFilteredOut\?: number;/m);
         for (const f of FIELDS) expect(Object.keys(OPTIONS_VOCABULARY), `${f} is a fact, not a knob`).not.toContain(f);
+    });
+});
+
+// THE DIM LEVEL a host chooses for the marks outside a selection. Unset must stay unset, so the stylesheet - and a page's
+// own override of the CSS variable - still decides; a number is clamped the way the visual's pane clamps its percentage.
+describe("resolveOptions - dimOpacity", () => {
+    it("a share of full opacity passes through, clamped to DIM_OPACITY_MIN..1", () => {
+        expect(resolveOptions({ dimOpacity: 0.4 }).dimOpacity).toBe(0.4);
+        expect(resolveOptions({ dimOpacity: 0 }).dimOpacity).toBe(DIM_OPACITY_MIN);
+        expect(DIM_OPACITY_MIN).toBe(0.01);
+        expect(resolveOptions({ dimOpacity: 2 }).dimOpacity).toBe(1);
+        expect(resolveOptions({ dimOpacity: "0.5" }).dimOpacity).toBe(0.5);
+    });
+
+    it("absent, blank or junk stays undefined - never defaulted, or every page's CSS would be overridden", () => {
+        const o = resolveOptions({}) as Record<string, unknown>;
+        expect("dimOpacity" in o).toBe(true);
+        expect(o.dimOpacity).toBeUndefined();
+        expect(resolveOptions({ dimOpacity: "x" }).dimOpacity).toBeUndefined();
+        expect(resolveOptions({ dimOpacity: "" }).dimOpacity).toBeUndefined();
+        expect(resolveOptions({ dimOpacity: null }).dimOpacity).toBeUndefined();
+    });
+
+    it("is a host setting, not an option-pane knob", () => {
+        expect(Object.keys(OPTIONS_VOCABULARY)).not.toContain("dimOpacity");
     });
 });

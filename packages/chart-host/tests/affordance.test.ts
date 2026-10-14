@@ -286,3 +286,55 @@ describe("affordance grammar is a STABLE contract", () => {
         expect(LIFT_SELECTED_CLASS).toBe("d3-lift-selected");
     });
 });
+
+// THE DIM LEVEL AS A HOST OPTION. A page could always set the CSS variable itself; options.dimOpacity lets a host move it
+// per chart, live through setOptions, without writing CSS. Unset, nothing is written: the page and the stylesheet decide.
+describe("dim opacity option", () => {
+    const dimHost = (options?: Record<string, unknown>) =>
+        createChartHost(container, { code: CODE, data: DATA as any, d3: {}, ...(options ? { options } : {}) });
+    const dimVar = () => container.style.getPropertyValue(DIM_OPACITY_VAR);
+
+    it("no option: nothing is written on the container, before or after a click", () => {
+        const h = dimHost();
+        h.render();
+        click(marks()[1]);
+        expect(container.classList.contains(SELECTION_ACTIVE_CLASS)).toBe(true);
+        expect(dimVar()).toBe("");
+    });
+
+    it("an option sets the level on the container, and setOptions moves it", () => {
+        const h = dimHost({ dimOpacity: 0.4 });
+        h.render();
+        click(marks()[1]);
+        expect(dimVar()).toBe("0.4");
+        h.setOptions({ dimOpacity: 0.6 });
+        expect(dimVar()).toBe("0.6");
+    });
+
+    it("a page's own value survives a host with no option; a host removes only what it wrote", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.7");
+        const plain = dimHost();
+        plain.render();
+        click(marks()[1]);
+        expect(dimVar()).toBe("0.7");
+        plain.destroy();
+        expect(dimVar()).toBe("0.7");
+
+        container.style.removeProperty(DIM_OPACITY_VAR);
+        const h = dimHost({ dimOpacity: 0.4 });
+        h.render();
+        click(marks()[1]);
+        expect(dimVar()).toBe("0.4");
+        h.setOptions({ dimOpacity: undefined });
+        expect(dimVar()).toBe("");
+    });
+
+    it("destroy() removes the value the host wrote, so a host rebuilt on the same element starts clean", () => {
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        click(marks()[0]);
+        expect(dimVar()).toBe("0.3");
+        h.destroy();
+        expect(dimVar()).toBe("");
+    });
+});
