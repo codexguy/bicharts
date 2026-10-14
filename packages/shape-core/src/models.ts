@@ -623,6 +623,17 @@ export type LLMClientHints =
          * automatically the answer for every build made before the host learned it.
          */
         supportsHtmlScene?: boolean,
+        /**
+         * Can this host draw the lasso: a gesture over a chart's points that publishes the rows inside?
+         *
+         * Some chart types are only meaningful where that gesture exists - an explainer whose whole answer arrives from the
+         * selection draws a panel nothing can fill in a host that has none. Declare this only in the build that passes
+         * `lasso: { capable: true, ... }` to chart-host for a chart whose capabilities carry it, and derive it from the code
+         * that honors it rather than setting it beside a constant. Absent or false means such a type is not offered and an
+         * explicit pick of it is refused - the safe answer, and automatically the answer for every build made before the
+         * host learned the gesture.
+         */
+        supportsLasso?: boolean,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
