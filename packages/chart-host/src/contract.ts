@@ -220,6 +220,11 @@ export const CONTAINER_SLOT_INITIAL_XF_MARK = "__llmInitialXfMark"; // a mark to
 // 1.5.0 and the store install in createChartHost.
 export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
 
+// Where the reader had the container scrolled, parked on the CONTAINER by the HOST for the same
+// reason: taken just before the container is cleared, consumed by the next render's fit, and
+// restored only when the same chart is back (a ScrollMemory, see fit.ts).
+export const CONTAINER_SLOT_SCROLL = "__lchScroll";
+
 // The marks lit under a declared "clicked-marks" rule and the selection they were lit for (a
 // ClickedMarks), parked on the container by the HOST for the same reason as the view-state above:
 // a host that re-creates itself on the same element keeps which word the reader clicked.

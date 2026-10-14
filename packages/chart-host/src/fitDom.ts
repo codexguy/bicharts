@@ -19,10 +19,10 @@
 import {
     contentExtentOf, needsScroll, planFrameGrow, scrollFitFor,
     FIT_CONTENT_SELECTOR, isPhantomBox, SCROLL_SLACK_PX,
-    planAxisPin, axisPinPlacement,
+    planAxisPin, axisPinPlacement, planScrollRestore,
 } from "./fit";
-import type { ContentExtent, MeasuredBox, AxisPinCandidate, AxisPinEdge, LabelRowBox } from "./fit";
-import { SNAPSHOT_SVG_ATTR } from "./contract";
+import type { ContentExtent, MeasuredBox, AxisPinCandidate, AxisPinEdge, LabelRowBox, ScrollMemory } from "./fit";
+import { SNAPSHOT_SVG_ATTR, CONTAINER_SLOT_SCROLL } from "./contract";
 
 // How many elements the ink walk will measure before giving up. Layout-flushing calls in a loop,
 // so it is a real ceiling and not a formality.
@@ -273,6 +273,13 @@ export interface FitRenderedChartOptions {
      * Set false for a host that draws its own sticky header.
      */
     pinAxis?: boolean;
+    /**
+     * Put the reader's scroll back once the overflow is decided: `memory` (what `takeScroll` handed
+     * back) is restored only when its key is `key`, the chart now drawn, clamped to what the new
+     * layout can scroll and only on an axis that scrolls. Applied before the axis pin, which places
+     * its copy from the scroll it finds. Absent, the container is left where the render put it.
+     */
+    restoreScroll?: { memory: ScrollMemory | null; key: unknown };
 }
 
 export interface FitRenderedChartResult {
@@ -288,6 +295,8 @@ export interface FitRenderedChartResult {
     reading: FitReading | null;
     /** The axis pin: what was pinned when the container scrolls, or why nothing was. */
     axisPin: AxisPinReport;
+    /** Where `restoreScroll` put the container ({0,0} for a different chart), or null when it was not asked or the overflow was not applied. */
+    scrolledTo: { x: number; y: number } | null;
 }
 
 export interface AxisPinReport {
@@ -330,6 +339,33 @@ export function unpinScrolledAxis(container: HTMLElement | null | undefined): vo
     try { container.removeEventListener("scroll", st.onScroll); } catch { /* already gone */ }
     try { if (st.overlay.parentNode) st.overlay.parentNode.removeChild(st.overlay); } catch { /* already gone */ }
     try { delete (container as any)[CONTAINER_SLOT_AXIS_PIN]; } catch { /* non-configurable host */ }
+}
+
+/**
+ * Remember where the container is scrolled, BEFORE the container is cleared. A memory already waiting is kept: a second render that
+ * starts before the first one restored sees an emptied (unscrolled) container, and must not overwrite what the reader really did.
+ * A diagram that scrolls inside itself remembers its own position, so it is left alone.
+ */
+export function rememberScroll(container: HTMLElement | null | undefined, key: unknown): void {
+    if (!container) return;
+    try {
+        const slot = container as unknown as Record<string, unknown>;
+        if (slot[CONTAINER_SLOT_SCROLL]) return;
+        if (container.querySelector(".llm-mm-scroll")) return;
+        const x = container.scrollLeft, y = container.scrollTop;
+        if (x > 0 || y > 0) slot[CONTAINER_SLOT_SCROLL] = { key, x, y } as ScrollMemory;
+    } catch { /* remembering a scroll is a courtesy */ }
+}
+
+/** The waiting memory, removed. The one place it is consumed, so a stale memory can never outlive a render. */
+export function takeScroll(container: HTMLElement | null | undefined): ScrollMemory | null {
+    if (!container) return null;
+    try {
+        const slot = container as unknown as Record<string, unknown>;
+        const m = (slot[CONTAINER_SLOT_SCROLL] as ScrollMemory | undefined) ?? null;
+        delete slot[CONTAINER_SLOT_SCROLL];
+        return m;
+    } catch { return null; }
 }
 
 // A display:none / visibility:hidden text is not a label the reader sees, and the axis-thinning
@@ -601,7 +637,7 @@ export function fitRenderedChart(
     const slackPx = opts.slackPx ?? SCROLL_SLACK_PX;
     const result: FitRenderedChartResult = {
         grew: false, growFrom: 0, growTo: 0, growReason: "no-container",
-        overflowX: "hidden", overflowY: "hidden", reading: null, axisPin: noPin("no-container"),
+        overflowX: "hidden", overflowY: "hidden", reading: null, axisPin: noPin("no-container"), scrolledTo: null,
     };
     if (!container) return result;
 
@@ -676,6 +712,21 @@ export function fitRenderedChart(
         if (opts.applyOverflow !== false) {
             container.style.overflowX = fit.overflowX;
             container.style.overflowY = fit.overflowY;
+            // THE READER'S SCROLL, once the overflow is decided and BEFORE the pin, which places its
+            // copy from the scroll it finds: restored after it, one frame would show the copy at the top.
+            if (opts.restoreScroll) {
+                const to = planScrollRestore(opts.restoreScroll.memory, opts.restoreScroll.key, {
+                    scrollWidth: container.scrollWidth, scrollHeight: container.scrollHeight,
+                    clientWidth: container.clientWidth, clientHeight: container.clientHeight,
+                    overflowX: fit.overflowX, overflowY: fit.overflowY,
+                });
+                // Written whenever it differs from where the container IS, zero included: emptying a container
+                // does not move its scroll until something reads layout, so a different chart drawn straight
+                // back in would otherwise open at the old offset. A container already there sees no write.
+                if (container.scrollLeft !== to.x) container.scrollLeft = to.x;
+                if (container.scrollTop !== to.y) container.scrollTop = to.y;
+                result.scrolledTo = to;
+            }
             // AND THE AXIS STAYS WHILE THE ROWS SCROLL. Only once the container actually
             // scrolls, and LAST: the copy is taken from the axis as it finally stands.
             if (fit.overflowY !== "auto") { unpinScrolledAxis(container); result.axisPin = noPin("not-scrolling"); }

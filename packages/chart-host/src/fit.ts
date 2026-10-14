@@ -357,3 +357,27 @@ export function axisPinPlacement(band: AxisBand, scrollTop: number, viewportH: n
     if (band.bottom > scrollTop + viewportH) return "bottom";
     return null;
 }
+
+/** A reader's scroll offsets and the identity of the chart they were made on. */
+export interface ScrollMemory { key: unknown; x: number; y: number }
+
+/** What the container reports once the overflow is decided. */
+export interface ScrollMetrics {
+    scrollWidth: number; scrollHeight: number; clientWidth: number; clientHeight: number;
+    overflowX: string; overflowY: string;
+}
+
+const nonNegative = (n: unknown): number => (typeof n === "number" && isFinite(n) && n > 0 ? n : 0);
+
+/**
+ * Where the scroll goes after a redraw. The saved offsets when the SAME chart is back, clamped to what the new layout can scroll and
+ * applied per axis only where the container scrolls; otherwise the origin. A new chart opens at the top.
+ */
+export function planScrollRestore(saved: ScrollMemory | null | undefined, key: unknown, m: ScrollMetrics): { x: number; y: number } {
+    if (!saved || key === undefined || key === null || saved.key !== key) return { x: 0, y: 0 };
+    const room = (content: number, view: number) => Math.max(0, nonNegative(content) - nonNegative(view));
+    return {
+        x: m.overflowX === "auto" ? Math.min(nonNegative(saved.x), room(m.scrollWidth, m.clientWidth)) : 0,
+        y: m.overflowY === "auto" ? Math.min(nonNegative(saved.y), room(m.scrollHeight, m.clientHeight)) : 0,
+    };
+}

@@ -25,7 +25,7 @@ export {
     SNAPSHOT_SVG_ATTR,
     XFILTER_REFRESH_EVENT,
     CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
-    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE,
+    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_SCROLL,
     VIEW_ONLY_UI_STATE_KEYS, withoutViewOnlyKeys,
     HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS,
     DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, DIM_OPACITY_MIN,
@@ -358,6 +358,11 @@ export {
     type LabelRowBox, type AxisBand, type AxisPinCandidate, type AxisPinPlan, type AxisPinEdge,
 } from "./fit";
 export { pinScrolledAxis, unpinScrolledAxis, type AxisPinReport } from "./fitDom";
+// A REDRAW OF THE SAME CHART KEEPS THE READER'S SCROLL. createChartHost does it on its own (the memory is parked on the
+// container, so a host re-created on the same element keeps it too); the pure plan and the two DOM halves are here for a
+// host that clears and fits its container itself.
+export { planScrollRestore, type ScrollMemory, type ScrollMetrics } from "./fit";
+export { rememberScroll, takeScroll } from "./fitDom";
 
 // A CATEGORICAL PALETTE FROM THE SURFACE THE CHART SITS ON (2026-09-09). Proven in the Power BI
 // visual against the report theme; none of it was Power-BI-specific, and the hosts without it

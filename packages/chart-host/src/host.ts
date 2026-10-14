@@ -48,7 +48,7 @@ import { censusHitBands, type HitBandCensus } from "./hitBands";
 import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
 import { censusClippedText, type ClippedTextCensus } from "./clippedText";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
-import { fitRenderedChart, unpinScrolledAxis, clipWindowOf, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
+import { fitRenderedChart, unpinScrolledAxis, rememberScroll, takeScroll, clipWindowOf, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
@@ -235,6 +235,15 @@ export interface ChartHostConfig {
      * reading without touching the chart (`grow: false`, `applyOverflow: false`).
      */
     fit?: boolean | FitRenderedChartOptions;
+    /**
+     * KEEP THE READER'S SCROLL when the SAME chart is drawn again - a resize, a filter, a theme
+     * switch, or a new host on the same element. Default true: the offset is parked on the
+     * container before each clear and put back by the fit, clamped to what the new layout can
+     * scroll; a different chart (other code, or a renderFn with other source) opens at the top. Pass `false`
+     * for a page that manages the container's scrolling itself: nothing is remembered or restored,
+     * and a memory an earlier host left on the element is discarded at the next render.
+     */
+    restoreScroll?: boolean;
     /** The fit result after each render - what was grown, and how the chart measured. */
     onFit?: (result: FitRenderedChartResult) => void;
     /**
@@ -1171,6 +1180,27 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // A gesture still settling is recorded from the chart it was made on, before that chart's DOM goes away.
     const flushZoom = () => { if (zoomMemory) { try { zoomMemory.flush(); } catch { /* never costs a render */ } } };
 
+    // THE READER'S SCROLL survives a redraw of the SAME chart: remembered on the container before it is cleared (here and in
+    // destroy(), so a host re-created on the same element finds it), restored by the fit only when the chart is the same one.
+    // The chart is its source text: the `code` the host was given, or the renderFn's own source. Not the function's
+    // identity: a page that re-creates its host on every data update, or <BicChart renderFn={(c, d, o) => draw(c, d, o)}>
+    // (a new closure on every parent render, so a new host), would otherwise have every cross-filter put the reader back
+    // at the top. Two closures with the same source and different captured values run the same drawing code, so for the
+    // scroll they are the same chart; the offset is clamped to what the new draw can scroll anyway. Bound and native
+    // functions all print alike, so they restore one another's offset, as every chart did before scroll was keyed at all.
+    // Nothing is remembered before this host has drawn: a scroll the container carried before then was not made on this
+    // chart. `restoreScroll: false` leaves the scroll to the page.
+    const keepScroll = config.restoreScroll !== false;
+    let chartSource: string | undefined;
+    const scrollKey = (): unknown => {
+        if (config.code) return config.code;
+        if (chartSource === undefined && typeof config.renderFn === "function") {
+            try { chartSource = Function.prototype.toString.call(config.renderFn); } catch { return config.renderFn; }
+        }
+        return chartSource;
+    };
+    let hasRendered = false;
+
     // EVERYTHING THAT HAPPENS AFTER THE CHART HAS DRAWN, in one place and with exactly one
     // definition. A chart that draws asynchronously must receive the IDENTICAL treatment a
     // synchronous one gets, and the only way to guarantee that as passes are added is for both
@@ -1291,9 +1321,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // The <svg> clips at its own viewport, so a chart drawing past its declared height
         // loses those rows outright while the container reports that everything fits - the
         // frame is grown to the ink FIRST, and only then does a scrollbar mean anything.
+        // Taken on every render, fit or no fit, so a waiting memory never outlives the render it was kept for.
+        const scrollMem = takeScroll(container);
         if (fitOpts !== false) {
             try {
-                const r = fitRenderedChart(container, fitOpts === true ? {} : fitOpts);
+                const base: FitRenderedChartOptions = fitOpts === true ? {} : fitOpts;
+                const r = fitRenderedChart(container, keepScroll ? { ...base, restoreScroll: { memory: scrollMem, key: scrollKey() } } : base);
                 config.onFit?.(r);
             } catch { /* a fit pass must never break a render that already succeeded */ }
         }
@@ -1345,7 +1378,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             followGlyphs(false);                 // the draw's own writes are not marks moving; the paint after it reconnects
             disposeLasso();                      // its surface is about to go; its listeners must go with it
             flushZoom();                         // a pending zoom gesture is read off the old chart first
+            if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // where the reader was, before the clear sends it to the top
             container.innerHTML = "";            // the host owns clearing between renders
+            hasRendered = true;
             if (!renderFn) {
                 if (!config.code) throw new Error("createChartHost: provide code or renderFn");
                 renderFn = compileRenderFn(config.code, win, doc, chartD3);
@@ -1523,6 +1558,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // A host rebuilt on the same element must not inherit a dim level this one wrote.
             if (dimVarSet) { try { container.style?.removeProperty(DIM_OPACITY_VAR); } catch { /* frozen element */ } dimVarSet = false; }
             annotationLayer.destroy();
+            if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // for the next host on this element
             unpinScrolledAxis(container);        // its scroll listener outlives the cleared DOM
             flushZoom();                         // a pending zoom gesture is read off the chart before it goes
             followGlyphs(false);

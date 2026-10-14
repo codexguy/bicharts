@@ -75,6 +75,12 @@ export interface BicChartProps {
      * themed page is not white, and readability is measured against it. See createChartHost.
      */
     labelContrast?: ChartHostConfig["labelContrast"];
+    /**
+     * KEEP THE READER'S SCROLL when the same chart repaints (new data, new options, a rebuild).
+     * Default on; a different chart opens at the top. Pass `false` for a page that manages the
+     * chart's scrolling itself. Host config: changing it rebuilds the host. See createChartHost.
+     */
+    restoreScroll?: ChartHostConfig["restoreScroll"];
     /** What the label-contrast pass did after each render - counts, for a page that logs. */
     onLabelContrast?: ChartHostConfig["onLabelContrast"];
     /** What the selection-glyph pass did after each paint, when `options.selectionGlyph` is set - counts, for a page
@@ -221,7 +227,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, viewState, zoomMemory, labelContrast, onLabelContrast, onSelectionGlyphs, layoutPass,
+    const { code, renderFn, options, d3, geoKind, viewState, zoomMemory, labelContrast, restoreScroll, onLabelContrast, onSelectionGlyphs, layoutPass,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
             className, style, selects, controls, ariaLabel } = props;
     const ref = useRef<HTMLDivElement | null>(null);
@@ -312,7 +318,7 @@ export function BicChart(props: BicChartProps) {
         controlsRef.current = ctl;
         const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
         const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory,
-                                           labelContrast, layoutPass,
+                                           labelContrast, layoutPass, restoreScroll,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
                                            onSelectionGlyphs: r => onSelectionGlyphsRef.current?.(r),
                                            // A GETTER, not a wrapper: the host decides whether to
@@ -354,10 +360,10 @@ export function BicChart(props: BicChartProps) {
             host.destroy();
             hostRef.current = null;
         };
-        // labelContrast and layoutPass are HOST config, read once at creation, so changing either is a
+        // labelContrast, layoutPass and restoreScroll are HOST config, read once at creation, so changing one is a
         // rebuild (cheap: the code identity is unchanged, only the config) rather than a silent no-op.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, controls]);
+    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, controls]);
 
     // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
     // filter replaced. The first paint restores a selection made before this chart mounted (a
@@ -390,7 +396,7 @@ export function BicChart(props: BicChartProps) {
             if (bindingRef.current === b) bindingRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass]);
+    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the

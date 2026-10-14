@@ -420,6 +420,20 @@ only while `rememberAcrossSessions()` is true. It is keyed by the chart's code a
 somewhere arbitrary. A chart with several zoomable panels is left alone. In React, pass the hook as
 the `zoomMemory` prop of `<BicChart>`.
 
+**A scrolled chart** keeps its place with no setup. A chart taller than its frame scrolls, and every
+redraw empties the container, which used to send the reader back to the top. The host now parks the
+scroll offset on the container before it clears it, and the fit puts it back once the new layout has
+decided whether it still scrolls. The offset is clamped to what the new layout can scroll, and only
+restored on an axis that still scrolls. That covers a resize, a filter, a restyle, and a new host
+created on the same element. The memory is keyed by the chart (its `code`, or the `renderFn`'s
+source text), so a different chart opens at the top, while a `renderFn` closure rebuilt on every draw
+is still the same chart. It lives on the element for the session
+only, and nothing is persisted. A page that manages the container's scrolling itself passes
+`restoreScroll: false` (the `restoreScroll` prop of `<BicChart>`), and then nothing is remembered or
+restored. A host that clears and fits its container on its own can use the same pieces:
+`rememberScroll` before the clear, `takeScroll` after the render, and `fitRenderedChart`'s
+`restoreScroll` option (or the pure `planScrollRestore`).
+
 ## Keeping a drawn chart readable inside its frame
 
 A generated chart cannot know how wide its own legend text will come out, where its tick labels will
