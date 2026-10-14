@@ -589,8 +589,9 @@ const isThenable = (v: unknown): v is PromiseLike<unknown> =>
 // THE PAGE'S OWN INLINE --lch-dim-opacity on a container (value and priority, null when there was none), saved by the first
 // host to write there and put back by the last to let go. Per element, not per host: two hosts can overlap on one (the
 // next is built before the old is torn down), and a second one reading the container would take the first one's write for
-// the page's and put it back after the page's own was restored.
-const dimVarPage = new WeakMap<object, { was: { value: string; priority: string } | null; holders: number }>();
+// the page's and put it back after the page's own was restored. `wrote` is the level last written there: the last host to
+// let go restores the page's value only if the container still holds it, so a value the page set since is left alone.
+const dimVarPage = new WeakMap<object, { was: { value: string; priority: string } | null; holders: number; wrote: string }>();
 
 export function createChartHost(container: HTMLElement, config: ChartHostConfig): ChartHost {
     const doc: any = container.ownerDocument;
@@ -710,6 +711,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         if (!page || --page.holders > 0) return;
         dimVarPage.delete(container);
         try {
+            if (container.style?.getPropertyValue?.(DIM_OPACITY_VAR) !== page.wrote) return;   // the page has set its own since
             if (page.was) container.style?.setProperty(DIM_OPACITY_VAR, page.was.value, page.was.priority);
             else container.style?.removeProperty(DIM_OPACITY_VAR);
         } catch { /* frozen element */ }
@@ -810,20 +812,23 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             container.classList?.[dim ? "add" : "remove"](SELECTION_ACTIVE_CLASS);
             // THE DIM LEVEL, when the host chose one. Written on the container so the injected rule's var() reads it; a
             // page that styles the variable itself keeps its value: in a stylesheet it is never touched, and inline on
-            // the container it is saved on the first write and put back when the option goes away.
+            // the container it is saved on the first write and put back when the option goes away, unless the page has set
+            // its own value in the meantime.
             const want = resolved.dimOpacity;
             if (typeof want === "number") {
+                const level = String(want);
+                let page = dimVarPage.get(container);
                 if (!dimVarSet) {
-                    let page = dimVarPage.get(container);
                     if (!page) {
                         const value = container.style?.getPropertyValue?.(DIM_OPACITY_VAR) ?? "";
-                        page = { was: value ? { value, priority: container.style?.getPropertyPriority?.(DIM_OPACITY_VAR) ?? "" } : null, holders: 0 };
+                        page = { was: value ? { value, priority: container.style?.getPropertyPriority?.(DIM_OPACITY_VAR) ?? "" } : null, holders: 0, wrote: level };
                         dimVarPage.set(container, page);
                     }
                     page.holders++;
                     dimVarSet = true;
                 }
-                container.style?.setProperty(DIM_OPACITY_VAR, String(want));
+                if (page) page.wrote = level;
+                container.style?.setProperty(DIM_OPACITY_VAR, level);
             } else releaseDimVar();
             // The clicked tick is marked under BOTH origins — it colours no marks, so it
             // is outside the period rule by construction and is the only feedback a

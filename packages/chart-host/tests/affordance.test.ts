@@ -368,6 +368,67 @@ describe("dim opacity option", () => {
         }
     });
 
+    // The count of hosts holding the page's value is what keeps the first one to let go from restoring it under the other.
+    it("two hosts on one element: after the first lets go the container still reads the other's level", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const a = dimHost({ dimOpacity: 0.3 });
+        const b = dimHost({ dimOpacity: 0.4 });
+        a.render();
+        b.render();
+        a.destroy();
+        expect(dimVar()).toBe("0.4");
+        b.destroy();
+        expect(dimVar()).toBe("0.6");
+    });
+
+    // A page that changes its own inline value while a host holds it has the last word: letting go restores the saved
+    // value only if the container still holds the level the host wrote.
+    it("a value the page set while a host held the variable is left alone when the host lets go", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        expect(dimVar()).toBe("0.3");
+        container.style.setProperty(DIM_OPACITY_VAR, "0.9");
+        h.destroy();
+        expect(dimVar()).toBe("0.9");
+    });
+
+    it("a value the page set where there was none is not removed when the option goes away, nor when the host lets go", () => {
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        container.style.setProperty(DIM_OPACITY_VAR, "0.9");
+        h.setOptions({ dimOpacity: undefined });
+        expect(dimVar()).toBe("0.9");
+        const g = dimHost({ dimOpacity: 0.2 });
+        g.render();
+        container.style.setProperty(DIM_OPACITY_VAR, "0.8");
+        g.destroy();
+        expect(dimVar()).toBe("0.8");
+    });
+
+    it("a value the page set while two hosts held the variable is left alone by the last to let go", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const a = dimHost({ dimOpacity: 0.3 });
+        const b = dimHost({ dimOpacity: 0.4 });
+        a.render();
+        b.render();
+        container.style.setProperty(DIM_OPACITY_VAR, "0.9");
+        a.destroy();
+        expect(dimVar()).toBe("0.9");
+        b.destroy();
+        expect(dimVar()).toBe("0.9");
+    });
+
+    it("a host that moved its level after the first write still gives the page's value back", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        h.setOptions({ dimOpacity: 0.5 });
+        expect(dimVar()).toBe("0.5");
+        h.destroy();
+        expect(dimVar()).toBe("0.6");
+    });
+
     it("two hosts on one element with no page value: nothing is left behind by either", () => {
         const a = dimHost({ dimOpacity: 0.3 });
         const b = dimHost({ dimOpacity: 0.4 });

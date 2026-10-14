@@ -66,9 +66,9 @@ export interface BicChartProps {
      * the hook's store keeps it, across a reload. Build it with createZoomMemoryHook() from
      * "@bicharts/chart-host/zoom-memory" over one ZoomMemoryHost per chart (module scope, useRef or
      * useMemo) with somewhere to keep the view. Absent (null or undefined), nothing is remembered. Host config:
-     * a hook that arrives after mount, or goes away, rebuilds the host; a change from one hook to another is
-     * ignored (remount the component with a `key` for a chart that needs a different store), so a hook built
-     * inline in the props is harmless. See createChartHost's `zoomMemory`.
+     * a hook that arrives after mount, or goes away, rebuilds the host; a change from one hook to another does
+     * not, and applies at the next rebuild (a new `code`, say), or at once if the component is remounted with a
+     * `key`. So a hook built inline in the props is harmless. See createChartHost's `zoomMemory`.
      */
     zoomMemory?: ChartHostConfig["zoomMemory"];
     /**
@@ -275,14 +275,17 @@ export function BicChart(props: BicChartProps) {
     // Whether the selection this chart shows now was made by the reader on it (not painted in).
     const userSelectedRef = useRef(false);
     const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
-    // THE ZOOM MEMORY IN FORCE: the hook the host was built with, replaced only when the prop goes from absent to present
-    // or back (null and undefined are both absent). A hook written inline, createZoomMemoryHook({ ... }) in the props, is
-    // a new object on every parent render, over a new ZoomMemoryHost literal too; rebuilding on that would drop the
-    // selection, restart the animation and lose the session's zoom on every render, and a callback that sets the parent's
-    // state (onSelectionGlyphs) could loop. A page that needs another store remounts the chart with a `key`.
+    // THE ZOOM MEMORY: whether there is one is what rebuilds the host (the prop going from absent to present or back; null
+    // and undefined are both absent), not which hook it is. A hook written inline, createZoomMemoryHook({ ... }) in the
+    // props, is a new object on every parent render, over a new ZoomMemoryHost literal too; rebuilding on that would drop
+    // the selection, restart the animation and lose the session's zoom on every render, and a callback that sets the
+    // parent's state (onSelectionGlyphs) could loop. The latest COMMITTED hook is kept in a ref, set in a layout effect
+    // that runs before the build below, so a host built for another reason (a new `code`) is built with the hook the page
+    // passes now, and a render that was started and abandoned (a transition that suspends) cannot leave its prop behind.
+    // A swap with nothing else changed applies at the next rebuild; a page that needs it at once remounts with a `key`.
+    const zoomOn = zoomMemory != null;
     const zoomRef = useRef(zoomMemory ?? null);
-    if ((zoomRef.current == null) !== (zoomMemory == null)) zoomRef.current = zoomMemory ?? null;
-    const zoomInForce = zoomRef.current;
+    useLayoutEffect(() => { zoomRef.current = zoomMemory ?? null; });
     const builtWithRef = useRef<{ data?: unknown; optKey?: string } | null>(null);
 
     // Keep the newest callback without making it a rebuild trigger.
@@ -328,7 +331,7 @@ export function BicChart(props: BicChartProps) {
         const ctl = controls ? attachControls(() => hostRef.current, el, controls) : null;
         controlsRef.current = ctl;
         const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
-        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory: zoomInForce,
+        const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory: zoomRef.current,
                                            labelContrast, layoutPass, restoreScroll,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
                                            onSelectionGlyphs: r => onSelectionGlyphsRef.current?.(r),
@@ -375,7 +378,7 @@ export function BicChart(props: BicChartProps) {
         // is a rebuild (cheap: the code identity is unchanged, only the config) rather than a silent no-op - a zoom
         // memory hook that arrives after mount would otherwise never be used (zoomMemory counts only as present or absent).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomInForce, controls]);
+    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomOn, controls]);
 
     // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
     // filter replaced. The first paint restores a selection made before this chart mounted (a
@@ -408,7 +411,7 @@ export function BicChart(props: BicChartProps) {
             if (bindingRef.current === b) bindingRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomInForce]);
+    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomOn]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the

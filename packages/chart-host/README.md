@@ -431,8 +431,8 @@ return <BicChart code={code} data={data} d3={d3} zoomMemory={zoomMemory} />;
 ```
 
 A hook that arrives after mount, or goes away, rebuilds the chart's host; swapping one hook for another
-on a mounted `<BicChart>` is ignored (remount it with a `key` for a chart that needs a different
-`ZoomMemoryHost`), so a hook built inline in the props changes nothing.
+on a mounted `<BicChart>` rebuilds nothing, and applies at the next rebuild (a new `code`, say) or at
+once if you remount it with a `key`, so a hook built inline in the props costs no rebuild.
 
 **A scrolled chart** keeps its place with no setup. A chart taller than its frame scrolls, and every
 redraw empties the container, which used to send the reader back to the top. The host now parks the
