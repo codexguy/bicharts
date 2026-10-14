@@ -119,6 +119,16 @@ describe("inferredMeasureFlags", () => {
         expect(a.inferredMeasureFlags()).toBe(a.inferredMeasureFlags());
     });
 
+    it("a caller cannot corrupt the cached flags", () => {
+        const a = build(coordSpecs, coordRows(173));
+        const flags = a.inferredMeasureFlags() as boolean[];
+        expect(() => flags.push(true)).toThrow();
+        expect(() => { flags[0] = false; }).toThrow();
+        expect(() => { flags.length = 0; }).toThrow();
+        expect(a.inferredMeasureFlags()).toEqual([true, true, true]);
+        expect(a.inferredMeasureFlags()).toBe(flags);
+    });
+
     it("the cache follows the rows", () => {
         const spec: Spec[] = [{ name: "Amount", dataType: "Decimal" }];
         const a = build(spec, [[1.5], [2.5], [3.5]]);

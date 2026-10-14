@@ -619,7 +619,7 @@ export interface IValueCollection {
     getCSVHeaderLine(): string;
     getColumnsWithStats(privacyLevel: string, locale?: string): LLMColumnWithValue[];
     getColumns(): LLMColumnWithValue[];
-    inferredMeasureFlags?(): boolean[];
+    inferredMeasureFlags?(): readonly boolean[];
     toObjectArray(): Record<string, any>[];
     // Returns the original dataView.table row index for the i-th accumulated row,
     // or -1 if no original index was supplied. Used to build per-row Power BI
@@ -700,7 +700,7 @@ export class IndexedText implements IValueCollection {
     // collapse) and a later setColumns brings new objects, which are rightly not declared.
     private _declaredDimensions: WeakSet<LLMColumnWithValue> = new WeakSet();
     // inferredMeasureFlags() result; null until asked and again whenever rows, columns or declarations change.
-    private _inferredMeasureFlags: boolean[] | null = null;
+    private _inferredMeasureFlags: readonly boolean[] | null = null;
 
     /**
      * Collapse value-identical rows on addRow. DEFAULT TRUE — the long-standing behaviour,
@@ -758,7 +758,7 @@ export class IndexedText implements IValueCollection {
      * data was last indexed) reads this to hand the code the flags it was written for. One scan of the numeric columns
      * not already measures; cached until rows or columns change.
      */
-    public inferredMeasureFlags(): boolean[] {
+    public inferredMeasureFlags(): readonly boolean[] {
         if (this._inferredMeasureFlags) return this._inferredMeasureFlags;
         const out = this._cols.map(c => !!(c && c.isMeasure));
         this._cols.forEach((col, cidx) => {
@@ -781,6 +781,8 @@ export class IndexedText implements IValueCollection {
             }
             out[cidx] = promotesToMeasure(col, false, { distinct: vals.size, nonblank, prec, minval, maxval });
         });
+        // Frozen: the same array is handed to every caller until the index changes, so one caller's write must not reach the next.
+        Object.freeze(out);
         this._inferredMeasureFlags = out;
         return out;
     }
