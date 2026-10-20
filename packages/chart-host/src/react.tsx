@@ -287,6 +287,9 @@ export function BicChart(props: BicChartProps) {
     const zoomRef = useRef(zoomMemory ?? null);
     useLayoutEffect(() => { zoomRef.current = zoomMemory ?? null; });
     const builtWithRef = useRef<{ data?: unknown; optKey?: string } | null>(null);
+    // What this chart's selection reaches outside it, read when a lasso circles a group (selectionReachesPage).
+    const reachRef = useRef({ selects, group, id });
+    reachRef.current = { selects, group, id };
 
     // Keep the newest callback without making it a rebuild trigger.
     const onSelectRef = useRef(onSelect);
@@ -346,7 +349,12 @@ export function BicChart(props: BicChartProps) {
                                                    : undefined;
                                            },
                                            annotations: annotationsRef.current ?? [],
-                                           onAnnotationClick: a => onAnnotationClickRef.current?.(a) });
+                                           onAnnotationClick: a => onAnnotationClickRef.current?.(a),
+                                           // What a filtering lasso reaches: the page filter (`selects`), or the
+                                           // siblings of a chart that has an id in a group. This binding always
+                                           // subscribes to the selection (for onSelect), so the host cannot count
+                                           // subscribers here; an onSelect callback alone is not the page's filter.
+                                           selectionReachesPage: () => !!reachRef.current.selects || !!(reachRef.current.group && reachRef.current.id) });
         hostRef.current = host;
         builtAnnKeyRef.current = annKey;
         const off = host.selection.onChange((payloadIdxs, source) => {

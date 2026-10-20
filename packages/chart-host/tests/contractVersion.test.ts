@@ -80,4 +80,10 @@ describe("host contract version stamp", () => {
         const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
         expect(maj > 1 || (maj === 1 && min >= 16)).toBe(true);
     });
+
+    it("the lasso's effect on the page is announced by the version that adds it (1.17.0)", () => {
+        // A host that reads the stamp learns that options.lasso.effect "highlight" is honoured; an older host filters.
+        const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(maj > 1 || (maj === 1 && min >= 17)).toBe(true);
+    });
 });

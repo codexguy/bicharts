@@ -53,7 +53,7 @@ import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
-import { installLasso, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
+import { installLasso, lassoEffect, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
 // TYPES ONLY: the zoom memory is its own entry ("@bicharts/chart-host/zoom-memory"), off the main entry's eager closure.
 import type { ZoomMemoryHook, ZoomCapture } from "./zoomMemory/zoomMemoryDom";
 
@@ -309,6 +309,15 @@ export interface ChartHostConfig {
     annotations?: MarkAnnotation[];
     /** A badge was clicked. The mark beneath is not selected. */
     onAnnotationClick?: (annotation: MarkAnnotation) => void;
+    /**
+     * WHETHER THIS CHART'S SELECTION REACHES ANYTHING OUTSIDE IT - a page filter bound to it, a chart group that
+     * cross-filters. Read when a filtering lasso (RenderOptions.lasso.effect "filter", the default) circles a
+     * group: false makes the host say once, in the console, that the page gave the chart no filter to set, so the
+     * lasso only highlights. Absent: the selection reaches something when anything subscribes to it
+     * (selection.onChange, which bindFilter and a group's attach both use). The React binding answers it from
+     * `selects` and the group itself. Never throws through: an answer that throws counts as reached.
+     */
+    selectionReachesPage?: () => boolean;
 }
 
 export interface ChartHost {
@@ -675,6 +684,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let warnedGeo = false;
     let warnedBlank = false;   // once per host: a repainting chart must not spam the console
     let warnedIds = false;     // the same, for an id clash the scoping pass prevented
+    let warnedLassoNoFilter = false;   // the same, for a filtering lasso whose selection reaches nothing
     const idScope = newIdScope();
     // WHICH RENDER IS THE CURRENT ONE. A synchronous chart cannot overlap with itself, but an
     // async one can: setOptions/setData during a slow draw starts a second render while the
@@ -727,6 +737,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // mark) rather than read off a clicked mark or handed in by the host. Only a selection the
     // chart owns is the chart's to undo - see the empty-click branch in onClick.
     let selectionFromChart = false;
+    // Whether the CURRENT selection was told to the subscribers. False only for a highlight-only lasso
+    // (RenderOptions.lasso.effect "highlight"): the page never heard it, so its clear is not told either.
+    let selectionPublished = true;
     // The marks the reader clicked, for a chart that declared "clicked-marks". Parked on the
     // CONTAINER (CONTAINER_SLOT_CLICKED_MARKS), so a host re-created on the same element keeps it.
     const clickedMarks = (): ClickedMarks | null => (container as any)[CONTAINER_SLOT_CLICKED_MARKS] ?? null;
@@ -1059,16 +1072,43 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // `tick` is the axis/group element that drove this selection, or null for a data-mark
     // click / a clear. It decides BOTH the affordance anchor and, with the container's own
     // timeline slots, whether the marks dim at all.
-    const notify = (rowIdxs: number[], source: string, tick?: any, fromChart = false) => {
+    // `publish` false paints the selection without telling the subscribers: a highlight-only lasso.
+    const notify = (rowIdxs: number[], source: string, tick?: any, fromChart = false, publish = true) => {
         if (destroyed) return;
         current = rowIdxs;
         selectionFromChart = rowIdxs.length > 0 && fromChart;
+        selectionPublished = publish;
         activeTickEl = rowIdxs.length ? (tick ?? null) : null;
         selectionIsPeriod = rowIdxs.length > 0
             && periodTickSuppressesFeedback(!!tick, chartOwnsTimeline(container));
         paintSelection();
         paintGlyphLayer();
+        if (!publish) return;
         for (const cb of subs) { try { cb(rowIdxs, source); } catch { /* subscriber error is not ours */ } }
+    };
+
+    // WHAT A LASSO DOES TO THE PAGE (contract 1.17.0). "filter", the default, publishes the circled rows exactly as
+    // a click does, so a page filter bound to the chart takes every circled key and the other charts follow.
+    // "highlight" lights them here and tells nobody. A filtering lasso whose selection reaches nothing outside the
+    // chart is a highlight in effect, and the host says so once: a page built without wiring the chart to a filter
+    // otherwise looks as though the lasso did nothing to the rest of the page, with nothing to say why.
+    const selectFromLasso = (rows: number[]) => {
+        if (lassoEffect(resolved.lasso) === "highlight") { notify(rows, "user", null, true, false); return; }
+        notify(rows, "user", null, true);
+        if (warnedLassoNoFilter || !rows.length) return;
+        let reaches = true;
+        try { reaches = config.selectionReachesPage ? config.selectionReachesPage() !== false : subs.size > 0; }
+        catch { /* an answer that throws is not a reason to warn */ }
+        if (reaches) return;
+        warnedLassoNoFilter = true;
+        try {
+            (win?.console ?? console)?.warn(
+                `[@bicharts/chart-host] a lasso circled ${rows.length} ${rows.length === 1 ? "row" : "rows"}, but the page ` +
+                `gave this chart no filter to set (no \`selects\` or bindFilter, no chart group), so the lasso only ` +
+                `highlights inside the chart and the rest of the page does not follow. To filter the page, pass ` +
+                `selects={useBicFilter("<key column>")} to this chart and filter the other charts by that filter; ` +
+                `for a highlight on purpose, set lasso.effect to "highlight".`);
+        } catch { /* advisory only */ }
     };
 
     // The chart's own dispatch (scrubber ticks, period changes) — the primary
@@ -1084,7 +1124,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // period tick — so it anchors the affordance and, on a timeline-owning chart, marks
         // the selection as a PERIOD. `source` cannot be used for this: the scrubber reports
         // an honest 'user' when the reader clicked it.
-        if (d.clear) notify([], d.source || "chart");
+        // A clear of a highlight-only lasso (its clear slot dispatching) is not told to the page, which never heard it.
+        if (d.clear) notify([], d.source || "chart", undefined, false, selectionPublished || !(current && current.length));
         else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark, true);
         // A selection the chart COMPUTED (a drawn region, a brushed range) has no element to point at, so it
         // carries the row indices themselves. Untrusted, so read through validRowSet; an empty set is a clear.
@@ -1136,7 +1177,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (selectionFromChart && typeof slot === "function") {
                 try { slot(); } catch { /* chart already clear */ }
             }
-            if (current && current.length) notify([], "user");
+            // A highlight-only lasso was never told to the page, so neither is its clear.
+            if (current && current.length) notify([], "user", undefined, false, selectionPublished);
         }
     };
 
@@ -1383,7 +1425,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         try {
             lasso = installLasso({
                 container, options: () => resolved, rows: data.rows ? data.rows.length : 0,
-                select: rows => notify(rows, "user", null, true),
+                select: selectFromLasso,
                 clearSelection: clearFromGesture,
             });
         } catch { /* a lasso that cannot install is a chart without one, never a render that failed */ }

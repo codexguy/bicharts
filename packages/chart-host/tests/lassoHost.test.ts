@@ -3,7 +3,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createChartHost, type ChartHost } from "../src/host";
 import { resolveOptions } from "../src/defaults";
 import { SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS } from "../src/contract";
-import { LASSO_EVENT, LASSO_ROW_CAP, type LassoEventDetail } from "../src/lasso";
+import { LASSO_EVENT, LASSO_ROW_CAP, lassoEffect, type LassoEventDetail } from "../src/lasso";
+import { createFilter } from "../src/filterScope";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { BicChart, BicChartGroup } from "../src/react";
+
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 // THE LASSO, AS THE HOST WIRES IT (2026-10-09). The gesture itself is in lasso.test.ts; this is the host's half:
 // when a render gets a lasso, that a re-render keeps it without republishing it, and that it shares the host's
@@ -239,6 +245,125 @@ describe("the host runs the lasso", () => {
             host.selection.highlight([3, 4]);
             expect(outline().getAttribute("d")).toBe("");
             expect(events.at(-1)).toMatchObject({ rows: [], source: "host" });
+        });
+    });
+
+    // WHAT A LASSO DOES TO THE PAGE (contract 1.17.0). By default circling a group FILTERS: the marks inside are published
+    // as the selection a click makes, so a page filter bound through `selects` takes every circled key and the other
+    // charts follow. lasso.effect "highlight" lights them inside the chart and publishes nothing. And a filtering lasso on
+    // a chart the page gave no filter still highlights, and the host says so once: the silent case is the one a first
+    // build of a page got wrong.
+    describe("what a lasso does to the page", () => {
+        let root: Root | null = null;
+        let warn: ReturnType<typeof vi.spyOn>;
+        beforeEach(() => { warn = vi.spyOn(console, "warn").mockImplementation(() => {}); });
+        afterEach(async () => { if (root) { const r = root; root = null; await act(async () => r.unmount()); } });
+
+        const COLS = [{ name: "Code", dataType: "String", isMeasure: false }, { name: "N", dataType: "Double", isMeasure: true }];
+        const ROWS = [0, 1, 2, 3, 4, 5].map(i => ({ Code: "r" + i, N: i }));
+        const noFilterWarnings = () => warn.mock.calls.map(c => String(c[0])).filter(s => /no filter to set/.test(s));
+        /** The generated component's shape: a one-member group around a BicChart with no id, onSelect always passed. */
+        const mount = async (lasso: Record<string, unknown>, selects?: ReturnType<typeof createFilter>, onSelect?: (rows: number[]) => void) => {
+            root = createRoot(container);
+            await act(async () => {
+                root!.render(createElement(BicChartGroup, { columns: COLS, rows: ROWS as any, children:
+                    createElement(BicChart, { code: CHART, d3: {}, labelContrast: false, options: { lasso }, selects,
+                                              onSelect: (idxs: number[]) => onSelect?.(idxs) }) }));
+            });
+        };
+        const dragAct = async (path: Array<[number, number]>) => { await act(async () => { drag(path); }); };
+
+        it("the effect is filter unless it is exactly highlight", () => {
+            expect(lassoEffect(undefined)).toBe("filter");
+            expect(lassoEffect({ capable: true })).toBe("filter");
+            expect(lassoEffect({ capable: true, effect: "filter" })).toBe("filter");
+            expect(lassoEffect({ capable: true, effect: "highlight" })).toBe("highlight");
+            expect(lassoEffect({ capable: true, effect: "Highlight" as any })).toBe("filter");
+            expect(lassoEffect({ capable: true, effect: 1 as any })).toBe("filter");
+        });
+
+        it("by default a lasso on a chart with selects sets the page filter with every circled key", async () => {
+            const f = createFilter("Code");
+            await mount({ capable: true, enabled: true }, f);
+            await dragAct(AROUND_012);
+            expect(f.values).toEqual(["r0", "r1", "r2"]);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            expect(noFilterWarnings()).toEqual([]);
+            // And an empty click on the plot clears the filter it set.
+            await act(async () => {
+                surface().dispatchEvent(ptr("pointerdown", 260, 220));
+                surface().dispatchEvent(ptr("pointerup", 260, 220));
+                surface().dispatchEvent(ptr("click", 260, 220));
+            });
+            expect(f.active).toBe(false);
+        });
+
+        it("effect filter, stated, does the same", async () => {
+            const f = createFilter("Code");
+            await mount({ capable: true, enabled: true, effect: "filter" }, f);
+            await dragAct(AROUND_012);
+            expect(f.values).toEqual(["r0", "r1", "r2"]);
+        });
+
+        it("effect highlight lights the circled marks inside the chart and sets no filter", async () => {
+            const f = createFilter("Code");
+            const heard: number[][] = [];
+            await mount({ capable: true, enabled: true, effect: "highlight" }, f, rows => heard.push(rows));
+            await dragAct(AROUND_012);
+            expect(f.active).toBe(false);
+            expect(heard).toEqual([]);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            expect(container.querySelector("." + SELECTION_ACTIVE_CLASS)).toBeTruthy();   // the chart's own element dims the rest
+            expect(noFilterWarnings()).toEqual([]);
+            // Clearing it publishes nothing either: the page never heard the highlight.
+            await act(async () => { esc(); });
+            expect(selectedMarks()).toEqual([]);
+            expect(heard).toEqual([]);
+        });
+
+        it("a chart given no selects still highlights, and says once that the page gave it no filter to set", async () => {
+            const heard: number[][] = [];
+            await mount({ capable: true, enabled: true }, undefined, rows => heard.push(rows));
+            await dragAct(AROUND_012);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            expect(noFilterWarnings().length).toBe(1);
+            expect(noFilterWarnings()[0]).toMatch(/^\[@bicharts\/chart-host\] a lasso circled 3 rows?/);
+            expect(noFilterWarnings()[0]).toMatch(/selects/);
+            await act(async () => { esc(); });
+            await dragAct(AROUND_012);
+            expect(noFilterWarnings().length).toBe(1);                          // once per chart, not once per lasso
+        });
+
+        it("a highlight-only lasso on a chart with no selects says nothing: it is the page's choice", async () => {
+            await mount({ capable: true, enabled: true, effect: "highlight" });
+            await dragAct(AROUND_012);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            expect(noFilterWarnings()).toEqual([]);
+        });
+
+        it("a plain host: subscribers hear nothing from a highlight-only lasso, and the marks still light", () => {
+            make({ lasso: { capable: true, effect: "highlight" } });
+            drag(AROUND_012);
+            expect(seen).toEqual([]);
+            expect(host.selection.current).toEqual([0, 1, 2]);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            esc();
+            expect(seen).toEqual([]);
+            expect(host.selection.current).toEqual([]);
+            expect(selectedMarks()).toEqual([]);
+        });
+
+        it("a plain host whose selection nobody hears says so once; one with a subscriber does not", () => {
+            host = createChartHost(container, { data: DATA, code: CHART, d3: {}, options: { lasso: { capable: true } } } as any);
+            host.render();
+            drag(AROUND_012);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            expect(noFilterWarnings().length).toBe(1);
+            host.destroy();
+            warn.mockClear();
+            make({ lasso: { capable: true } });
+            drag(AROUND_012);
+            expect(noFilterWarnings()).toEqual([]);
         });
     });
 
