@@ -1,6 +1,10 @@
 # @bicharts/chart-host
 
-> **Make Generative AI for Charts *Better*.**
+> **Make Generative AI for Charts and Maps *Better*.**
+
+**AI Data Components, running in your page:** a flow map, a bivariate map, a what-if projection with its controls
+inside the chart, and about 90 everyday chart types. Each is a small interactive application disguised as a chart
+type, and this package is the open-source runtime that makes all of them behave the same way wherever they run.
 
 Describe the chart you want, or just hand over the data, and RegiaBI gives you back a working, interactive chart that fits your data on the first try — as source code you own. It goes into your repo and runs in the framework you already use: React, a plain web page, or whatever your coding agent is scaffolding. At run time there's no key, no call to us and nothing to pay per render: `@bicharts/chart-host`, the open-source runtime, makes the chart behave in your page — clicks, cross-filtering, selection — so that's code you don't have to write. You start from something that already works and spend your time on the last ten percent, in plain language or in the code itself; reading the code is an advantage, never the price of entry. And because the engine knows what each chart type can honestly say, it'll sometimes show you a view of your data you hadn't thought to ask for.
 
