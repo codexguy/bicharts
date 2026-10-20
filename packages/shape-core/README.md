@@ -5,7 +5,7 @@
 That is what **RegiaBI** is for; this package is the part that measures your data so the
 rest of it can be honest about what your data will actually support.
 
-RegiaBI builds **AI Data Components**: a flow map, a bivariate map, a what-if projection with its controls inside the chart, and about 90 everyday chart types besides. Each one fits your data on the first try, comes as source you own, and runs in your React app or any web page on a free, open-source runtime with no call back to us.
+RegiaBI builds **AI Data Components** for Power BI, Excel, Fabric Apps and the web: a bivariate map with its two-way key, a what-if projection with its controls inside the chart, and about 90 everyday chart types. This package measures your whole result, so its real counts decide which of them fit. The code comes as source you own and runs in your React app or any web page on a free, open-source runtime with no call back to us.
 [RegiaBI for developers](https://bizintelligencechampions.com/regiabi/developers?loc=npmshape)
 
 A **host-agnostic data-shape profiler**. Feed it a dataset's rows through the
