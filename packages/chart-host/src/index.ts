@@ -115,11 +115,11 @@ export {
 } from "./selection";
 // THE HOST LASSO: one gesture, owned by the host, for any chart whose server-sent capability says it may.
 export {
-    installLasso, clearLasso, lassoVerdict, lassoRowCap, lassoActions, registerLassoAction, pointInShape,
+    installLasso, clearLasso, lassoVerdict, lassoRowCap, lassoActions, lassoEffect, registerLassoAction, pointInShape,
     LASSO_ROW_CAP, LASSO_DRAG_PX, LASSO_SAMPLE_PX, LASSO_MAX_VERTICES, LASSO_RESTORE_MAX_VERTICES, LASSO_RESTORE_MAX_SHAPES,
     LASSO_EVENT, LASSO_SURFACE_CLASS, LASSO_OUTLINE_CLASS, LASSO_COUNT_CLASS, LASSO_NOTE_CLASS, LASSO_PLOT_CLASS,
-    LASSO_MODE_ATTR, LASSO_KNOB_KEY, LASSO_AXES_SLOT, LASSO_DEFAULT_ACTIONS,
-    type LassoSetting, type LassoVerdict, type LassoMode, type LassoSpace, type LassoShape, type LassoStored,
+    LASSO_MODE_ATTR, LASSO_KNOB_KEY, LASSO_AXES_SLOT, LASSO_DEFAULT_ACTIONS, LASSO_DEFAULT_EFFECT,
+    type LassoSetting, type LassoVerdict, type LassoEffect, type LassoMode, type LassoSpace, type LassoShape, type LassoStored,
     type LassoEventDetail, type LassoAxes, type LassoAction, type LassoActionContext, type LassoEnv, type LassoHandle,
 } from "./lasso";
 // THE RENDERER ADAPTER (the seam between the renderer-neutral core and one renderer's binding): the types only,

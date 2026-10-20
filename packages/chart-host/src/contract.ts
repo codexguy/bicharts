@@ -21,7 +21,14 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.16.0";
+export const HOST_CONTRACT_VERSION = "1.17.0";
+// 1.17.0 (2026-10-20): WHAT A LASSO DOES TO THE PAGE. RenderOptions.lasso gains effect: "filter" (the default)
+// publishes the circled marks through the selection a click makes, so a page filter bound to the chart (React's
+// `selects`) or a chart group follows with every circled key; "highlight" lights them inside the chart and
+// publishes nothing, its clear included, so the rest of the page stays as it was. A filtering lasso on a chart
+// whose selection reaches nothing outside it still highlights, and the host says so once in the console.
+// Additive: a host that sends no effect gets exactly the 1.16.0 behaviour, and an older host ignores the field
+// (it filters).
 // 1.16.0 (2026-10-09): THE HOST LASSO, A ROW-SET SELECTION, AND A DRAG IS NOT A CLICK. RenderOptions gains
 // lasso { capable, enabled, rowCap, actions }: the host draws one lasso/rectangle gesture over a chart whose
 // server-sent capability says it may (capable) and whose reader has not switched it off (enabled, default on),
@@ -657,8 +664,12 @@ export interface RenderOptions {
      *              so. Absent is LASSO_ROW_CAP.
      *   actions  - what the host runs on release, in order, by name. Absent is ["select"]; a name the host does
      *              not know is skipped, so a list can be sent ahead of the build that understands it.
+     *   effect   - what circling a group does to the PAGE (1.17.0). "filter", the default (absent, or anything that
+     *              is not exactly "highlight"): the marks inside are published as the selection a click makes, so a
+     *              page filter bound to the chart sets every circled key and the other charts follow. "highlight":
+     *              they light inside the chart only, and nothing is published. A host's choice, never the chart's.
      */
-    lasso?: { enabled?: boolean; rowCap?: number; actions?: string[]; capable?: boolean };
+    lasso?: { enabled?: boolean; rowCap?: number; actions?: string[]; capable?: boolean; effect?: "filter" | "highlight" };
 }
 
 /** One reader gesture on a chart's own control. */

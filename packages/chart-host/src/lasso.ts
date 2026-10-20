@@ -17,6 +17,9 @@
 //   release   the configured action list runs (v1: "select", the host's own selection), then the DOM event
 //             is dispatched. The list is config, so another action is added by registerLassoAction and a
 //             name in the list, with no change to the gesture or to how a selection is published.
+//   effect    what "select" does to the PAGE (RenderOptions.lasso.effect, read by the host through lassoEffect):
+//             "filter", the default, publishes the rows as the selection a click makes; "highlight" lights them
+//             inside the chart and publishes nothing.
 //   at rest   the shape is kept in the one knob bag (container.__lchKnobs.lasso), persisted through
 //             options.setUiState the way every in-chart control writes it, on release and on clear and never
 //             mid-drag. A chart that registers container.__lchLassoAxes = { toData, toScreen } gets it stored
@@ -105,6 +108,16 @@ export function lassoActions(setting: LassoSetting | null | undefined): string[]
     const out: string[] = [];
     for (const n of a) if (typeof n === "string" && n.trim() && !out.includes(n.trim())) out.push(n.trim());
     return out;
+}
+
+/** What circling a group does to the page: "filter" publishes it as the selection, "highlight" only lights it. */
+export type LassoEffect = "filter" | "highlight";
+/** The effect when the setting names none. */
+export const LASSO_DEFAULT_EFFECT: LassoEffect = "filter";
+
+/** The effect in force: "highlight" only when the setting says exactly that, else LASSO_DEFAULT_EFFECT. */
+export function lassoEffect(setting: LassoSetting | null | undefined): LassoEffect {
+    return setting?.effect === "highlight" ? "highlight" : LASSO_DEFAULT_EFFECT;
 }
 
 /** Whether a chart with `rows` rows in view gets a lasso under `setting`. */
@@ -443,7 +456,8 @@ export interface LassoEnv {
     options: () => RenderOptions;
     /** How many rows the chart was handed: the number the cap is measured against. */
     rows: number;
-    /** Publish this row set as the selection (what the "select" action does). */
+    /** Make this row set the selection (what the "select" action does). The host decides, from the setting's
+     *  effect, whether it is published to the page or only lit inside the chart. */
     select(rows: number[]): void;
     /** Clear the host's selection the way an empty click does: the chart's own clear slot first when the
      *  chart owns the selection, then a published clear. A no-op when nothing is selected. */
