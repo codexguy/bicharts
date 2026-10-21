@@ -389,6 +389,79 @@ describe("the host runs the lasso", () => {
             expect(seen).toEqual([]);
         });
 
+        // The bag on the element outlives every host on it: a DIFFERENT chart built there must not draw the old outline
+        // over its own marks, nor carry it into the state its next slider persists.
+        it("a different chart made on the same element starts without the previous chart's lasso", () => {
+            make();
+            drag(AROUND_012);
+            host.destroy();
+            events.length = 0; seen.length = 0;
+            host = createChartHost(container, { data: DATA, code: CHART + "\n// another chart", d3: {}, options: { lasso: { capable: true } } } as any);
+            host.render();
+            expect(events).toEqual([]);
+            expect(outline().getAttribute("d")).toBe("");
+            expect((container as any).__lchKnobs.lasso).toBeUndefined();
+        });
+
+        it("a slider value in the bag outlives a different chart; only the lasso goes", () => {
+            make();
+            drag(AROUND_012);
+            (container as any).__lchKnobs.rate = 0.05;
+            host.destroy();
+            host = createChartHost(container, { data: DATA, code: CHART + "\n// another chart", d3: {}, options: { lasso: { capable: true } } } as any);
+            host.render();
+            expect((container as any).__lchKnobs).toEqual({ rate: 0.05 });
+        });
+
+        // A page's own view-state provider keys its own state (the visual keys it by chart version): the host leaves it be.
+        it("a lasso in the page's own view-state provider is the page's to keep, whichever chart is built", () => {
+            make();
+            drag(AROUND_012);
+            const parked = (container as any).__lchKnobs.lasso;
+            host.destroy();
+            const saved: Record<string, unknown> = { knobs: { lasso: parked } };
+            host = createChartHost(container, { data: DATA, code: CHART + "\n// another chart", d3: {}, options: { lasso: { capable: true } },
+                                                viewState: { load: () => saved, save: () => undefined } } as any);
+            host.render();
+            expect((saved.knobs as any).lasso).toBe(parked);
+        });
+
+        it("a parked lasso with no record of whose it is counts as another chart's", () => {
+            make();
+            drag(AROUND_012);
+            const parked = (container as any).__lchKnobs.lasso;
+            host.destroy();
+            const fresh = document.createElement("div");
+            document.body.appendChild(fresh);
+            (fresh as any).__lchKnobs = { lasso: parked };
+            const other = createChartHost(fresh, { data: DATA, code: CHART, d3: {}, options: { lasso: { capable: true } } } as any);
+            other.render();
+            expect((fresh as any).__lchKnobs.lasso).toBeUndefined();
+            other.destroy();
+            fresh.remove();
+        });
+
+        it("a <BicChart> given new code on the same element does not inherit the old chart's outline", async () => {
+            make();
+            drag(AROUND_012);
+            const parked = (container as any).__lchKnobs.lasso;
+            host.destroy();
+            const el = document.createElement("div");
+            document.body.appendChild(el);
+            const root: Root = createRoot(el);
+            const opts = { lasso: { capable: true } };
+            await act(async () => { root.render(createElement(BicChart, { code: CHART, data: DATA, d3: {}, options: opts })); });
+            const chartEl = el.firstElementChild as HTMLElement;
+            (chartEl as any).__lchKnobs = { ...(chartEl as any).__lchKnobs, lasso: parked };       // parked by the chart on screen
+            const restores: unknown[] = [];
+            chartEl.addEventListener(LASSO_EVENT, e => restores.push((e as CustomEvent).detail));
+            await act(async () => { root.render(createElement(BicChart, { code: CHART + "\n// v2", data: DATA, d3: {}, options: opts })); });
+            expect(restores).toEqual([]);
+            expect((chartEl as any).__lchKnobs?.lasso).toBeUndefined();
+            await act(async () => root.unmount());
+            el.remove();
+        });
+
         it("a lasso cleared is gone after a re-render", () => {
             make();
             drag(AROUND_012);

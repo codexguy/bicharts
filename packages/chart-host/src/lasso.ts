@@ -387,6 +387,40 @@ function readStored(options: RenderOptions, container: Element): unknown {
     return isObject(bag) ? bag[LASSO_KNOB_KEY] : undefined;
 }
 
+/** The container's record of which chart the lasso parked in its bag belongs to (the host's chart key). */
+const LASSO_PARKED_FOR = "__lchLassoFor";
+
+/**
+ * A NEW HOST ON A CONTAINER claims the bag's lasso for its chart. The bag outlives every host on the element, so a lasso
+ * parked by another chart (a new `code` on the same element, a destroy and create) would be re-drawn on this one and then
+ * persisted with the next slider's write under this chart's state. A different chart, or a parked lasso with no record of
+ * whose it is, starts without it; the same chart built again (a host rebuilt for its config) keeps it. Only the lasso
+ * goes: a slider's value in the bag is meant to outlive a new chart. `sessionState` is the host's own session view-state
+ * on the same element (never a caller's provider, which keys its own state): its `knobs.lasso` is the same parked copy.
+ * Returns whether a parked lasso was dropped.
+ */
+export function claimParkedLasso(container: Element | null | undefined, chartKey: unknown,
+                                 sessionState?: Record<string, unknown> | null): boolean {
+    const holder = container as any;
+    if (!holder) return false;
+    let dropped = false;
+    try {
+        if (holder[LASSO_PARKED_FOR] !== chartKey) {
+            const bag = holder.__lchKnobs;
+            if (isObject(bag) && bag[LASSO_KNOB_KEY] !== undefined) { delete bag[LASSO_KNOB_KEY]; dropped = true; }
+            const knobs = isObject(sessionState) ? sessionState.knobs : undefined;
+            if (isObject(knobs) && knobs[LASSO_KNOB_KEY] !== undefined) {
+                const rest = { ...knobs };
+                delete rest[LASSO_KNOB_KEY];
+                sessionState!.knobs = rest;
+                dropped = true;
+            }
+        }
+        holder[LASSO_PARKED_FOR] = chartKey;
+    } catch { /* a container that will not take the record keeps what it had */ }
+    return dropped;
+}
+
 /**
  * Write the lasso (or remove it) into the shared bag and persist the WHOLE bag, exactly as an in-chart
  * slider does: the persisting host REPLACES its state rather than merging, so every other knob and every

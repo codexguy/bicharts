@@ -53,7 +53,7 @@ import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
-import { installLasso, lassoEffect, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
+import { installLasso, lassoEffect, claimParkedLasso, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
 // TYPES ONLY: the zoom memory is its own entry ("@bicharts/chart-host/zoom-memory"), off the main entry's eager closure.
 import type { ZoomMemoryHook, ZoomCapture } from "./zoomMemory/zoomMemoryDom";
 
@@ -653,6 +653,13 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // viewState provider, then the session store. The first rung is what keeps the Power BI
     // visual — which has persisted into the report file since long before providers existed —
     // byte-identical without being ported.
+    // The lasso a previous chart parked on this element (its knob bag, and the session store below) is not this chart's
+    // (claimParkedLasso); a rebuild of the same chart keeps it. Keyed like the scroll, by the chart's code.
+    let lassoKey: unknown = config.code;
+    if (!lassoKey && typeof config.renderFn === "function") {
+        try { lassoKey = Function.prototype.toString.call(config.renderFn); } catch { lassoKey = config.renderFn; }
+    }
+    let lassoClaimed = false;
     if (typeof raw.setUiState !== "function") {
         const provider = config.viewState ?? sessionViewStateProvider(container);
         let bag: Record<string, unknown>;
@@ -662,6 +669,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // A provider that throws on load is a storage problem, never a reason not to draw.
             bag = {};
         }
+        // Before the seed: a caller's uiState is the caller's, whichever chart it names.
+        claimParkedLasso(container, lassoKey, config.viewState ? null : bag);
+        lassoClaimed = true;
         // A caller-supplied uiState SEEDS an empty bag once; on later re-creations the bag is
         // what the reader actually left behind, and a stale seed must not overwrite it.
         if (raw.uiState && typeof raw.uiState === "object" && Object.keys(bag).length === 0)
@@ -687,6 +697,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         const out = resolveOptions(input);
         return out.allowTooltips == null ? { ...out, allowTooltips: true } : out;
     };
+    if (!lassoClaimed) claimParkedLasso(container, lassoKey);
     let resolved = resolveForHost(raw);
     let renderFn: RenderFn | null = config.renderFn ?? null;
     let destroyed = false;
