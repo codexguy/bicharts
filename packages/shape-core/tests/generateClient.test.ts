@@ -156,6 +156,31 @@ describe("createGenerateClient: refund", () => {
         expect(out).toEqual({ kind: "answer", status: 200, value: { ok: false, message: "Held." } });
     });
 
+    it("sends the host's reason as Reason, cleaned, signed over the text that went", async () => {
+        const { posted, transport } = recording(async () => wire(200, "{}"));
+        await client(transport).refund("c-1", { timeoutMs: 1000 }, "schema-change-blocked-incompatible");
+        expect(posted[0].body).toBe('{"CorrelationID":"c-1","Reason":"schema-change-blocked-incompatible"}');
+        expect(posted[0].headers["X-Signature"]).toBe(messageSignature(posted[0].body, SIGNER));
+        await client(transport).refund("c-1", { timeoutMs: 1000 }, " Recovery_Step 2! ");
+        expect(JSON.parse(posted[1].body).Reason).toBe("recoverystep2");
+        await client(transport).refund("c-1", { timeoutMs: 1000 }, "x".repeat(60));
+        expect(JSON.parse(posted[2].body).Reason).toHaveLength(40);
+    });
+
+    it("no reason, or one that cleans to nothing, sends the old body byte for byte", async () => {
+        const { posted, transport } = recording(async () => wire(200, "{}"));
+        await client(transport).refund("c-1", { timeoutMs: 1000 });
+        await client(transport).refund("c-1", { timeoutMs: 1000 }, null);
+        await client(transport).refund("c-1", { timeoutMs: 1000 }, "  !! ");
+        expect(posted.map(p => p.body)).toEqual(Array(3).fill('{"CorrelationID":"c-1"}'));
+    });
+
+    it("refundReasonCode is on the barrel, so every host cleans a code the same way", async () => {
+        const barrel = await import("../src/index") as any;
+        expect(barrel.refundReasonCode("Modify-Failed-Keep-Chart")).toBe("modify-failed-keep-chart");
+        expect(barrel.refundReasonCode(undefined)).toBe("");
+    });
+
     it("refuses to post without a correlation, and resolves a dead network as a transport outcome", async () => {
         const { posted, transport } = recording(async () => wire(200, "{}"));
         await expect(client(transport).refund("  ", { timeoutMs: 1000 })).rejects.toThrow(TypeError);

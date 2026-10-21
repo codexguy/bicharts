@@ -131,8 +131,23 @@ export interface GenerateClient {
      * host gives up on a generation that never reached its reader; the service decides what, if anything,
      * is refunded (it may hold the refund until the generation is recorded, and declines a delivered chart).
      * The answer is the parsed JSON body.
+     *
+     * `reason` is the host's own code for why it gave up (refundReasonCode), sent as `Reason` so the service
+     * can record why the row was refunded. The service maps a code to its own reason; an unknown code, or
+     * none, reads as a plain client request. Omitted (or blank after cleaning), the body is the old one.
      */
-    refund(correlationId: string, opts: WireCallOptions): Promise<WireOutcome<unknown>>;
+    refund(correlationId: string, opts: WireCallOptions, reason?: string | null): Promise<WireOutcome<unknown>>;
+}
+
+/**
+ * A host's refund reason as it goes on the wire: lower case, letters, digits and hyphens only, at most 40
+ * characters (`"" ` when nothing is left). The codes the hosts send today: `client-retries-exhausted`,
+ * `schema-change-blocked-incompatible`, `modify-failed-keep-chart`, and `recovery-<step>`. The mapping from
+ * a code to a recorded reason lives in the service only, so an old client and a new code stay classifiable
+ * by a service change alone.
+ */
+export function refundReasonCode(reason: unknown): string {
+    return String(reason ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 }
 
 const GENERATE_ROUTE = "/LLMChart/";
@@ -242,10 +257,12 @@ export function createGenerateClient(services: GenerateClientServices, env: Gene
             return exchange("sample", SAMPLE_ROUTE, encodePayload(payload), o, readJson);
         },
 
-        async refund(correlationId, opts) {
+        async refund(correlationId, opts, reason) {
             const o = checked("refund", opts);
             if (typeof correlationId !== "string" || correlationId.trim() === "") throw new TypeError("A refund needs the generation's correlation id");
-            return exchange("refund", REFUND_ROUTE, JSON.stringify({ CorrelationID: correlationId.trim() }), o, readJson);
+            const code = refundReasonCode(reason);
+            const body = code ? { CorrelationID: correlationId.trim(), Reason: code } : { CorrelationID: correlationId.trim() };
+            return exchange("refund", REFUND_ROUTE, JSON.stringify(body), o, readJson);
         },
     };
 }
