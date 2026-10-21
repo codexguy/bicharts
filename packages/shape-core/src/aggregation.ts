@@ -521,8 +521,10 @@ export function codeNeedsLegacyAggNames(
 // in another is ordinary for a shared or distributed report.
 //
 // The column's QUERY NAME is the language-invariant half. It spells the function, so the English
-// name can be recomposed from it - and because it spells the function, `Sum of Volume` can only
-// ever be recomposed from `Sum(T.Volume)`, never from `Avg(T.Volume)`.
+// name can be recomposed from it - but only while the column still holds the function the query
+// name spells. Power BI keeps the query name when the reader switches the field to another
+// aggregation (`Count of X` becomes `Average of X`, both `CountNonNull(T.X)`), so an English name
+// is not armed when the live name or type contradicts it (englishAggAliasContradicted).
 //
 // Function spellings are the ones Power BI writes into a query name (`Sum`, `Avg`, `Count`,
 // `CountNonNull`, `Min`, `Max`, `Median`, `StandardDeviation`, `Variance`); the English labels are
@@ -577,6 +579,41 @@ export function englishImplicitAggNames(queryName: string | null | undefined): s
         }
     }
     return out;
+}
+
+/**
+ * True when an English name recomposed from `queryName` must NOT be armed on a column whose live
+ * display name is `liveName` and whose type is `liveDataType`. An aggregation switch keeps the
+ * query name, so the query name can spell a function the column no longer holds; two signs say so
+ * without any history:
+ *  - the live name is itself the English label of ANOTHER function over the same column
+ *    (`Average of X` against `Count(T.X)`);
+ *  - the type contradicts the function: a count is a whole number, so a Decimal column never holds one.
+ * A live name in another language says nothing here - that is the case the English alias exists
+ * for. A switch made under a localized name is the host's to catch from its own session history
+ * (by withholding that column's query name from setHostQueryNames).
+ */
+export function englishAggAliasContradicted(
+    queryName: string | null | undefined, liveName: string | null | undefined, liveDataType: string | null | undefined,
+): boolean {
+    const m = IMPLICIT_AGG_QUERY_NAME.exec(String(queryName ?? "").trim());
+    if (!m) return false;
+    const fn = m[1];
+    if ((fn === "Count" || fn === "CountNonNull") && liveDataType === "Decimal") return true;
+    const own = new Set(IMPLICIT_AGG_ENGLISH_LABELS[fn]);
+    const live = String(liveName ?? "");
+    const inner = m[2];
+    for (let dot = inner.indexOf("."); dot >= 0; dot = inner.indexOf(".", dot + 1)) {
+        if (dot === 0) continue;
+        const column = inner.slice(dot + 1);
+        if (column.trim() === "") continue;
+        for (const labels of Object.values(IMPLICIT_AGG_ENGLISH_LABELS)) {
+            for (const label of labels) {
+                if (!own.has(label) && live === label + column) return true;
+            }
+        }
+    }
+    return false;
 }
 
 function normalizeForNameTest(name: string | null | undefined): string {

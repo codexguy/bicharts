@@ -25,7 +25,7 @@ import { localizedYearWordIn } from "./vocab/calendarWords";
 import { readPeriodCode } from "./vocab/periodCodes";
 import { localizedIdentifierWordIn } from "./vocab/identifierWords";
 import { maskSampleText } from "./sampleMask";
-import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishImplicitAggNames, foldAccents, localizedHostAggHint } from "./aggregation";
+import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishAggAliasContradicted, englishImplicitAggNames, foldAccents, localizedHostAggHint } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence } from "./cadence";
 import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
@@ -2142,6 +2142,8 @@ export class IndexedText implements IValueCollection {
         const claims = new Map<string, number[]>();
         for (let i = 0; i < this._cols.length; i++) {
             if (!this._cols[i]) continue;
+            // A field re-aggregated since the query name was minted keeps that name: the name or type gives it away.
+            if (englishAggAliasContradicted(this._hostQueryNames[i], this._cols[i].name, this._cols[i].dataType)) continue;
             const read = englishImplicitAggNames(this._hostQueryNames[i])
                 .filter(n => !taken.has(n) && codeReadsColumn(text, n));
             if (read.length !== 1) continue;

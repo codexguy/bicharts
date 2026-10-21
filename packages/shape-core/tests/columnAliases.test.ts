@@ -243,3 +243,44 @@ describe("the doubled-prefix rename reports itself as an alias too", () => {
         ]);
     });
 });
+
+// AN AGGREGATION SWITCH KEEPS THE QUERY NAME. The reader changed "Count of X" to "Average of X" after the chart drew; the host kept
+// `CountNonNull(T.X)`, and the English alias put the averages under the count's name for code that reads "Count of X".
+const SWITCH_CODE = "var vi = names.indexOf('Count of Relationship weight'); if (vi < 0) throw new Error('INVALID:column \"Count of Relationship weight\" not found');";
+function switched(liveName: string, dataType: string, queryName: string): IndexedText {
+    const idx = new IndexedText();
+    idx.setColumns([{ name: "Programme", dataType: "String", isMeasure: false }, { name: liveName, dataType, isMeasure: true }] as any);
+    idx.setHostQueryNames(["SankeyFlows.Programme", queryName]);
+    idx.addRow(["EAGF", 2.5], 0);
+    return idx;
+}
+describe("an aggregation switch keeps the query name, so the English alias must not follow it", () => {
+    it("an English average never answers to the count's name", () => {
+        const idx = switched("Average of Relationship weight", "Decimal", "CountNonNull(SankeyFlows.Relationship weight)");
+        expect(idx.armAliasesForCode(SWITCH_CODE)).toEqual([]);
+        expect((idx.toObjectArray()[0] as any)["Count of Relationship weight"]).toBeUndefined();
+    });
+    it("a Decimal column never answers to a Count name, in any language", () => {
+        const idx = switched("Moyenne de Relationship weight", "Decimal", "CountNonNull(SankeyFlows.Relationship weight)");
+        expect(idx.armAliasesForCode(SWITCH_CODE)).toEqual([]);
+    });
+    it("a Sum switched to an English Average never answers to the sum's name", () => {
+        const idx = switched("Average of Volume", "Decimal", "Sum(Leads.Volume)");
+        expect(idx.armAliasesForCode("ci('Sum of Volume')")).toEqual([]);
+    });
+    it("the localized cases the alias exists for are unchanged", () => {
+        expect(switched("Suma de Volume", "Integer", "Sum(Leads.Volume)").armAliasesForCode("ci('Sum of Volume')"))
+            .toEqual([{ name: "Suma de Volume", alias: "Sum of Volume", reason: "english-implicit-agg" }]);
+        expect(switched("Recuento de Id", "Integer", "CountNonNull(T.Id)").armAliasesForCode("ci('Count of Id')"))
+            .toEqual([{ name: "Recuento de Id", alias: "Count of Id", reason: "english-implicit-agg" }]);
+    });
+    it("the rule, directly", async () => {
+        const { englishAggAliasContradicted } = await import("../src/aggregation") as any;
+        expect(englishAggAliasContradicted("Count(T.X)", "Average of X", "Decimal")).toBe(true);
+        expect(englishAggAliasContradicted("Count(T.X)", "Min of X", "Integer")).toBe(true);
+        expect(englishAggAliasContradicted("Count(T.X)", "Count of X", "Integer")).toBe(false);
+        expect(englishAggAliasContradicted("Avg(T.X)", "Average of X", "Decimal")).toBe(false);
+        expect(englishAggAliasContradicted("Sum(T.X)", "Somme de X", "Decimal")).toBe(false);
+        expect(englishAggAliasContradicted("T.X", "Average of X", "Decimal")).toBe(false);
+    });
+});
