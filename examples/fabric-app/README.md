@@ -59,6 +59,38 @@ learns what each one means. Fact columns are hidden; query the measures.
   headcount, orders and revenue, related but not perfectly.
 - **Many points.** 71 cities across three tiers.
 
+## How the numbers behave
+
+The data isn't noise around one trend. Like real sales data, how a country sells shapes how
+fast it grows and what its marketing costs, so circling a group of countries on a chart turns
+up real, imperfect differences.
+
+- **Channel mix.** Each country leans towards online buying or towards resellers and
+  integrators, beyond its region's norm. Online share of 2025 revenue runs from about 12% to 87%.
+- **Growth follows the mix.** A country's underlying annual growth is
+
+  ```
+  g = 0.06 + 0.22 x (online share - mean) - 0.15 x (partner share - mean)
+           + region premium (Asia Pacific +3 points, Middle East & Africa +2.5, Latin America +1, Europe -0.5)
+           + 0.45 x (the country's own growth story - its mean)
+           + that year's regional and country shocks
+  ```
+
+  Each share's distance from the mean is capped at 20 points. So online-led countries
+  grow faster, partner-heavy ones slowest, and Asia Pacific a little faster than the rest.
+- **Marketing costs more through partners.** Partner-led countries fund co-op and channel
+  marketing, so they spend more per dollar of revenue. Online demand also responds more
+  strongly when the budget changes.
+- **Exceptions.** Budgets swing from year to year and move growth with them. China plans
+  for growth it no longer gets. Saudi Arabia's 2025 is lifted by a large public-sector programme
+  sold through partners, and South Korea's is cut by a dispute with its leading marketplace.
+
+In 2025, the 17 countries whose main channel is Online grew 12.8% on average and the 23
+partner-led countries 3.3%. Region explains about 14% of the spread in country growth, main
+channel about 31%, and online share correlates with growth at r = 0.47. Of the 15
+fastest-growing countries, 11 are online-led; of the 15 slowest, 2 are. Monthly targets are
+the annual plan spread evenly across the year, so they don't follow the sales seasons.
+
 ## Using it
 
 **Power BI Desktop.** Open `pbip/GlobalRevenueV2.pbip` and refresh. Every table reads its CSV

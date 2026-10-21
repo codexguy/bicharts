@@ -193,16 +193,99 @@ COUNTRY_SHOCK = {
     "EGY": {2023: -0.12},
     "TUR": {2021: -0.08, 2022: -0.10},
     "GBR": {2020: -0.03},
+    "SAU": {2025: 0.14},    # a large public-sector programme, sold through partners
+    "KOR": {2025: -0.10},   # a dispute with the leading marketplace
 }
 PLAN_GROWTH = {NA: 0.07, LA: 0.10, EU: 0.05, MEA: 0.12, AP: 0.11}
 PLAN_OVERRIDE = {"CHN": 0.12, "IND": 0.25, "JPN": 0.02}   # CHN plans for growth it no longer gets
+
+# ---- how a country sells shapes how it grows
+# Real sales data is not noise around one trend: a market's channel mix drives both its growth
+# and what its marketing costs. Each effect below is partial and noisy, so a chart of spend
+# against growth shows tendencies with exceptions, never clean groups.
+#
+# 1. Online lean. Some markets buy online far more than their region's norm (digital-first
+#    buyers, strong marketplaces); others buy through resellers and integrators. A country's
+#    Online weight in the channel mix is multiplied by ONLINE_LEAN (1.0 when unlisted) times a
+#    lognormal(0, ONLINE_LEAN_SD) draw, and its Partner weight is divided by the square root
+#    of the same factor.
+# 2. Growth follows the mix. A country's annual revenue growth is
+#        g = GROWTH_BASE
+#          + GROWTH_PER_ONLINE  * (online share  - mean online share)
+#          - GROWTH_PER_PARTNER * (partner share - mean partner share)
+#          + REGION_PREMIUM[region]
+#          + OWN_GROWTH_WEIGHT * (the country's own growth in COUNTRIES - its mean)
+#          + REGION_SHOCK + COUNTRY_SHOCK for the year
+#    where the shares are the country's expected revenue shares (see expected_channel_shares),
+#    each deviation capped at +/- MAX_MIX_DEV.
+#    So online-led countries grow faster, partner-heavy ones slowest, Asia Pacific a little
+#    faster than the rest, and every country keeps a story of its own.
+# 3. Marketing costs more through partners. Partner-led countries fund co-op and channel
+#    marketing, so their spend per dollar of revenue is higher: the marketing ratio is
+#    multiplied by exp(SPEND_PER_PARTNER * (partner share - mean) - SPEND_PER_ONLINE * (online
+#    share - mean)). Online demand also answers a budget change more strongly: the demand
+#    uplift from a month's budget is budget ** (UPLIFT_BASE + UPLIFT_PER_ONLINE * online share).
+# Year-to-year budget swings (BUDGET_SD) still move growth too, so a lean, online-led country can
+# have a flat year and a partner-led one a strong year (see COUNTRY_SHOCK for 2025).
+ONLINE_LEAN = {
+    "KOR": 1.6, "CHN": 1.5, "IND": 1.5, "IDN": 1.5, "VNM": 1.4, "BRA": 1.4, "GBR": 1.0, "SGP": 1.3,
+    "NLD": 1.3, "SWE": 1.3, "POL": 1.3, "MEX": 1.2, "NGA": 1.2, "AUS": 1.2, "PHL": 1.2,
+    "DEU": 0.6, "JPN": 0.6, "SAU": 0.6, "FRA": 0.7, "ITA": 0.7, "CHE": 0.7, "EGY": 0.7,
+    "TUR": 0.8, "ZAF": 0.8, "ARE": 0.8, "ARG": 0.8, "CAN": 0.9, "USA": 0.8,
+}
+ONLINE_LEAN_SD = 0.25
+GROWTH_BASE = 0.06
+GROWTH_PER_ONLINE = 0.22
+GROWTH_PER_PARTNER = 0.15
+REGION_PREMIUM = {NA: 0.0, LA: 0.01, EU: -0.005, MEA: 0.025, AP: 0.03}
+OWN_GROWTH_WEIGHT = 0.45
+MAX_MIX_DEV = 0.20
+SPEND_PER_PARTNER = 3.0
+SPEND_PER_ONLINE = 1.0
+UPLIFT_BASE, UPLIFT_PER_ONLINE = 0.15, 0.35
+BUDGET_SD = 0.16
+
+GROWTH = {}   # code -> structural annual growth, filled by build() once the channel mix is known
 
 
 def annual_growth(code: str, year: int) -> float:
     c = C[code]
     if code == "CHN" and year >= 2023:
         return 0.015
-    return c["g"] + REGION_SHOCK.get(year, {}).get(c["region"], 0.0) + COUNTRY_SHOCK.get(code, {}).get(year, 0.0)
+    return GROWTH[code] + REGION_SHOCK.get(year, {}).get(c["region"], 0.0) + COUNTRY_SHOCK.get(code, {}).get(year, 0.0)
+
+
+def channel_mix(cat: str, region: str, lean: float, yrs: float, tier: int = 1) -> dict[str, float]:
+    """Channel weights for one category in one country (before normalising): the region's base mix,
+    the country's online lean, and the steady drift towards Online."""
+    mix = dict(CHANNEL_MIX[cat][region])
+    if tier == 3:
+        mix.pop("Partner", None)
+    if "Online" in mix:
+        mix["Online"] *= lean * (1 + 0.05 * yrs)
+    if "Partner" in mix and len(mix) > 1:
+        mix["Partner"] /= math.sqrt(lean)
+    return mix
+
+
+def expected_channel_shares(code: str, lean: float, product_tilt, city_share) -> dict[str, float]:
+    """A country's expected revenue share by channel at the middle of the period, from its product
+    mix, its cities' tiers (tier-3 cities have no partners) and its channel mix: the shares the
+    growth and marketing effects are written against."""
+    yrs = (LAST_YEAR - FIRST_YEAR) / 2
+    pw = {k: P[k]["share"] * product_tilt[(code, k)] * (1 + P[k]["trend"]) ** yrs for k in PKEYS}
+    ptot = sum(pw.values())
+    out = defaultdict(float)
+    for cc, city, _, tier, _, _ in CITIES:
+        if cc != code:
+            continue
+        for k in PKEYS:
+            mix = channel_mix(P[k]["cat"], C[code]["region"], lean, yrs, tier)
+            mtot = sum(mix.values())
+            for ch, w in mix.items():
+                out[ch] += city_share[f"{cc}-{city}"] * pw[k] / ptot * w / mtot
+    tot = sum(out.values())
+    return {ch: w / tot for ch, w in out.items()}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -300,8 +383,39 @@ def build(out: str) -> dict[str, int]:
     mkt_ratio = {code: C[code]["mkt"] * r_style.lognormvariate(0, 0.40) for code in CODES}
     productivity = {code: C[code]["prod"] * r_style.lognormvariate(0, 0.35) for code in CODES}
     loyalty = {code: r_style.lognormvariate(0, 0.20) for code in CODES}
-    budget = {(code, y): r_style.lognormvariate(0, 0.25) for code in CODES for y in range(FIRST_YEAR, LAST_YEAR + 1)}
+    budget = {(code, y): r_style.lognormvariate(0, BUDGET_SD) for code in CODES for y in range(FIRST_YEAR, LAST_YEAR + 1)}
     hiring = {(code, y): r_style.lognormvariate(0, 0.10) for code in CODES for y in range(FIRST_YEAR, LAST_YEAR + 1)}
+
+    # ---- fixed structural tilts
+    r_tilt = rng("tilts")
+    city_share = {}
+    by_country = defaultdict(list)
+    for cc, code, name, tier, lat, lon in CITIES:
+        by_country[cc].append((f"{cc}-{code}", tier))
+    for cc, lst in by_country.items():
+        ws = [TIER_WEIGHT[t] * r_tilt.uniform(0.75, 1.25) for _, t in lst]
+        tot = sum(ws)
+        for (key, _), w in zip(lst, ws):
+            city_share[key] = w / tot
+    product_tilt = {(cc, k): r_tilt.lognormvariate(0, 0.20) for cc in CODES for k in PKEYS}
+
+    # ---- channel mix, and the growth and marketing intensity that follow from it (see the notes
+    # above ONLINE_LEAN)
+    r_channel = rng("channel-style")
+    lean = {code: ONLINE_LEAN.get(code, 1.0) * r_channel.lognormvariate(0, ONLINE_LEAN_SD) for code in CODES}
+    shares = {code: expected_channel_shares(code, lean[code], product_tilt, city_share) for code in CODES}
+    mean_online = sum(shares[c].get("Online", 0.0) for c in CODES) / len(CODES)
+    mean_partner = sum(shares[c].get("Partner", 0.0) for c in CODES) / len(CODES)
+    mean_own = sum(C[c]["g"] for c in CODES) / len(CODES)
+    # a mix far from the norm (a country of tier-3 cities only has no partners at all) counts as at
+    # most MAX_MIX_DEV from the mean, so the extremes lean the same way without running away
+    online_dev = {c: max(-MAX_MIX_DEV, min(MAX_MIX_DEV, shares[c].get("Online", 0.0) - mean_online)) for c in CODES}
+    partner_dev = {c: max(-MAX_MIX_DEV, min(MAX_MIX_DEV, shares[c].get("Partner", 0.0) - mean_partner)) for c in CODES}
+    for code in CODES:
+        GROWTH[code] = (GROWTH_BASE + GROWTH_PER_ONLINE * online_dev[code] - GROWTH_PER_PARTNER * partner_dev[code]
+                        + REGION_PREMIUM[C[code]["region"]] + OWN_GROWTH_WEIGHT * (C[code]["g"] - mean_own))
+        mkt_ratio[code] *= math.exp(SPEND_PER_PARTNER * partner_dev[code] - SPEND_PER_ONLINE * online_dev[code])
+    elasticity = {c: UPLIFT_BASE + UPLIFT_PER_ONLINE * shares[c].get("Online", 0.0) for c in CODES}
 
     # ---- latent country-month demand
     r_level = rng("country-month-demand")
@@ -317,22 +431,9 @@ def build(out: str) -> dict[str, int]:
             level[(code, i)] = lv
             mnoise = budget[(code, y)] * r_mkt.lognormvariate(0, 0.15)
             spend = lv * SEASON[m - 1] * mkt_ratio[code] * mnoise
-            uplift = mnoise ** 0.3
+            uplift = mnoise ** elasticity[code]
             demand[(code, i)] = lv * SEASON[m - 1] * uplift * r_level.lognormvariate(0, 0.04)
             mkt_spend[(code, i)] = spend
-
-    # ---- fixed structural tilts
-    r_tilt = rng("tilts")
-    city_share = {}
-    by_country = defaultdict(list)
-    for cc, code, name, tier, lat, lon in CITIES:
-        by_country[cc].append((f"{cc}-{code}", tier))
-    for cc, lst in by_country.items():
-        ws = [TIER_WEIGHT[t] * r_tilt.uniform(0.75, 1.25) for _, t in lst]
-        tot = sum(ws)
-        for (key, _), w in zip(lst, ws):
-            city_share[key] = w / tot
-    product_tilt = {(cc, k): r_tilt.lognormvariate(0, 0.20) for cc in CODES for k in PKEYS}
 
     # ---- FactSales
     r_sales = rng("sales")
@@ -351,13 +452,9 @@ def build(out: str) -> dict[str, int]:
             ptot = sum(pw.values())
             for k in PKEYS:
                 cat = P[k]["cat"]
-                mix = dict(CHANNEL_MIX[cat][region])
-                if tier == 3:
-                    mix.pop("Partner", None)
+                mix = channel_mix(cat, region, lean[cc], yrs, tier)
                 if not mix:
                     continue
-                if "Online" in mix:
-                    mix["Online"] *= (1 + 0.05 * yrs)
                 mtot = sum(mix.values())
                 for ch in ("Online", "Retail", "Partner"):
                     if ch not in mix:
