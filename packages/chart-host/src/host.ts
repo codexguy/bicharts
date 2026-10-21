@@ -600,7 +600,16 @@ const isThenable = (v: unknown): v is PromiseLike<unknown> =>
 // next is built before the old is torn down), and a second one reading the container would take the first one's write for
 // the page's and put it back after the page's own was restored. `wrote` is the level last written there: the last host to
 // let go restores the page's value only if the container still holds it, so a value the page set since is left alone.
-const dimVarPage = new WeakMap<object, { was: { value: string; priority: string } | null; holders: number; wrote: string }>();
+// Value AND priority are compared: a page that sets the host's own number with !important has set its own.
+type DimVarValue = { value: string; priority: string };
+const dimVarPage = new WeakMap<object, { was: DimVarValue | null; holders: number; wrote: DimVarValue | null }>();
+// The container's inline --lch-dim-opacity, or null when its style cannot be read (then nothing on it is the page's).
+const readDimVar = (el: HTMLElement): DimVarValue | null => {
+    const s: any = (el as any).style;
+    if (!s || typeof s.getPropertyValue !== "function") return null;
+    return { value: s.getPropertyValue(DIM_OPACITY_VAR) ?? "", priority: typeof s.getPropertyPriority === "function" ? (s.getPropertyPriority(DIM_OPACITY_VAR) ?? "") : "" };
+};
+const sameDimVar = (a: DimVarValue, b: DimVarValue | null) => !!b && a.value === b.value && a.priority === b.priority;
 
 export function createChartHost(container: HTMLElement, config: ChartHostConfig): ChartHost {
     const doc: any = container.ownerDocument;
@@ -721,7 +730,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         if (!page || --page.holders > 0) return;
         dimVarPage.delete(container);
         try {
-            if (container.style?.getPropertyValue?.(DIM_OPACITY_VAR) !== page.wrote) return;   // the page has set its own since
+            const now = readDimVar(container);
+            if (now && !sameDimVar(now, page.wrote)) return;   // the page has set its own since
             if (page.was) container.style?.setProperty(DIM_OPACITY_VAR, page.was.value, page.was.priority);
             else container.style?.removeProperty(DIM_OPACITY_VAR);
         } catch { /* frozen element */ }
@@ -831,16 +841,20 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (typeof want === "number") {
                 const level = String(want);
                 let page = dimVarPage.get(container);
+                const now = readDimVar(container);
+                if (!page) {
+                    page = { was: now?.value ? now : null, holders: 0, wrote: null };
+                    dimVarPage.set(container, page);
+                } else if (now && page.wrote && !sameDimVar(now, page.wrote)) {
+                    // The page set its own value since the last write here (a paint in between would otherwise overwrite
+                    // it and the restore put back the stale first-saved one): that value is now what comes back.
+                    page.was = now.value ? now : null;
+                }
                 if (!dimVarSet) {
-                    if (!page) {
-                        const value = container.style?.getPropertyValue?.(DIM_OPACITY_VAR) ?? "";
-                        page = { was: value ? { value, priority: container.style?.getPropertyPriority?.(DIM_OPACITY_VAR) ?? "" } : null, holders: 0, wrote: level };
-                        dimVarPage.set(container, page);
-                    }
                     page.holders++;
                     dimVarSet = true;
                 }
-                if (page) page.wrote = level;
+                page.wrote = { value: level, priority: "" };
                 container.style?.setProperty(DIM_OPACITY_VAR, level);
             } else releaseDimVar();
             // The clicked tick is marked under BOTH origins — it colours no marks, so it

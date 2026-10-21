@@ -493,6 +493,70 @@ describe("dim opacity option", () => {
         expect(props.get(DIM_OPACITY_VAR)).toEqual({ value: "0.6", priority: "important" });
     });
 
+    // A paint after the page's own write (a click, setData, setOptions) used to overwrite it as if it were the host's, and
+    // the restore then put back the first-saved value: the page's later value is the one that comes back.
+    it("a value the page set between two paints is the one that comes back, not the first-saved one", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        container.style.setProperty(DIM_OPACITY_VAR, "0.9");
+        click(marks()[1]);
+        expect(dimVar()).toBe("0.3");
+        h.setData(DATA as any);
+        h.destroy();
+        expect(dimVar()).toBe("0.9");
+    });
+
+    it("a blank set by the page between two paints means nothing comes back", () => {
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        container.style.removeProperty(DIM_OPACITY_VAR);
+        click(marks()[1]);
+        h.destroy();
+        expect(dimVar()).toBe("");
+    });
+
+    // A recording style (jsdom drops a custom property's priority), with getPropertyValue optionally missing.
+    const recordingStyle = (opts: { unreadable?: boolean } = {}) => {
+        const real = container.style;
+        const props = new Map<string, { value: string; priority: string }>();
+        Object.defineProperty(container, "style", {
+            configurable: true,
+            value: new Proxy(real, {
+                get: (t, k) => {
+                    if (k === "getPropertyValue") return opts.unreadable ? undefined : (n: string) => props.get(n)?.value ?? "";
+                    if (k === "getPropertyPriority") return opts.unreadable ? undefined : (n: string) => props.get(n)?.priority ?? "";
+                    if (k === "setProperty") return (n: string, v: string, pr = "") => { props.set(n, { value: v, priority: pr }); };
+                    if (k === "removeProperty") return (n: string) => { props.delete(n); return ""; };
+                    const v = (t as any)[k];
+                    return typeof v === "function" ? v.bind(t) : v;
+                },
+                set: (t, k, v) => { (t as any)[k] = v; return true; },
+            }),
+        });
+        return props;
+    };
+
+    it("the host's own number set by the page with !important is the page's, and is left alone", () => {
+        const props = recordingStyle();
+        container.style.setProperty(DIM_OPACITY_VAR, "0.6");
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        container.style.setProperty(DIM_OPACITY_VAR, "0.3", "important");
+        h.destroy();
+        expect(props.get(DIM_OPACITY_VAR)).toEqual({ value: "0.3", priority: "important" });
+    });
+
+    it("a style that cannot be read does not keep the host's level on the container", () => {
+        const props = recordingStyle({ unreadable: true });
+        const h = dimHost({ dimOpacity: 0.3 });
+        h.render();
+        expect(props.get(DIM_OPACITY_VAR)?.value).toBe("0.3");
+        h.destroy();
+        expect(props.has(DIM_OPACITY_VAR)).toBe(false);
+    });
+
     it("setOptions() and setData() on a destroyed host neither throw nor draw", () => {
         const h = dimHost({ dimOpacity: 0.3 });
         h.render();

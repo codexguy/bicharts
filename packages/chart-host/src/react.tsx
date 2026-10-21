@@ -283,9 +283,13 @@ export function BicChart(props: BicChartProps) {
     // that runs before the build below, so a host built for another reason (a new `code`) is built with the hook the page
     // passes now, and a render that was started and abandoned (a transition that suspends) cannot leave its prop behind.
     // A swap with nothing else changed applies at the next rebuild; a page that needs it at once remounts with a `key`.
-    const zoomOn = zoomMemory != null;
-    const zoomRef = useRef(zoomMemory ?? null);
-    useLayoutEffect(() => { zoomRef.current = zoomMemory ?? null; });
+    // Truthiness, not != null: a JavaScript page that writes zoomMemory={enabled && hook} passes false first.
+    const zoomOn = !!zoomMemory;
+    const zoomRef = useRef(zoomMemory || null);
+    useLayoutEffect(() => { zoomRef.current = zoomMemory || null; });
+    // LATE DATA: a page that passes data={query.data} mounts with none, and the build below bails. Its arrival bumps this
+    // (see the layout effect after the build) so the host is built then. Data going away again keeps the host as it is.
+    const [lateData, setLateData] = useState(0);
     const builtWithRef = useRef<{ data?: unknown; optKey?: string } | null>(null);
     // What this chart's selection reaches outside it, read when a lasso circles a group (selectionReachesPage).
     const reachRef = useRef({ selects, group, id });
@@ -386,7 +390,13 @@ export function BicChart(props: BicChartProps) {
         // is a rebuild (cheap: the code identity is unchanged, only the config) rather than a silent no-op - a zoom
         // memory hook that arrives after mount would otherwise never be used (zoomMemory counts only as present or absent).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomOn, controls]);
+    }, [code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomOn, controls, lateData]);
+
+    // No host yet and the data has just arrived (or the code changed while there was none): build now, before paint.
+    useLayoutEffect(() => {
+        if (!hostRef.current && data && ref.current && (code || renderFn)) setLateData(n => n + 1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data]);
 
     // THE PAGE FILTER - bound once the host exists, and again whenever the host is rebuilt or the
     // filter replaced. The first paint restores a selection made before this chart mounted (a
@@ -419,7 +429,7 @@ export function BicChart(props: BicChartProps) {
             if (bindingRef.current === b) bindingRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomOn]);
+    }, [selects, code, renderFn, d3, geoKind, labelContrast, layoutPass, restoreScroll, zoomOn, controls, lateData]);
 
     // LIVE RESTYLE — options change without recompiling (colour scale, aggregation,
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the

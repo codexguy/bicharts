@@ -279,6 +279,9 @@ dim), never read as a percentage, and anything else is ignored. The host writes 
 `--lch-dim-opacity` on its own container and, when the option goes away or the host is destroyed,
 puts back the value your page had set inline there, so with the option absent nothing is written
 and the CSS above decides: the stylesheet's `0.25`, or whatever your page sets on the variable.
+A value your page sets inline while the host holds the variable is the one that comes back (or,
+set since the host's last write, is left where it is); the same number with the same priority as
+the host's own write cannot be told apart from it.
 
 ```js
 createChartHost(el, { code, data, options: { dimOpacity: 0.15 } });
