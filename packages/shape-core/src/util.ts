@@ -266,6 +266,92 @@ export function normalizeLocalMidnightDates<T extends Record<string, any>>(
     return { rows: fixed, columns: names };
 }
 
+/**
+ * The instant whose UTC fields read what `d`'s LOCAL fields read: the reader's wall-clock time re-anchored to UTC. A host
+ * whose Dates are the reader's local wall clock (a Power BI date-time field) otherwise serializes the UTC instant of that wall
+ * clock, and a chart that reads in UTC - the render contract - prints every time shifted by the reader's offset (for a
+ * time-only value on its 1899-12-30 base, by that zone's local mean time offset). Years 0-99 are kept as written, as
+ * localMidnightToUtcDay does.
+ */
+export function utcWallClock(d: Date): Date {
+    const u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()));
+    const y = d.getFullYear();
+    if (y >= 0 && y < 100) u.setUTCFullYear(y);
+    return u;
+}
+
+/** True when every non-empty value is a valid Date and at least one carries a time of day in BOTH frames (wholeDayFrame
+ *  null). Decided over the whole column, so a timed column's midnight values move with the rest of it. */
+export function datesCarryTimeOfDay(values: Iterable<any>): boolean {
+    let timed = false;
+    for (const v of values) {
+        if (v === null || v === undefined || v === "") continue;
+        if (!(v instanceof Date) || isNaN(v.getTime())) return false;
+        if (wholeDayFrame(v) === null) timed = true;
+    }
+    return timed;
+}
+
+/**
+ * WHICH DATE COLUMNS CARRY A TIME OF DAY ON THE READER'S LOCAL CLOCK. Only for a host whose Dates ARE local wall clock; a
+ * host that builds Dates in UTC (an Excel serial) must never call it. A date- or time-typed column qualifies when
+ * datesCarryTimeOfDay holds. Disjoint from localMidnightDateColumns, which takes whole-day columns only. In a UTC+0 browser
+ * the anchoring is the identity.
+ */
+export function localWallClockDateColumns(
+    columns: ReadonlyArray<{ name: string; dataType?: string | null }>,
+    rows: ReadonlyArray<Record<string, any> | null | undefined>,
+): string[] {
+    const out: string[] = [];
+    for (const c of columns) {
+        if (!c || !/date|time/i.test(String(c.dataType ?? ""))) continue;
+        if (datesCarryTimeOfDay(rows.map(r => (r ? r[c.name] : undefined)))) out.push(c.name);
+    }
+    return out;
+}
+
+/** The rows with every Date in localWallClockDateColumns replaced by utcWallClock of it. Rows are shallow-copied only when
+ *  a column changes; the input is never mutated; when nothing qualifies the SAME array comes back. */
+export function anchorLocalWallClockDates<T extends Record<string, any>>(
+    columns: ReadonlyArray<{ name: string; dataType?: string | null }>,
+    rows: T[],
+): { rows: T[]; columns: string[] } {
+    const names = localWallClockDateColumns(columns, rows);
+    if (names.length === 0) return { rows, columns: names };
+    const fixed = rows.map(r => {
+        if (!r) return r;
+        const copy: Record<string, any> = { ...r };
+        for (const n of names) {
+            const v = copy[n];
+            if (v instanceof Date) copy[n] = utcWallClock(v);
+        }
+        return copy as T;
+    });
+    return { rows: fixed, columns: names };
+}
+
+/**
+ * A TIME OF DAY WITH NO DATE. Power BI's Time type and an Excel cell formatted as a time both hold a clock reading on the
+ * spreadsheet epoch's day zero, 1899-12-30; the date part is a storage artifact, never a day anyone observed. A chart that
+ * draws such a column on a dated axis invents the date, and a span read off it (a "gap" between days) is not in the data.
+ *
+ * True when every non-empty value is a valid Date on 1899-12-30 and at least one carries a time of day. The day is read
+ * at the UTC wall clock: an Excel serial is built there, and a Power BI Date is re-anchored there first (utcWallClock,
+ * IndexedText.dateCellsAreLocalWallClock). Reading the local clock as well would let a column that spans two days pass
+ * in a zone that folds them into one, so a host's Dates must be on the UTC wall clock before this is asked.
+ */
+export function datesAreTimeOfDayOnly(values: Iterable<any>): boolean {
+    let timed = false, any = false;
+    for (const v of values) {
+        if (v === null || v === undefined || v === "") continue;
+        if (!(v instanceof Date) || isNaN(v.getTime())) return false;
+        any = true;
+        if (!(v.getUTCFullYear() === 1899 && v.getUTCMonth() === 11 && v.getUTCDate() === 30)) return false;
+        if (!timed && (v.getUTCHours() || v.getUTCMinutes() || v.getUTCSeconds() || v.getUTCMilliseconds())) timed = true;
+    }
+    return any && timed;
+}
+
 /** ISO calendar dates, which Date.parse already reads as UTC: YYYY, YYYY-MM, YYYY-MM-DD. */
 const ISO_DATE_ONLY_RE = /^\s*\d{4}(-\d{2}(-\d{2})?)?\s*$/;
 /** A trailing `Z` or `+HH:MM` / `-HHMM` - an offset the author actually stated. */

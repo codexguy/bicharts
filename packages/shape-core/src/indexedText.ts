@@ -19,7 +19,7 @@ import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, monthWordReadings, normalizeMonthKey, splitMonthPeriod } from "./monthNames";
 import { monthFirstLocale, readTextDateColumn } from "./textDate";
 import Papa from 'papaparse';
-import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted } from "./util";
+import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted, datesCarryTimeOfDay, datesAreTimeOfDayOnly, utcWallClock } from "./util";
 import { nameLetterRuns, foldName } from "./nameReader";
 import { localizedYearWordIn } from "./vocab/calendarWords";
 import { readPeriodCode } from "./vocab/periodCodes";
@@ -629,6 +629,9 @@ export interface IValueCollection {
     // the class (2026-09-04). See the field on IndexedText for what it does and when to set it;
     // optional so an existing implementer stays valid.
     emitLegacyAggAliases?: boolean;
+    // The host's Date cells are the reader's LOCAL wall clock. See the field on IndexedText. Optional so an existing
+    // implementer stays valid.
+    dateCellsAreLocalWallClock?: boolean;
     // A COLUMN'S SECOND NAME, for cached code (2026-09-17). See ColumnNameAlias and the methods of
     // the same names on IndexedText. Optional for the same reason as the field above.
     setHostQueryNames?(names: ReadonlyArray<string | null | undefined> | null | undefined): void;
@@ -725,6 +728,28 @@ export class IndexedText implements IValueCollection {
      * regenerating any one of them stops the flag ever being set for it again.
      */
     public emitLegacyAggAliases: boolean = false;
+
+    /**
+     * SET BY A HOST WHOSE DATE CELLS ARE THE READER'S LOCAL WALL CLOCK (a Power BI date-time field). When on, every date
+     * column that carries a time of day (datesCarryTimeOfDay over the whole column) is profiled - bounds, distinct keys,
+     * cadence - and written to CSV at its UTC wall clock (utcWallClock), so what the server reads names the reader's own
+     * times. The rows themselves are untouched: toObjectArray still hands out the host's Dates, and each renderer decides
+     * (chart-host's payload option localWallClock, gated on whether the chart reads local time). Whole-day columns are never
+     * affected. Off by default: a host that builds Dates in UTC (Excel serials) must leave it off.
+     */
+    public dateCellsAreLocalWallClock: boolean = false;
+
+    // The column indexes dateCellsAreLocalWallClock re-anchors, recomputed per call (one pass per date column).
+    private wallClockColumnIndexes(): Set<number> {
+        const out = new Set<number>();
+        if (!this.dateCellsAreLocalWallClock || !this._cols) return out;
+        for (let c = 0; c < this._cols.length; c++) {
+            const col = this._cols[c];
+            if (!col || !/date|time/i.test(String(col.dataType ?? ""))) continue;
+            if (datesCarryTimeOfDay(this._rows.map(r => r[c]))) out.add(c);
+        }
+        return out;
+    }
 
     private STR(v: any): string {
         if (v === null || v === undefined) {
@@ -834,6 +859,7 @@ export class IndexedText implements IValueCollection {
         // Compute stats based on the privacy level
         let cidx = 0;
         const pl = parseInt(privacyLevel);
+        const wallClock = this.wallClockColumnIndexes();
         // Per-column distinct value-sets, captured during the loop for the
         // cross-column overlap pass below (null for measures / high-cardinality).
         const colValueSets: (Set<string> | null)[] = [];
@@ -860,8 +886,10 @@ export class IndexedText implements IValueCollection {
             let monoDesc = true;
             let prevForOrder: any = null;
             let sawPrev = false;
+            const anchor = wallClock.has(cidx);
             for (const row of this._rows) {
-                const val = row[cidx];
+                const raw = row[cidx];
+                const val = anchor && raw instanceof Date ? utcWallClock(raw) : raw;
                 const strVal = this.STR(val);
                 if (strVal != "") {
                     datalen += strVal.length;
@@ -945,6 +973,11 @@ export class IndexedText implements IValueCollection {
             }
             if (col.dataType == "DateTime") {
                 col.dateWithTime = hastime;
+                // A clock reading with no date (models.ts timeOfDayOnly). Set only when true, so every other column's profile
+                // is unchanged on the wire.
+                if (hastime && datesAreTimeOfDayOnly(anchor ? this._rows.map(r => r[cidx] instanceof Date ? utcWallClock(r[cidx]) : r[cidx])
+                                                            : this._rows.map(r => r[cidx]))) col.timeOfDayOnly = true;
+                else delete col.timeOfDayOnly;
             }
             // Temporal-axis flag from the ACTUAL values (year-int / period strings /
             // DateTime). Ships a boolean only; vals holds the distinct value labels.
@@ -1998,6 +2031,7 @@ export class IndexedText implements IValueCollection {
         let cnt = forSample ? 25 : 10000000;
         let len = forSample ? 4000 : 10000000;
         const strMap: Map<string, string> = new Map<string, string>();
+        const wallClock = this.wallClockColumnIndexes();
 
         for (const r of this._rows) {
             const obj = {};
@@ -2017,6 +2051,8 @@ export class IndexedText implements IValueCollection {
                         if (col.dataType == "DateTime" && !col.dateWithTime) {
                             const d = v instanceof Date ? v : (typeof v === "string" ? (parseDateStable(v) ?? new Date(v)) : new Date(v));
                             v = (this.wholeDayIso(d) ?? d.toISOString().slice(0, 10)) + "T00:00:00.000Z";
+                        } else if (wallClock.has(c) && v instanceof Date) {
+                            v = utcWallClock(v);
                         }
                     }
                     len -= this.STR(v).length;

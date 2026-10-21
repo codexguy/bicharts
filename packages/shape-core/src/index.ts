@@ -109,7 +109,7 @@ export { parseDateStable, wholeDayFrame, wholeDayIso } from "./util";
 // And the write-side consequence: a date column that arrived at the reader's LOCAL midnight is re-anchored
 // to the UTC midnight of its day before a host serialises it, so a chart's UTC reads print the cell's day
 // east of Greenwich too.
-export { localMidnightToUtcDay, localMidnightDateColumns, normalizeLocalMidnightDates } from "./util";
+export { localMidnightToUtcDay, localMidnightDateColumns, normalizeLocalMidnightDates, utcWallClock, datesCarryTimeOfDay, localWallClockDateColumns, anchorLocalWallClockDates, datesAreTimeOfDayOnly } from "./util";
 // isJoinGeoKind is PUBLIC because a host must distinguish a region-JOIN kind from a
 // coordinate-feeding one: "city-name" is a GeoKind but not a join key, and building
 // __geoIso__ from it nulls every row, so the map draws empty.

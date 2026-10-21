@@ -123,6 +123,11 @@ export type LLMColumnWithValue =
         avgLength?: number,
         modelFormat?: string,
         dateWithTime?: boolean,
+        // A TIME OF DAY WITH NO DATE: every value is a clock reading on the spreadsheet epoch's day zero (1899-12-30), the
+        // way Power BI's Time type and an Excel time cell store it (util.datesAreTimeOfDayOnly). The date part is storage,
+        // never a day anyone observed, so a consumer draws such a column on a 0-24 h axis, prints no date, and reads no span
+        // in days off it. Set only when true, on a DateTime column with dateWithTime; a boolean, so it ships at every tier.
+        timeOfDayOnly?: boolean,
         isMeasure: boolean,
         numericPrecision?: number,
         topCategories?: number[],

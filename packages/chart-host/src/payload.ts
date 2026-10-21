@@ -15,7 +15,7 @@
 // through `paths`, so `tsc -b` failed where the bundler succeeded.
 import {
     buildGeoIsoColumn, isJoinGeoKind, buildGeoPointColumns, resolvePointRoles, type GeoKind,
-    normalizeLocalMidnightDates,
+    normalizeLocalMidnightDates, anchorLocalWallClockDates,
 } from "@bicharts/shape-core";
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
@@ -123,6 +123,10 @@ export interface RenderPayload {
     /** Which columns the re-anchoring actually moved (diagnostics; empty when every date was already
      *  UTC midnight). Present only alongside dateCellsAreUtcDays. */
     utcDayColumns?: string[];
+    /** The host re-anchored timed date cells to the UTC wall clock (opts.localWallClock). Present only when it was requested. */
+    dateCellsAreUtcWallClock?: boolean;
+    /** Which columns that moved (diagnostics). Present only alongside dateCellsAreUtcWallClock. */
+    utcWallClockColumns?: string[];
 }
 
 /** One resolved point channel — the coordinate arrays plus the metadata a chart annotates
@@ -256,13 +260,18 @@ export function buildRenderPayload(
     // vegaSpecReadsDatesInLocalTime): local-time code reads a local-midnight date correctly already.
     // Absent, the payload is byte-identical to before.
     //
+    // A TIME OF DAY ON THE READER'S CLOCK. `localWallClock: true` tells the builder the host's Date cells are the reader's
+    // local wall clock (a Power BI date-time field); every date column that carries a time of day is re-anchored to the UTC
+    // wall clock before serializing (shape-core anchorLocalWallClockDates), so a chart's UTC reads print the reader's own
+    // times. Same rule as utcDays: a host passes it only for a chart that reads no date in local time. Absent, nothing moves.
+    //
     // A COLUMN'S SECOND NAME. `aliases` are the compatibility names a host armed for cached code
     // (shape-core IndexedText.getArmedAliases): the host's pre-collapse `Sum of Sum of Revenue`, or
     // the English name of an aggregation the host composed in another language. Generated code
     // resolves `columns.findIndex(c => c.name === ...)`, so an alias that only reached the row
     // objects left that code at -1. Each one is appended as a copy of its column AFTER every other
     // column, so nothing already in the payload moves. Absent or empty, nothing changes.
-    opts?: { utcDays?: boolean; aliases?: ReadonlyArray<{ name: string; alias: string }> | null } | null,
+    opts?: { utcDays?: boolean; localWallClock?: boolean; aliases?: ReadonlyArray<{ name: string; alias: string }> | null } | null,
 ): RenderPayload {
     // THE PAYLOAD OWNS ITS HOST COLUMNS (2026-09-25). `__rowIdx__` is the row's position in THIS payload,
     // so a caller's column of that name - rows built from a data.sample.json carry one, holding the
@@ -276,6 +285,12 @@ export function buildRenderPayload(
         const norm = normalizeLocalMidnightDates(cols as any, rowObjs);
         rowObjs = norm.rows;
         utcDayColumns = norm.columns;
+    }
+    let utcWallClockColumns: string[] | null = null;
+    if (opts?.localWallClock) {
+        const wall = anchorLocalWallClockDates(cols as any, rowObjs);
+        rowObjs = wall.rows;
+        utcWallClockColumns = wall.columns;
     }
 
     const o = resolvePointChannel(cols, rowObjs, point);
@@ -385,6 +400,7 @@ export function buildRenderPayload(
         // the ordinary case adds no bytes.
         ...(rolesRefused.length ? { geoPointRefused: rolesRefused } : {}),
         ...(utcDayColumns ? { dateCellsAreUtcDays: true, utcDayColumns } : {}),
+        ...(utcWallClockColumns ? { dateCellsAreUtcWallClock: true, utcWallClockColumns } : {}),
     };
 }
 
