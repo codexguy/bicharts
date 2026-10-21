@@ -98,6 +98,17 @@ describe("filterQualifyRows - the tier rule", () => {
         expect(r.tier).toBe("desc");
     });
 
+    it("a DESCRIPTION match must start a word, as a name match must", () => {
+        // "table" is inside "rotaTABLE": a reader who types "table" must not be handed a 3D scatter.
+        const rows = [
+            { name: "3D scatter plot", description: "A rotatable cloud of points in three dimensions." },
+            { name: "Heatmap", description: "A colour table of two categories." },
+        ];
+        const r = filterQualifyRows(rows, "table", readQualifyChartRow);
+        expect(names(r.rows)).toEqual(["Heatmap"]);
+        expect(r.tier).toBe("desc");
+    });
+
     it("reports 'none' rather than an empty 'name' tier", () => {
         const r = filterQualifyRows(CHARTS, "zzz", readQualifyChartRow);
         expect(r.rows).toEqual([]);
@@ -425,7 +436,9 @@ function ternaryDialog(): QualifyFilterGroup<string>[] {
     return [
         { heading: "h-main", section: "fits", rows: [
             row("r-bar", "Bar chart", "One bar per category."),
-            row("r-heat", "Heatmap", "A grid shaded to show the pattern across two categories."),
+            // A description hit for "tern" that STARTS a word ("terns"), and none for "terna": a mid-word one
+            // ("patTERN") no longer counts.
+            row("r-heat", "Heatmap", "A grid shaded to show the pattern across two categories, like terns over a shore."),
             row("r-pyr", "Pyramid", "Stacks bands into a triangle."),
             row("r-scatter", "Scatter plot", "One point per row."),
         ] },

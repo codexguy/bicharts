@@ -220,8 +220,10 @@ export function filterQualifyRows<T>(
             atWordStart.push(row);
             continue;
         }
+        // A DESCRIPTION hit must start a word too, for the reason the name tier's does: "table" is inside
+        // "rotaTABLE", and a filter that answers a reader's "table" with a 3D scatter has obeyed and failed.
         const desc = normalizeFilterTerm(f.description);
-        if (desc.indexOf(t) >= 0 || (loose && startsALooseWord(looseFormWithWordStarts(desc), loose))) byDesc.push(row);
+        if (startsAWord(desc, t) || (loose && startsALooseWord(looseFormWithWordStarts(desc), loose))) byDesc.push(row);
     }
     if (atWordStart.length > 0) return { rows: atWordStart, tier: "name", term: t };
     if (midWord.length > 0) return { rows: midWord, tier: "namePart", term: t };
