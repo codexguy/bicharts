@@ -1008,7 +1008,11 @@ export class IndexedText implements IValueCollection {
             //
             // runBounds names calendar dates and so rides the pl>=20 gate that lowValue /
             // highValue already ride; every count and ratio in the descriptor ships below it.
-            if (col.isTemporal && !col.isMeasure) {
+            //
+            // A clock time with no date (timeOfDayOnly) is not a timeline: the gaps between two readings of a day are not
+            // missing periods, and measured as one it reports a grain its own point count contradicts. No cadence claim.
+            if (col.timeOfDayOnly) delete col.temporalCadence;
+            else if (col.isTemporal && !col.isMeasure) {
                 const cad = measureCadence(vals.keys(), {
                     includeBounds: pl >= 20,
                     pattern: col.temporalTextPattern,
