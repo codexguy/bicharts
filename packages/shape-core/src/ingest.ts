@@ -72,11 +72,11 @@ export interface IngestOptions {
     measures?: string[];
     /** Force these columns to DIMENSION, by name (case-insensitive). */
     dimensions?: string[];
-    /** column -> format string. Overrides a descriptor's own `format`. */
+    /** column -> format string, by name (case-insensitive; an exact name wins). Overrides a descriptor's own `format`. */
     formats?: Record<string, string>;
-    /** column -> description. Overrides a descriptor's own `description`. */
+    /** column -> description, by name (case-insensitive; an exact name wins). Overrides a descriptor's own `description`. */
     descriptions?: Record<string, string>;
-    /** Columns that are the primary series/breakdown. Surfaces as isGrouping. */
+    /** Columns that are the primary series/breakdown, by name (case-insensitive; an exact name wins). Surfaces as isGrouping. */
     groupBy?: string[];
     /** MEASURE columns that must not be summed across groups (a ratio, average or rate). */
     nonAdditive?: string[];
@@ -314,9 +314,19 @@ function buildProfile(
         if (d.format) c.modelFormat = d.format;
         if (d.description) c.modelDesc = d.description;
     });
-    for (const [nm, fmt] of Object.entries(opts.formats ?? {})) { const c = byName.get(nm); if (c) c.modelFormat = fmt; }
-    for (const [nm, ds] of Object.entries(opts.descriptions ?? {})) { const c = byName.get(nm); if (c) c.modelDesc = ds; }
-    for (const nm of opts.groupBy ?? []) { const c = byName.get(nm); if (c) c.isGrouping = true; }
+    // A caller's name matches the way the role options match: ignoring case. An exact name wins,
+    // so two columns that differ only by case can still be told apart; otherwise every column the
+    // name matches ignoring case takes it. Matched exactly, `groupBy: ["region"]` on a column named
+    // Region was dropped without a word.
+    const named = (nm: string) => {
+        const exact = byName.get(nm);
+        if (exact) return [exact];
+        const lower = nm.toLowerCase();
+        return shape.filter(c => c.name.toLowerCase() === lower);
+    };
+    for (const [nm, fmt] of Object.entries(opts.formats ?? {})) for (const c of named(nm)) c.modelFormat = fmt;
+    for (const [nm, ds] of Object.entries(opts.descriptions ?? {})) for (const c of named(nm)) c.modelDesc = ds;
+    for (const nm of opts.groupBy ?? []) for (const c of named(nm)) c.isGrouping = true;
 
     return {
         columns: shape,
