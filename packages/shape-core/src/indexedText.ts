@@ -1783,7 +1783,10 @@ export class IndexedText implements IValueCollection {
                     m3 += d * d * d;
                 }
                 const variance = m2 / n;
-                col.skewness = variance === 0 ? 0 : (m3 / n) / Math.pow(Math.sqrt(variance), 3);
+                // sd*sd*sd, not Math.pow(sd, 3): Math.pow need not round exactly and V8's result differs between
+                // versions, so the same rows profiled differently on Node 20/22 and Node 24. Multiplication is exact.
+                const sd = Math.sqrt(variance);
+                col.skewness = variance === 0 ? 0 : (m3 / n) / (sd * sd * sd);
                 // Tier 1: surface population stdDev directly so the server
                 // can compute σ/μ (coefficient of variation) without
                 // re-deriving from min/max/median. R7b narrow-range

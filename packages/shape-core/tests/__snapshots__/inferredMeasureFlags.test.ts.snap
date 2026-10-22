@@ -92,7 +92,7 @@ exports[`the stats pass shape is unchanged by sharing the verdict > getColumnsWi
   "highValue": 2024,
   "medianValue": 2019,
   "numericPrecision": 0,
-  "skewness": 0.4708865299409833,
+  "skewness": 0.4708865299409834,
   "stdDev": 2.918943509880387,
   "sum": 349363,
   "topCategories": [
@@ -384,7 +384,7 @@ exports[`the stats pass shape is unchanged by sharing the verdict > getColumnsWi
   "highValue": 2688.05,
   "medianValue": 1310.81,
   "numericPrecision": 2,
-  "skewness": 0.03741698753370976,
+  "skewness": 0.03741698753370977,
   "stdDev": 771.8482213998499,
   "sum": 230462.86000000004,
   "topCategories": [
