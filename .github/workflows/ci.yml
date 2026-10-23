@@ -182,5 +182,7 @@ jobs:
       # installed closure (~729 KB) plus the smallest map asset (223 KB) is still far above 750.
       # RAISED 750 -> 760, with the script's default (770 -> 780): badge placement keeps a note's badge off the
       # chart's text, about 5 KB compiled. No geometry; installed closure (~755 KB) + 223 KB is still far above 760.
+      # RAISED 760 -> 780, with the script's default (780 -> 800): spreadsheet/CSV export and the share-rate line,
+      # measured first. No geometry; installed closure + 223 KB is still far above 780.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 760
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 780

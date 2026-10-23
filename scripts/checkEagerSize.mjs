@@ -70,9 +70,14 @@ import { resolve, dirname, join } from "node:path";
 // and keeps a note's badge off it (a tile's centred code, a row's values), about 5 KB compiled, which took the
 // closure to 771 KB. No geometry is in the closure; closure (~771 KB) + the smallest map asset (223 KB) is ~994 KB,
 // far above 780, so a statically imported map still trips this check.
+//
+// 780 -> 800 KB, deliberately, as ordinary growth, measured first. Spreadsheet and CSV export of a chart's rows,
+// the share-rate line and the contract's newer host services take the closure to about 794 KB. No geometry is in
+// the closure; closure (~794 KB) + the smallest map asset (223 KB) is ~1017 KB, far above 800, so a statically
+// imported map still trips this check.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 780);
+const limitKB = Number(process.argv[3] ?? 800);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //
