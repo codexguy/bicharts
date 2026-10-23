@@ -1,4 +1,5 @@
 // @bicharts/chart-host — the HOST CONTRACT the generated D3 code targets.
+import type { ExportFormat, ExportTableService, SaveFileService } from "./exportTable";
 //
 // Single source of truth for: the render options surface, the interaction grammar
 // (mark classes, the cross-filter event, container lifecycle slots), and the
@@ -21,7 +22,13 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.18.0";
+export const HOST_CONTRACT_VERSION = "1.19.0";
+// 1.19.0 (2026-10-23): A CHART CAN HAND ITS ROWS OUT AS A FILE. RenderOptions gains saveFile(file), the host's own way
+// to keep a finished file (a page downloads it, a sandboxed visual hands it to its host's download service, a
+// spreadsheet add-in writes it into the open workbook), and exportFormats, the formats that service takes. From them
+// resolveOptions derives exportTable(table, format): a chart describes the columns and rows it shows, and chart-host
+// writes the CSV or the .xlsx and gives it to saveFile. A host with no saveFile gets no exportTable and no
+// exportFormats, so a chart offers no export. Additive: a host that sends neither gets exactly the 1.18.0 behaviour.
 // 1.18.0 (2026-10-22): TWO HOST SERVICES A CHART MAY CALL. RenderOptions gains openUrl(url), which opens an address the
 // host's own way (a sandboxed visual through its launchUrl, a spreadsheet add-in through its browser window), and
 // copyText(text), which writes text to the reader's clipboard the host's own way and says whether it did. A chart
@@ -517,6 +524,17 @@ export interface RenderOptions {
     // never logs the address it opens or the text it copies.
     openUrl?: (url: string) => void;
     copyText?: (text: string) => boolean | void | Promise<boolean | void>;
+    // EXPORTING ROWS TO A FILE (1.19.0). The HOST passes `saveFile`, its own way to keep a finished file (false, a throw
+    // or a rejection means it did not), and optionally `exportFormats`, the formats that service takes (absent: every
+    // format chart-host writes). resolveOptions DERIVES `exportTable` from them and resolves `exportFormats` to the
+    // formats actually offered, best first; a value a host passes as exportTable is ignored. A CHART calls
+    // exportTable(table, format) with the columns it shows (header, kind of value, number format) and the rows it shows
+    // as data, in display order; it resolves true when the host kept the file and never rejects.
+    // ABSENT saveFile (or no format left) MEANS THE HOST CANNOT SAVE A FILE: no exportTable, no exportFormats, and a chart
+    // shows no export control. A chart never logs the rows it exports.
+    saveFile?: SaveFileService;
+    exportFormats?: readonly ExportFormat[];
+    exportTable?: ExportTableService;
     geoPointDest?: {
         precision: GeoPointPrecision | null;
         precisionCounts: Record<GeoPointPrecision, number>;

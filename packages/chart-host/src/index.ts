@@ -48,6 +48,32 @@ export {
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
 // The host services a chart may call (contract 1.18.0), built with one set of rules in every host.
 export { hostLinkServices, type HostLinkServices, type ClipboardLike } from "./hostLinks";
+// Exporting a chart's rows to a file (contract 1.19.0): the CSV and .xlsx writers, and the file service for a page in a
+// browser. A host passes its own saveFile (and the formats it takes); resolveOptions derives the chart's exportTable.
+export {
+    tableToCsv,
+    tableToXlsx,
+    buildExportFile,
+    exportFileName,
+    sheetName as exportSheetName,
+    excelNumberFormat,
+    excelSerial,
+    bytesToBase64,
+    exportFormatsFor,
+    exportTableService,
+    browserSaveFile,
+    EXPORT_FORMATS,
+    XLSX_MIME,
+    CSV_MIME,
+    type ExportTable,
+    type ExportColumn,
+    type ExportColumnType,
+    type ExportCell,
+    type ExportFormat,
+    type ExportFile,
+    type SaveFileService,
+    type ExportTableService,
+} from "./exportTable";
 // THE OPTIONS VOCABULARY (2026-09-25): the reader-facing options every host shares, one row each - the
 // default, the bounds, when a change takes effect and where it travels. See optionsVocabulary.ts.
 export {

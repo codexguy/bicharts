@@ -92,4 +92,10 @@ describe("host contract version stamp", () => {
         const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
         expect(maj > 1 || (maj === 1 && min >= 18)).toBe(true);
     });
+
+    it("the saveFile host service and the exportTable it gives a chart are announced by the version that adds them (1.19.0)", () => {
+        // A chart generated against an older stamp must not assume it can hand its rows out as a file.
+        const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(maj > 1 || (maj === 1 && min >= 19)).toBe(true);
+    });
 });

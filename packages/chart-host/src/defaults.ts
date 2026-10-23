@@ -26,6 +26,17 @@ import {
 import { toRGBA, compositeOver, relativeLuminance } from "./labelContrast";
 
 import { resolveAutoColorScale } from "./autoRamp";
+import { exportFormatsFor, exportTableService, type ExportFormat, type ExportTableService, type SaveFileService } from "./exportTable";
+
+// THE EXPORT SERVICE A CHART MAY CALL (contract 1.19.0), from the host's file service: a function or nothing, and the
+// formats it takes kept to those chart-host writes. No service, or no format left, gives no export at all.
+function hostExport(save: unknown, formats: unknown): { saveFile?: SaveFileService; exportFormats?: readonly ExportFormat[]; exportTable?: ExportTableService } {
+    if (typeof save !== "function") return {};
+    const offered = exportFormatsFor(Array.isArray(formats) ? formats : undefined);
+    if (!offered.length) return {};
+    const saveFile = save as SaveFileService;
+    return { saveFile, exportFormats: Object.freeze(offered), exportTable: exportTableService(saveFile, offered) };
+}
 
 // A DARK CANVAS GETS A DARK LANDMASS. A map's land and no-data regions default to a light grey in the chart itself,
 // which is right on a light page and a glaring white world on a dark one; only a host that names geoLandColor (the
@@ -51,6 +62,7 @@ const numberOr = (raw: unknown, dflt: number) => {
 };
 
 export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
+    const exp = hostExport(p.saveFile, p.exportFormats);
     return {
         // ---- host fields: pass through exactly as supplied ----
         width: p.width,
@@ -78,6 +90,11 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // it would try to call. Passed through untouched otherwise: the host owns what opening or copying means.
         openUrl: typeof p.openUrl === "function" ? p.openUrl : undefined,
         copyText: typeof p.copyText === "function" ? p.copyText : undefined,
+        // Exporting rows to a file (contract 1.19.0): exportTable is DERIVED from the host's saveFile, never taken from
+        // the host, so a chart offers an export only where a file can really be kept. See hostExport above.
+        saveFile: exp.saveFile,
+        exportFormats: exp.exportFormats,
+        exportTable: exp.exportTable,
         // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
         // undefined, and every map chart then fell back to whatever number its own code carried -
         // 1000 in every archetype written so far - while the offer gate used the server's. One
