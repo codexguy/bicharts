@@ -52,15 +52,15 @@ function mount(config: Record<string, unknown> = {}) {
 const badges = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>(".bic-annotation"));
 
 describe("mark annotations", () => {
-    it("draws a badge on the mark whose row carries the key, centred on its box", () => {
+    it("draws a badge on the mark whose row carries the key, on its box's top-right corner", () => {
         const restore = stubBoxes();
         const { el } = mount({ annotations: [{ column: "CountryCode", value: "CAN", label: "2", title: "Two notes" }] });
         const b = badges(el);
         expect(b).toHaveLength(1);
         expect(b[0].textContent).toBe("2");
         expect(b[0].getAttribute("title")).toBe("Two notes");
-        expect(b[0].style.left).toBe("140px");     // CAN's box: x 100..180, centre 140
-        expect(b[0].style.top).toBe("40px");       // y 20..60, centre 40
+        expect(b[0].style.left).toBe("180px");     // CAN's box: x 100..180, right edge 180
+        expect(b[0].style.top).toBe("20px");       // y 20..60, top edge 20
         restore();
     });
 
@@ -76,7 +76,7 @@ describe("mark annotations", () => {
         // Back: FRA is row 0 now, a different position - the badge still lands on FRA's mark.
         host.setData({ columns: COLS, rows: [["FRA", 9], ["USA", 10]] } as any);
         expect(badges(el)).toHaveLength(1);
-        expect(badges(el)[0].style.left).toBe("240px");
+        expect(badges(el)[0].style.left).toBe("280px");
         restore();
     });
 
@@ -120,13 +120,13 @@ describe("mark annotations", () => {
     it("follows a mark that moves without a render - a zoom or a pan - on the next frame", async () => {
         const restore = stubBoxes();
         const { el } = mount({ annotations: [{ column: "CountryCode", value: "USA" }] });
-        expect(badges(el)[0].style.left).toBe("40px");
+        expect(badges(el)[0].style.left).toBe("80px");
         // The zoom: the mark's box moves and its transform attribute changes; nothing re-renders.
         const usa = el.querySelector<HTMLElement>('[data-code="USA"]')!;
         MOVED.USA = { left: 300, top: 100, width: 40, height: 20, right: 340, bottom: 120, x: 300, y: 100, toJSON() {} } as DOMRect;
         usa.setAttribute("transform", "translate(260,80) scale(0.5)");
-        await vi.waitFor(() => expect(badges(el)[0].style.left).toBe("320px"));
-        expect(badges(el)[0].style.top).toBe("110px");
+        await vi.waitFor(() => expect(badges(el)[0].style.left).toBe("340px"));
+        expect(badges(el)[0].style.top).toBe("100px");
         restore();
     });
 
@@ -151,7 +151,7 @@ function render(container, data) {
         host.render();
         const b = badges(el);
         expect(b).toHaveLength(1);
-        expect(b[0].style.left).toBe("140px");     // row 1 (BRA -> CHL), drawn as the second mark
+        expect(b[0].style.left).toBe("180px");     // row 1 (BRA -> CHL), drawn as the second mark
         expect(host.annotationReport).toEqual({ shown: 1, notShown: 1 });
         restore();
     });

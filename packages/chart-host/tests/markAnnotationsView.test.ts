@@ -76,7 +76,7 @@ describe("mark annotations on a zoomed or panned map", () => {
         const { el, host } = mount([["AUS", "900,80,120,60"], ["BRA", "100,100,60,60"]]);
         const b = badges(el);
         expect(b).toHaveLength(1);
-        expect(at(b[0])).toEqual([130, 130]);
+        expect(at(b[0])).toEqual([160, 100]);   // BRA's top-right corner
         expect(host.annotationReport).toEqual({ shown: 1, notShown: 1 });
     });
 
@@ -85,7 +85,7 @@ describe("mark annotations on a zoomed or panned map", () => {
         const { el } = mount([["USA", "300,20,400,100"]]);
         const b = badges(el);
         expect(b).toHaveLength(1);
-        expect(at(b[0])).toEqual([350, 70]);
+        expect(at(b[0])).toEqual([392, 20]);   // the VISIBLE part's top-right corner (400, 20), kept inside the frame
     });
 
     it("never covers the map's own controls: the badge moves clear of the zoom pad, still on its mark", () => {
@@ -96,7 +96,7 @@ describe("mark annotations on a zoomed or panned map", () => {
         const [x, y] = at(b[0]);
         const clear = x + 8 <= 340 || x - 8 >= 400 || y + 8 <= 0 || y - 8 >= 60;
         expect(clear).toBe(true);
-        expect(x >= 340 && x <= 400 && y >= 0 && y <= 120).toBe(true);   // on the mark's visible part
+        expect(x >= 340 - 8 && x <= 400 + 8 && y >= 0 - 8 && y <= 120 + 8).toBe(true);   // touching the mark's visible part
     });
 
     it("hides a badge with nowhere clear to go rather than covering a control", () => {

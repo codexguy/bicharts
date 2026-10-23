@@ -65,9 +65,14 @@ import { resolve, dirname, join } from "node:path";
 // frame of a lasso-capable chart without it and restore a kept lasso a frame late. No geometry is in the
 // closure. The rule still holds: closure (~745 KB) + the smallest map asset (223 KB) is ~968 KB, far above 770,
 // so a statically imported map still trips this check.
+//
+// 770 -> 780 KB, deliberately, as ordinary growth, measured first. Badge placement now measures the chart's text
+// and keeps a note's badge off it (a tile's centred code, a row's values), about 5 KB compiled, which took the
+// closure to 771 KB. No geometry is in the closure; closure (~771 KB) + the smallest map asset (223 KB) is ~994 KB,
+// far above 780, so a statically imported map still trips this check.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 770);
+const limitKB = Number(process.argv[3] ?? 780);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //

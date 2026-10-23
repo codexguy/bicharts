@@ -180,5 +180,7 @@ jobs:
       # 2026-10-09: RAISED 700 -> 750, with the script's own default (720 -> 770), as ordinary growth: the
       # host lasso is about 22 KB compiled and eager on purpose. No geometry is in the closure; the
       # installed closure (~729 KB) plus the smallest map asset (223 KB) is still far above 750.
+      # RAISED 750 -> 760, with the script's default (770 -> 780): badge placement keeps a note's badge off the
+      # chart's text, about 5 KB compiled. No geometry; installed closure (~755 KB) + 223 KB is still far above 760.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 750
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 760
