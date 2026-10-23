@@ -22,7 +22,11 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.19.0";
+export const HOST_CONTRACT_VERSION = "1.20.0";
+// 1.20.0 (2026-10-23): A CHART CAN ASK FOR ITS NOTES AS DOTS. NOTE_STYLE_ATTR="dot" on the element holding a chart's
+// marks (or on a mark) draws each host note there as one small dot at a fixed spot inside the mark's top-right corner,
+// its label in the tooltip, instead of a badge moved clear of text - which, where marks sit edge to edge, landed on a
+// neighbouring mark. Additive: a chart that declares nothing gets exactly the 1.19.0 badge.
 // 1.19.0 (2026-10-23): A CHART CAN HAND ITS ROWS OUT AS A FILE. RenderOptions gains saveFile(file), the host's own way
 // to keep a finished file (a page downloads it, a sandboxed visual hands it to its host's download service, a
 // spreadsheet add-in writes it into the open workbook), and exportFormats, the formats that service takes. From them
@@ -174,6 +178,12 @@ export const CONTROL_CLASS = "lch-control";
 // The attribute each filterable mark carries: comma-joined __rowIdx__ values,
 // frame-scoped for animated charts.
 export const ROW_IDX_ATTR = "data-row-idx";
+
+// HOW A NOTE ON A MARK LOOKS. By default a host's note (ChartHostConfig.annotations) is a badge carrying its label,
+// moved clear of the chart's text. A chart whose marks sit edge to edge (a tile grid) stamps NOTE_STYLE_ATTR="dot" on
+// the element holding them, or on a mark: each note there is one small dot at a fixed spot inside the mark's top-right
+// corner, never moved onto a neighbour, its label read in the tooltip. The nearest declaring element decides.
+export const NOTE_STYLE_ATTR = "data-bic-note-style";
 
 // HOW A SELECTION LIGHTS THE CHART'S OWN MARKS. By default a mark is drawn selected when ANY of the
 // rows in its data-row-idx list is selected: a legend swatch and its series light together, and a

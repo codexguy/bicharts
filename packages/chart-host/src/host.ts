@@ -303,8 +303,9 @@ export interface ChartHostConfig {
     /**
      * NOTES ON MARKS. Each annotation names a key - a value in a column of this chart's data, such as a
      * country code - and the host draws a badge on that key's mark after every render, wherever a filter,
-     * a re-query or a zoom has put it. Keyed by value, never by row position. Change them with
-     * setAnnotations; none (the default) draws nothing.
+     * a re-query, a zoom or a scroll has put it. A chart that declares NOTE_STYLE_ATTR="dot" gets a small
+     * dot at a fixed spot instead, the label in its tooltip. Keyed by value, never by row position. Change
+     * them with setAnnotations; none (the default) draws nothing.
      */
     annotations?: MarkAnnotation[];
     /** A badge was clicked. The mark beneath is not selected. */

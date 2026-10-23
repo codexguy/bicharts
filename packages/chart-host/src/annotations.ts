@@ -14,8 +14,19 @@
 // wrote their own badge layers to dodge it. A badge goes on its mark's top-right corner, half outside it; on a ROW
 // (a mark much wider than tall that holds its row's text) just after the row's label, its first text; and inside
 // the chart's frame. Any text the chart drew, and every other badge, is kept clear wherever there is room.
+//
+// A CHART CAN ASK FOR A DOT. Where marks sit edge to edge - a tile-grid map - a badge moved clear of text and of
+// other badges lands on a NEIGHBOURING mark: one country's note was pushed off its tile onto the border with the next
+// and read as that country's. A chart whose marks are like that declares NOTE_STYLE_ATTR="dot" on the element holding
+// them (or on a mark), and each note there draws as one small dot at one place a reader learns once, inside the
+// visible part's top-right corner, with no search; its label and title are read in the tooltip and by a screen
+// reader. Every other chart keeps the badge.
+//
+// A NOTE SCROLLS WITH ITS MARK. A table that scrolls inside its own box moves its rows without a render, so notes
+// redraw on the next frame after a scroll inside the container (or of the container, or of a box around it), an HTML
+// box that clips its overflow bounds what of a mark is in view, and a container that scrolls carries its notes along.
 
-import { CONTROL_CLASS, MARK_CLASS, ROW_IDX_ATTR } from "./contract";
+import { CONTROL_CLASS, MARK_CLASS, NOTE_STYLE_ATTR, ROW_IDX_ATTR } from "./contract";
 import { clipWindowOf } from "./fitDom";
 import { LASSO_OUTLINE_CLASS } from "./lasso";
 
@@ -142,6 +153,35 @@ function seenRight(el: Element, right: number, stop: Element): number {
     return right;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** The window an HTML element shows its content through when it clips its overflow (a scrolling box, a cell with an
+ *  ellipsis): its padding box, scrollbars left out where the browser says how wide they are. Null when it doesn't
+ *  clip, or can't be measured. */
+function overflowWindowOf(el: Element): Box | null {
+    const win = el.ownerDocument.defaultView;
+    if (!win || el.namespaceURI === SVG_NS) return null;
+    try {
+        const o = win.getComputedStyle(el);
+        const clips = (v: string | undefined) => !!v && v !== "visible";
+        if (!o || !(clips(o.overflowX) || clips(o.overflowY) || clips(o.overflow))) return null;
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0)) return null;
+        const h = el as HTMLElement;
+        const l = r.left + (h.clientLeft || 0), t = r.top + (h.clientTop || 0);
+        const w = h.clientWidth > 0 ? h.clientWidth : r.width, ht = h.clientHeight > 0 ? h.clientHeight : r.height;
+        return { l, t, r: l + w, b: t + ht };
+    } catch { return null; }
+}
+
+/** The DOT (a chart's NOTE_STYLE_ATTR="dot"): this wide, with a ring of the background this thick around it. */
+const DOT = 8;
+const RING = 1.5;
+/** Half the dot's drawn size, ring included. */
+const DOT_HALF = DOT / 2 + RING;
+/** From a mark's top-right corner to the dot's centre, on both axes: the dot sits inside, clear of the mark's edges. */
+const DOT_IN = 8;
+
 export interface AnnotationLayer {
     set(list: MarkAnnotation[]): void;
     /** Redraw against the container's current marks and the given data. */
@@ -157,8 +197,8 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
     const doc = container.ownerDocument;
     const win = doc.defaultView;
 
-    // MOVING MARKS. A zoom, a pan or a transition moves marks without a render; the badges follow on the next
-    // frame. Connected only while there is something to draw, and blind to the layer's own changes.
+    // MOVING MARKS. A zoom, a pan, a transition or a scroll moves marks without a render; the badges follow on the
+    // next frame. Connected only while there is something to draw, and blind to the layer's own changes.
     let observer: MutationObserver | null = null;
     let queued = false;
     const redrawSoon = () => {
@@ -167,7 +207,25 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
         const run = () => { queued = false; if (last) paint(last.data, last.theme); };
         if (win?.requestAnimationFrame) win.requestAnimationFrame(run); else setTimeout(run, 16);
     };
+    // A scroll: of a box inside the container (a table scrolling its rows), of the container itself, or of a box the
+    // container sits in (which changes what of it is in view). A scroll does not bubble, so both listen in capture;
+    // the document's listener answers only for an element around the container - the container's own sees the rest.
+    const onInnerScroll = () => redrawSoon();
+    const onOuterScroll = (e: Event) => {
+        const t = e.target as Node | null;
+        if (t && t.nodeType === 1 && t !== container && t.contains(container)) redrawSoon();
+    };
+    let listening = false;
     const watch = (on: boolean) => {
+        if (on && !listening) {
+            container.addEventListener("scroll", onInnerScroll, { capture: true, passive: true });
+            doc.addEventListener("scroll", onOuterScroll, { capture: true, passive: true });
+            listening = true;
+        } else if (!on && listening) {
+            container.removeEventListener("scroll", onInnerScroll, { capture: true });
+            doc.removeEventListener("scroll", onOuterScroll, { capture: true });
+            listening = false;
+        }
         const MO = (win as any)?.MutationObserver as typeof MutationObserver | undefined;
         if (on && !observer && MO) {
             observer = new MO(records => {
@@ -208,16 +266,33 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
         }
         const origin = container.getBoundingClientRect();
         const open = origin.width > 0 && origin.height > 0 ? box(origin) : FREE;
-        // Where a reader can see a mark: the container, the mark's svg (an svg clips at its own frame) and every
-        // clip-path window on the way up. A host that hasn't laid out yet constrains nothing.
+        // The window each element shows its content through: an svg element's clip-path, an HTML box that clips its
+        // overflow (a scrolling box, a cell with an ellipsis). Measured once per element per draw.
         const clipOf = new Map<Element, Box | null>();
+        const windowOf = (el: Element): Box | null => {
+            if (!clipOf.has(el)) {
+                if (el.namespaceURI === SVG_NS) { const w = clipWindowOf(el); clipOf.set(el, w && box(w)); }
+                else clipOf.set(el, overflowWindowOf(el));
+            }
+            return clipOf.get(el)!;
+        };
+        // What of the container is in view: a box around it that clips (a scrolling page panel) cuts it.
+        let inView: Box | null = open;
+        if (open !== FREE) for (let el = container.parentElement; inView && el && el !== doc.documentElement && el !== doc.body; el = el.parentElement) {
+            const w = windowOf(el);
+            if (w) inView = cut(inView, w);
+        }
+        // Where a reader can see a mark: the container in view, every svg it is drawn in (an svg clips at its own
+        // frame), every clip-path window, and every HTML box that clips its overflow - a table scrolling inside its
+        // own box shows only the rows in its window. A host that hasn't laid out yet constrains nothing.
         const viewOf = (m: Element): Box | null => {
-            let v: Box | null = open;
-            const svg = m.closest("svg");
-            if (svg) { const s = svg.getBoundingClientRect(); if (s.width > 0 && s.height > 0) v = cut(v, box(s)); }
-            for (let el: Element | null = m.parentElement; v && el && el !== svg && el !== container; el = el.parentElement) {
-                if (!clipOf.has(el)) { const w = clipWindowOf(el); clipOf.set(el, w && box(w)); }
-                const w = clipOf.get(el);
+            let v: Box | null = inView;
+            for (let el: Element | null = m.parentElement; v && el && el !== container; el = el.parentElement) {
+                if (el.namespaceURI === SVG_NS && el.localName === "svg") {
+                    const s = el.getBoundingClientRect();
+                    if (s.width > 0 && s.height > 0) v = cut(v, box(s));
+                }
+                const w = windowOf(el);
                 if (w) v = cut(v, w);
             }
             return v;
@@ -299,6 +374,32 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             placed.push(at(pick.x, pick.y));
             return [pick.x, pick.y];
         };
+        // Does the chart ask for a DOT on this mark? The nearest element declaring a note style - the mark itself or
+        // an ancestor inside the container - decides.
+        const wantsDot = (m: Element | null): boolean => {
+            const d = m?.closest(`[${NOTE_STYLE_ATTR}]`);
+            return !!d && container.contains(d) && text(d.getAttribute(NOTE_STYLE_ATTR)).toLowerCase() === "dot";
+        };
+        // THE spot for a dot, with no search: DOT_IN in from the visible part's top-right corner on both axes. A mark
+        // too small to hold the dot inside it (a point, a thin bar) has it centred on its top-right corner instead; a
+        // mark big enough whose visible part is not (scrolled or panned mostly out of view) has none, and so does a
+        // spot that would cover a control. Kept inside the frame by whole pixels, as drawn.
+        const dotSpot = (v: Box, whole: Box): [number, number] | null => {
+            const fits = (b: Box) => b.r - b.l >= 2 * DOT_IN && b.b - b.t >= 2 * DOT_IN;
+            let x: number, y: number;
+            if (!fits(whole)) { x = v.r; y = v.t; }
+            else if (fits(v)) { x = v.r - DOT_IN; y = v.t + DOT_IN; }
+            else return null;
+            const e = Math.ceil(DOT_HALF);
+            x = clampX(x, e); y = clampY(y, e);
+            const g: Box = { l: x - DOT_HALF, t: y - DOT_HALF, r: x + DOT_HALF, b: y + DOT_HALF };
+            if (controls.some(c => hits(g, c))) return null;
+            placed.push(g);
+            return [x, y];
+        };
+        // Notes are placed in the container's coordinates: a container that scrolls carries them with its content.
+        const offX = -origin.left - (container.clientLeft || 0) + (container.scrollLeft || 0);
+        const offY = -origin.top - (container.clientTop || 0) + (container.scrollTop || 0);
         let shown = 0;
         for (const a of list) {
             // The key as (column index, wanted text) pairs; a column this chart doesn't have matches nothing.
@@ -315,33 +416,45 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             // The biggest VISIBLE part of the key's marks carries the badge: a country's mainland, not an island; a
             // route's arc, not its end dot; and on a zoomed or panned map, the part in view (a box clipped to the
             // map, the svg, any clip-path) - not the centre of an outline running off the edge.
-            let best: Box | null = null, bestMark: Element | null = null, laidOut = false;
+            let best: Box | null = null, bestWhole: Box | null = null, bestMark: Element | null = null, laidOut = false;
             for (const m of hits) {
                 const b = m.getBoundingClientRect();
                 if (!(b.width > 0 && b.height > 0)) continue;
                 laidOut = true;
                 const v = cut(box(b), viewOf(m));
-                if (v && (!best || area(v) > area(best))) { best = v; bestMark = m; }
+                if (v && (!best || area(v) > area(best))) { best = v; bestWhole = box(b); bestMark = m; }
             }
+            const dot = wantsDot(bestMark ?? hits.values().next().value ?? null);
             // Nothing of it in view: no badge (counted below as not shown). A mark with no box yet keeps the old way.
-            const pt: [number, number] | null = best ? clear(best, (a.label ?? "•").length, bestMark) : null;
+            const pt: [number, number] | null = !best ? null
+                : dot ? dotSpot(best, bestWhole!) : clear(best, (a.label ?? "•").length, bestMark);
             if (laidOut && !pt) continue;
             shown++;
             const badge = doc.createElement("div");
             badge.className = ANNOTATION_CLASS;
-            badge.textContent = a.label ?? "•";
-            if (a.title) badge.setAttribute("title", a.title);
             badge.setAttribute("role", "button");
-            badge.setAttribute("aria-label", a.title ? `Note: ${a.title}` : `Note on ${want}`);
+            if (dot) {
+                // A dot draws no text: its label leads the tooltip and the name a screen reader gives it.
+                const label = text(a.label), title = text(a.title);
+                badge.setAttribute("title", title ? (label ? `(${label}) ${title}` : title) : `Note on ${want}${label ? `: ${label}` : ""}`);
+                badge.setAttribute("aria-label", `Note on ${want}${label ? `: ${label}` : ""}${title ? `. ${title}` : ""}`);
+            } else {
+                badge.textContent = a.label ?? "•";
+                if (a.title) badge.setAttribute("title", a.title);
+                badge.setAttribute("aria-label", a.title ? `Note: ${a.title}` : `Note on ${want}`);
+            }
             Object.assign(badge.style, {
                 position: "absolute",
-                left: `${Math.round(pt ? pt[0] - origin.left : 0)}px`,
-                top: `${Math.round(pt ? pt[1] - origin.top : 0)}px`,
+                left: `${Math.round(pt ? pt[0] + offX : 0)}px`,
+                top: `${Math.round(pt ? pt[1] + offY : 0)}px`,
                 transform: "translate(-50%, -50%)",
-                minWidth: "16px", height: "16px", padding: "0 4px", boxSizing: "border-box",
-                borderRadius: "8px", font: "600 10px/16px system-ui, sans-serif", textAlign: "center",
-                color: theme.bg || "#ffffff", background: theme.accent || theme.fg || "#0f6cbd",
-                boxShadow: `0 0 0 1.5px ${theme.bg || "#ffffff"}`, cursor: onClick ? "pointer" : "default",
+                ...(dot
+                    ? { width: `${DOT}px`, height: `${DOT}px`, boxSizing: "border-box", borderRadius: "50%" }
+                    : { minWidth: "16px", height: "16px", padding: "0 4px", boxSizing: "border-box",
+                        borderRadius: "8px", font: "600 10px/16px system-ui, sans-serif", textAlign: "center",
+                        color: theme.bg || "#ffffff" }),
+                background: theme.accent || theme.fg || "#0f6cbd",
+                boxShadow: `0 0 0 ${RING}px ${theme.bg || "#ffffff"}`, cursor: onClick ? "pointer" : "default",
                 // Never pointer-events (a host failsafe turns it back on); visibility hides a badge whose mark
                 // has no box yet.
                 visibility: laidOut ? "visible" : "hidden",

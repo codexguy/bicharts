@@ -98,4 +98,10 @@ describe("host contract version stamp", () => {
         const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
         expect(maj > 1 || (maj === 1 && min >= 19)).toBe(true);
     });
+
+    it("a chart's NOTE_STYLE_ATTR='dot' is announced by the version that adds it (1.20.0)", () => {
+        // A chart generated against an older stamp must not assume its notes draw as dots.
+        const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(maj > 1 || (maj === 1 && min >= 20)).toBe(true);
+    });
 });
