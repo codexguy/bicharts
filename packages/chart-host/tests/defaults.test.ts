@@ -320,6 +320,20 @@ describe("resolveOptions - the whitelist covers the contract", () => {
         expect(missing, "not a key of resolveOptions({})").toEqual([]);
     });
 
+    it("the openUrl and copyText host services pass through as functions, and nothing else does (1.18.0)", async () => {
+        const open = (u: string) => { void u; };
+        const copy = (t: string) => t.length > 0;
+        const out = resolveOptions({ openUrl: open, copyText: copy });
+        expect(out.openUrl).toBe(open);
+        expect(out.copyText).toBe(copy);
+        expect(out.copyText!("")).toBe(false);   // the host's own answer comes back untouched: false means it could not write
+        for (const junk of ["https://x", true, 1, {}, [], null])
+            expect(resolveOptions({ openUrl: junk, copyText: junk }).openUrl, String(junk)).toBeUndefined();
+        expect(resolveOptions({ copyText: "yes" }).copyText).toBeUndefined();
+        const asyncCopy = async () => false;
+        expect(await resolveOptions({ copyText: asyncCopy }).copyText!("a	b")).toBe(false);
+    });
+
     it("the two numeric live knobs keep a MEANINGFUL zero", () => {
         // Both mean "the chart decides" at 0, so an explicit 0 must survive and junk must not
         // become a number. This is the animLoopDelaySec lesson applied to the two fields that

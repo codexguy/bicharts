@@ -21,7 +21,12 @@
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.17.0";
+export const HOST_CONTRACT_VERSION = "1.18.0";
+// 1.18.0 (2026-10-22): TWO HOST SERVICES A CHART MAY CALL. RenderOptions gains openUrl(url), which opens an address the
+// host's own way (a sandboxed visual through its launchUrl, a spreadsheet add-in through its browser window), and
+// copyText(text), which writes text to the reader's clipboard the host's own way and says whether it did. A chart
+// draws a link, or offers copy, only where the service exists, and never logs an address. Additive: a host that
+// sends neither gets exactly the 1.17.0 behaviour (links print as text, copy is not offered).
 // 1.17.0 (2026-10-20): WHAT A LASSO DOES TO THE PAGE. RenderOptions.lasso gains effect: "filter" (the default)
 // publishes the circled marks through the selection a click makes, so a page filter bound to the chart (React's
 // `selects`) or a chart group follows with every circled key; "highlight" lights them inside the chart and
@@ -503,6 +508,15 @@ export interface RenderOptions {
     dataComplete?: boolean;
     rowsWithheld?: number;
     rowsFilteredOut?: number;
+    // HOST SERVICES A CHART MAY CALL (1.18.0). `openUrl` opens an address the host's own way: a sandboxed visual
+    // cannot navigate itself, so a link a chart draws calls this, and only http(s) and mailto addresses are ever
+    // handed to it. `copyText` writes text to the reader's clipboard the host's own way: a returned or resolved `false`,
+    // a throw or a rejection means it could NOT write (the chart then falls back to its own copy sheet), anything else
+    // means it did. The text is plain TSV (a tab between cells, CRLF between rows).
+    // ABSENT MEANS THE HOST OFFERS NEITHER: a chart then prints a link as its text and offers no copy. A chart
+    // never logs the address it opens or the text it copies.
+    openUrl?: (url: string) => void;
+    copyText?: (text: string) => boolean | void | Promise<boolean | void>;
     geoPointDest?: {
         precision: GeoPointPrecision | null;
         precisionCounts: Record<GeoPointPrecision, number>;

@@ -74,6 +74,10 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         dataComplete: p.dataComplete,
         rowsWithheld: p.rowsWithheld,
         rowsFilteredOut: p.rowsFilteredOut,
+        // Host services (contract 1.18.0): a FUNCTION or nothing, so a junk value never reaches a chart as something
+        // it would try to call. Passed through untouched otherwise: the host owns what opening or copying means.
+        openUrl: typeof p.openUrl === "function" ? p.openUrl : undefined,
+        copyText: typeof p.copyText === "function" ? p.copyText : undefined,
         // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
         // undefined, and every map chart then fell back to whatever number its own code carried -
         // 1000 in every archetype written so far - while the offer gate used the server's. One

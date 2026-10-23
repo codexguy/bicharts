@@ -46,6 +46,8 @@ export {
     type XfilterRefreshDetail,
 } from "./contract";
 export { resolveOptions, type ResolveOptionsInput } from "./defaults";
+// The host services a chart may call (contract 1.18.0), built with one set of rules in every host.
+export { hostLinkServices, type HostLinkServices, type ClipboardLike } from "./hostLinks";
 // THE OPTIONS VOCABULARY (2026-09-25): the reader-facing options every host shares, one row each - the
 // default, the bounds, when a change takes effect and where it travels. See optionsVocabulary.ts.
 export {

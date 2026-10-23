@@ -86,4 +86,10 @@ describe("host contract version stamp", () => {
         const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
         expect(maj > 1 || (maj === 1 && min >= 17)).toBe(true);
     });
+
+    it("the openUrl and copyText host services are announced by the version that adds them (1.18.0)", () => {
+        // A chart generated against an older stamp must not assume a link can open or a copy can reach the clipboard.
+        const [maj, min] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(maj > 1 || (maj === 1 && min >= 18)).toBe(true);
+    });
 });
