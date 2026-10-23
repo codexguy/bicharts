@@ -97,6 +97,8 @@ export type {
     LLMRequestCodeResult,
     LLMResultNotice,
     GetLicenseStatusResult,
+    ShareAskWire,
+    ShareTargetWire,
 } from "./models";
 
 // Column-detail helpers.

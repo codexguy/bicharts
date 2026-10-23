@@ -189,6 +189,14 @@ export {
     type ProductFeedbackPayload, type ProductFeedbackIdentity, type ProductFeedbackHost,
 } from "./productFeedback";
 
+// The quiet "share it / rate it" line beside it. The service decides whether to ask and sends every URL; the line draws
+// only https links in the service's order and opens nothing itself (the host's `open` does).
+export {
+    mountShareRateLine, shareRateLineModel,
+    type ShareRateLine, type ShareRateLineOptions, type ShareRateText, type ShareRateModel, type ShareLink,
+    type ShareAskWire, type ShareTargetWire,
+} from "./shareRate";
+
 // Where the "what fits?" list breaks into groups. The server decides the ORDER; hosts have to
 // notice the boundaries and label them identically, or a preview block floated to the top reads
 // as the highest-ranked charts in one host and as an unlabelled oddity in the other.

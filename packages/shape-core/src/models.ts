@@ -1222,6 +1222,21 @@ export type LLMResultNotice =
         text?: string,
     };
 
+/** The share-and-rate block a landing status answer may carry (GetLicenseStatusResult.shareAsk, and the Excel
+ *  view-status answer's). Either casing is accepted, because the hosts' status calls serialise differently. */
+export interface ShareAskWire {
+    productUrl?: string; ProductUrl?: string;
+    rateUrl?: string; RateUrl?: string;
+    targets?: ShareTargetWire[]; Targets?: ShareTargetWire[];
+}
+
+/** One network in a ShareAskWire: its short id ("li", "fb", "x"), its name as drawn, and its compose window. */
+export interface ShareTargetWire {
+    id?: string; Id?: string;
+    label?: string; Label?: string;
+    url?: string; Url?: string;
+}
+
 export type GetLicenseStatusResult =
     {
         errorMessage: string,
@@ -1309,6 +1324,11 @@ export type GetLicenseStatusResult =
         // Undefined from a server older than this field, which reads correctly as "no split
         // available" rather than as zero server time.
         serverMs?: number,
+        // THE SHARE-AND-RATE ASK. Present = the landing page may draw its quiet "share it / rate it"
+        // line with these URLs; absent = draw nothing. The service decides (the author has drawn a
+        // chart, a listing exists) and builds every URL; the client never builds one. Undefined from
+        // a server older than this field, which reads correctly as "don't ask".
+        shareAsk?: ShareAskWire | null,
         // ModelCode of the catalog's default (LLMModel.IsDefault=1) row,
         // pre-filtered to active and within its effective window. The
         // client uses this to order the freemium picker so the default
