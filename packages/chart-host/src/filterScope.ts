@@ -14,9 +14,9 @@
 //     clears it (the chart's own toggle - nothing for the page to write);
 //   - Ctrl/Cmd/Shift-click adds or removes one key;
 //   - clear() from the page (a chip, a button) clears it AND the chart's marks;
-//   - new data keeps a selection whose key is still drawn and clears one whose key is gone;
+//   - new data keeps the selection, a key it no longer draws included (the chart says how many are hidden);
 //   - every change says why: "click", "clear" (the chart's own clear gesture), "page" (code set
-//     or cleared it), "data" (new data dropped its key) - the explicit clear a host can't miss.
+//     or cleared it), "data" (kept for compatibility; nothing in this package sends it any more).
 //
 // A SCOPE is the page's set of filters, for a chip bar and a clear-all. A filter works without
 // one.
@@ -409,9 +409,8 @@ export function createFilterScope(): FilterScope {
 
 export interface FilterBinding {
     /**
-     * Call after the chart is handed new data. A selection whose key is still drawn is repainted;
-     * one whose key is gone is cleared (reason "data") when this chart made it. An empty payload is
-     * treated as data still arriving, not as the key being gone.
+     * Call after the chart is handed new data. The selection is repainted where its keys are drawn now, and a key the new
+     * rows do not carry stays selected (the chart is told how many through hostSelection.hidden): new data never clears it.
      */
     reconcile(): void;
     /** Repaint the filter's selection onto the chart's marks. */
@@ -470,19 +469,6 @@ const sortedEq = (a: readonly number[], b: readonly number[]) => {
  * subscribers with source "host", which this binding (and a chart group) never republishes.
  */
 export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOptions): FilterBinding {
-    // WHO MADE THE SELECTION. Only a selection made by a click on the chart bound to the filter is
-    // that chart's to drop when its data no longer draws it; one the page set (a restored link, a
-    // button) stays. Kept per filter rather than per binding so it survives a remount: a chart
-    // that unmounts while its query reloads comes back as a new binding, adopts the selection it
-    // made, and drops it if the new rows don't carry it.
-    const token = {};
-    const ownerKeys = () => keysString(filter.keys);
-    const isMine = () => { const o = owners.get(filter); return !!o && o.token === token && o.keys === ownerKeys(); };
-    {
-        const o = owners.get(filter);
-        if (o && o.orphan && o.keys === ownerKeys()) owners.set(filter, { token, keys: o.keys, orphan: false });
-    }
-
     const wanted = (): number[] => {
         if (!filter.active) return [];
         const out: number[] = [];
@@ -528,14 +514,8 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         const rows = idxs.map(i => opts.rowAt(i)).filter((r): r is Record<string, unknown> => !!r);
         if (!rows.length && !keep.length) return;
         filter.selectRows(rows, "click", keep);
-        owners.set(filter, { token, keys: ownerKeys(), orphan: false });
     });
-    const offFilter = filter.onChange(() => {
-        // Another hand moved the filter: the selection is no longer the one a click here made.
-        const o = owners.get(filter);
-        if (o && o.keys !== ownerKeys()) owners.delete(filter);
-        paint();
-    });
+    const offFilter = filter.onChange(() => paint());
 
     // LINKED HOVER: this chart's hovered mark sets the filter's hovered key; any hovered key lights this chart's marks.
     const el = opts.container ?? null;
@@ -570,20 +550,11 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
     }
 
     return {
+        // NEW DATA NEVER DROPS A SELECTION (contract 1.21.0). A key the new rows do not carry stays selected, whoever selected
+        // it, as Power BI keeps a selected row a slicer hid: the page goes on filtering by it, the chip goes on naming it, and the
+        // chart is told how many of its keys it cannot show (hostSelection.hidden) so it can say so and offer a clear. It used
+        // to be cleared here (reason "data") when this chart had made it, which lost a reader's pick to someone else's filter.
         reconcile() {
-            if (filter.active && opts.rowCount() > 0 && isMine()) {
-                const drawn = new Set<string>();
-                const n = opts.rowCount();
-                for (let i = 0; i < n; i++) {
-                    const r = opts.rowAt(i);
-                    if (r) drawn.add(keyString(keyOfRow(r, filter.columns)));
-                }
-                const keep = filter.keys.filter(k => drawn.has(keyString(k)));
-                if (keep.length !== filter.keys.length) {
-                    filter.set(keep, "data");
-                    return;                          // the filter's own change repaints
-                }
-            }
             paint();
         },
         paint,
@@ -592,15 +563,9 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
             offFilter();
             offHoverDom();
             offHover();
-            const o = owners.get(filter);
-            if (o && o.token === token) owners.set(filter, { ...o, orphan: true });
         },
     };
 }
-
-/** Per filter: the binding whose click made the current selection, and that selection's keys. */
-const owners = new WeakMap<Filter, { token: object; keys: string; orphan: boolean }>();
-const keysString = (keys: readonly FilterKey[]) => keys.map(k => keyString(k)).sort().join("|");
 
 // ── Microsoft's visuals ─────────────────────────────────────────────────────────
 

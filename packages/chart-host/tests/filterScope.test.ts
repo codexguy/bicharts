@@ -208,7 +208,9 @@ describe("bindFilter: one chart, one filter", () => {
         expect(selected()).toEqual(["IND"]);
     });
 
-    it("new data that drops the key clears the filter, reason 'data' - never silently", () => {
+    // The rule changed (contract 1.21.0): a selection a filter hid is KEPT, as Power BI keeps it, and the chart is told how many of
+    // its keys it cannot show (hostSelection.hidden) so it can say so. It used to be cleared here with reason "data".
+    it("new data that drops the key keeps the filter - the chart is told one selected key is hidden", () => {
         const f = createFilter("CountryCode");
         const seen: FilterChangeReason[] = [];
         f.onChange((_, r) => seen.push(r));
@@ -217,8 +219,9 @@ describe("bindFilter: one chart, one filter", () => {
         data = payload(["AUS", "USA"]);
         host.setData(data);
         b.reconcile();
-        expect(f.active).toBe(false);
-        expect(seen).toEqual(["click", "data"]);
+        expect(f.value).toBe("CHL");
+        expect(seen).toEqual(["click"]);
+        expect(selected()).toEqual([]);
     });
 
     it("an empty payload is data still arriving: the selection stays", () => {

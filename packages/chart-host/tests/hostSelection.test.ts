@@ -130,14 +130,34 @@ describe("a filter keyed by value, narrowed by another filter (React's useBicFil
         expect([...f.values]).toEqual(["Bo"]);
     });
 
-    it("a selection this chart made is still cleared when new data drops its keys (the existing rule)", async () => {
+    it("a selection this chart made is KEPT when new data drops its keys, and the chart is told how many are hidden", async () => {
+        const f = createFilter("Name");
+        const seen: string[] = [];
+        f.onChange((_, r) => seen.push(r));
+        const b = bindFilter(host, f, payloadRowReader(() => data));
+        publish([0, 1, 3]);                                           // Ada, Bo, Di, made here
+        data = payload(OPEN);                                         // another filter hides Bo
+        host.setData(data);
+        await host.rendered;
+        b.reconcile();
+        expect([...f.values].sort()).toEqual(["Ada", "Bo", "Di"]);
+        expect(seen).toEqual(["click"]);                              // no "data" clear
+        expect(told().at(-1)).toEqual({ rows: [0, 1], hidden: 1 });  // Ada and Di in view, Bo hidden
+        publish([0, 1, 2], true);                                     // tick Gus among the rows in view: Bo rides along
+        expect([...f.values].sort()).toEqual(["Ada", "Bo", "Di", "Gus"]);
+    });
+
+    it("Clear all (the clear form) still clears everything, the hidden keys too", async () => {
         const f = createFilter("Name");
         const b = bindFilter(host, f, payloadRowReader(() => data));
-        publish([0, 1]);                                              // Ada, Bo, made here
+        publish([0, 1]);                                              // Ada, Bo
         data = payload(OPEN);
         host.setData(data);
         await host.rendered;
         b.reconcile();
-        expect([...f.values]).toEqual(["Ada"]);
+        expect([...f.values].sort()).toEqual(["Ada", "Bo"]);
+        el.dispatchEvent(new CustomEvent(XFILTER_REFRESH_EVENT, { detail: { clear: true, source: "user" } }));
+        expect(f.active).toBe(false);
+        expect(told().at(-1)).toEqual({ rows: [], hidden: 0 });
     });
 });
