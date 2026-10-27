@@ -79,6 +79,8 @@ import { resolve, dirname, join } from "node:path";
 // 800 -> 820 KB, deliberately, as ordinary growth, measured first. A note's badge now follows a box that scrolls
 // inside the chart, and a chart type can ask for a small dot instead, about 3 KB, which took the closure to 802 KB.
 // No geometry is in the closure; closure (~802 KB) + the smallest map asset (223 KB) is ~1025 KB, far above 820.
+// Province maps stay off this entry: "@bicharts/chart-host/provinces" carries the geometry and the admin-1 lookup loader,
+// and a host hands a province binding its join; what remains here is the point cascade's lookup tiers.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
 const limitKB = Number(process.argv[3] ?? 820);

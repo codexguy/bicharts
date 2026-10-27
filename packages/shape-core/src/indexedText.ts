@@ -13,7 +13,8 @@
 import { LLMColumnWithValue } from "./models";
 import { detectOrdinalDomain, safeDistinctValuesToShip, isOrdinalFriendlyName } from "./ordinalDetector";
 import { detectGeo } from "./geoDetector";
-import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion } from "./geoExtent";
+import { summarizeCountryRegionsWeighted, summarizeGeoExtent, countryRegion, type GeoExtentSummary } from "./geoExtent";
+import { measureAdmin1Columns } from "./admin1Signals";
 
 import { detectFormatSignature } from "./formatDetector";
 import { monthLookupFor, monthWordReadings, normalizeMonthKey, splitMonthPeriod } from "./monthNames";
@@ -731,6 +732,14 @@ export class IndexedText implements IValueCollection {
     public emitLegacyAggAliases: boolean = false;
 
     /**
+     * THE READER'S "DERIVE PROVINCES" SETTING (default on). Off, a province map is offered only on a real province
+     * column: no city column is measured for how it rolls up to provinces, and coordinates are not offered for placing
+     * by province, so the server, which reads those figures, offers nothing that rests on a derivation. Province
+     * columns are still recognized either way. Set before the first getColumnsWithStats.
+     */
+    public deriveProvinces: boolean = true;
+
+    /**
      * SET BY A HOST WHOSE DATE CELLS ARE THE READER'S LOCAL WALL CLOCK (a Power BI date-time field). When on, every date
      * column that carries a time of day (datesCarryTimeOfDay over the whole column) is profiled - bounds, distinct keys,
      * cadence - and written to CSV at its UTC wall clock (utcWallClock), so what the server reads names the reader's own
@@ -1076,6 +1085,34 @@ export class IndexedText implements IValueCollection {
             colTwoValues[cidx] = vals.size === 2 ? ([...vals.keys()].sort() as [string, string]) : null;
 
             cidx++;
+        }
+
+        // PROVINCE pass: province kinds and city rollup measurements, through the hosted admin-1 lookup. A no-op until a
+        // host registers the lookup, so a profile taken before (or without) it is exactly what it always was.
+        measureAdmin1Columns(this._cols, this._rows, { cities: this.deriveProvinces }).forEach((sig, i) => {
+            const c = this._cols[i];
+            if (sig.kind) {
+                c.geoKind = sig.kind; c.geoMatchPct = sig.matchPct;
+                if (sig.ambiguous) c.geoAmbiguous = true;
+            }
+            if (sig.rollupPct !== undefined) c.admin1RollupPct = sig.rollupPct;
+            if (sig.regionCount !== undefined) c.admin1RegionCount = sig.regionCount;
+            if (sig.countryCount !== undefined) c.admin1CountryCount = sig.countryCount;
+            if (sig.dominantRegion) { c.dominantGeoRegion = sig.dominantRegion; c.dominantGeoRegionPct = sig.dominantRegionPct; }
+        });
+
+        // COORDINATES' FRAME: the latitude column of a lat/lon pair carries the continent frame holding most of the points,
+        // so a continent map can be offered on where the points draw. Its admin1RollupPct (the share a province map can
+        // place, i.e. the points inside that frame) is only sent while the reader derives provinces: coordinates placed
+        // by province are a derivation, the same as cities rolled up.
+        const ext = this.getGeoExtent();
+        if (ext && ext.dominantFrame && this._geoExtentLatIdx >= 0) {
+            const lat = this._cols[this._geoExtentLatIdx];
+            if (!lat.geoKind) {
+                lat.dominantGeoRegion = ext.dominantFrame;
+                lat.dominantGeoRegionPct = ext.dominantFramePct;
+                if (this.deriveProvinces) lat.admin1RollupPct = ext.dominantFramePct;
+            }
         }
 
         // Relational ADDITIVITY pass (2026-06-05). Runs AFTER the per-column loop
@@ -1930,6 +1967,7 @@ export class IndexedText implements IValueCollection {
                         col.dominantGeoRegion = reg.dominantGeoRegion;
                         col.dominantGeoRegionPct = reg.dominantGeoRegionPct;
                         col.geoRegionCount = reg.regionCount;
+                        if (reg.middleEastPct > 0) col.middleEastPct = reg.middleEastPct;
                     }
                 }
             }
@@ -2016,8 +2054,7 @@ export class IndexedText implements IValueCollection {
     //
     // Null when the data carries no coordinate pair, which is the common case and costs nothing:
     // the scan below is over column NAMES until a pair is actually found.
-    public getGeoExtent(): { pctUsa: number, pctNa: number, latP5: number, latP95: number,
-                             lonP5: number, lonP95: number, n: number } | null {
+    public getGeoExtent(): GeoExtentSummary | null {
         if (this._geoExtentComputed) return this._geoExtent;
         this._geoExtentComputed = true;
         this._geoExtent = null;
@@ -2037,6 +2074,7 @@ export class IndexedText implements IValueCollection {
                 && c.geoKind.indexOf("country") === 0) countryIdx = i;
         });
         if (latIdx < 0 || lonIdx < 0) return null;
+        this._geoExtentLatIdx = latIdx;
 
         const pts: Array<{ lat: number | null, lon: number | null, country?: string | null }> = [];
         for (const row of this._rows) {
@@ -2053,9 +2091,9 @@ export class IndexedText implements IValueCollection {
         this._geoExtent = summarizeGeoExtent(pts);
         return this._geoExtent;
     }
-    private _geoExtent: { pctUsa: number, pctNa: number, latP5: number, latP95: number,
-                          lonP5: number, lonP95: number, n: number } | null = null;
+    private _geoExtent: GeoExtentSummary | null = null;
     private _geoExtentComputed: boolean = false;
+    private _geoExtentLatIdx: number = -1;
 
     // Class- and script-preserving mask of one sample value. See sampleMask.ts for why the
     // classes are Unicode categories and the pools are per script (2026-09-24: Cyrillic and
@@ -2300,6 +2338,18 @@ export class IndexedText implements IValueCollection {
     public getOriginalRowIndex(i: number): number {
         if (i < 0 || i >= this._origIndices.length) return -1;
         return this._origIndices[i];
+    }
+
+    /**
+     * Forget the computed column statistics, keeping the rows, so the next getColumnsWithStats measures again. For a host
+     * whose profile changed inputs after the first measurement - the admin-1 lookup arrived, or the reader toggled
+     * deriveProvinces - without re-adding every row.
+     */
+    public invalidateStats(): void {
+        this._computedStatsForLevel = null;
+        this._geoExtentComputed = false;
+        this._geoExtent = null;
+        this._geoExtentLatIdx = -1;
     }
 
     public reset(): void {

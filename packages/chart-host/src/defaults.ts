@@ -165,6 +165,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // generated code); HC substitution has already happened in the caller.
         geoLandColor: p.geoLandColor || themedLand(p) || undefined,
         geoNoDataColor: p.geoNoDataColor || undefined,
+        // Borders on unless the host says false: a province map of several countries needs them to read.
+        geoBorders: p.geoBorders !== false,
         aggregation: (p.aggregation == null ? "" : String(p.aggregation)) || undefined,
         // A recognised value wins, anything else falls to the default: an unknown string must
         // never reach a chart as a live mode. Both of these are read on EVERY render, so a

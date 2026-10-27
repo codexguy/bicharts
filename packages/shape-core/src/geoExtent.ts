@@ -37,6 +37,37 @@ export interface GeoExtentSummary {
      *  is not the same claim as one from three thousand, and a consumer weighting the signal
      *  needs to know which it has. */
     n: number;
+    /** Rows inside each continent map's frame window (REGION_FRAME_WINDOWS), 0..100. The windows
+     *  overlap at their edges (Turkey sits in Europe's and Asia's), so the shares need not sum to 100. */
+    regionPct?: Record<RegionFrame, number>;
+    /** The frame holding the most rows, and its share. Ties resolve by name, so it is stable. */
+    dominantFrame?: RegionFrame;
+    dominantFramePct?: number;
+}
+
+/** The continents a map frame is drawn for. */
+export type RegionFrame = "europe" | "asia" | "africa" | "south-america" | "north-america" | "oceania";
+
+/**
+ * Each continent map's WINDOW, [lonMin, latMin, lonMax, latMax] - the rectangle the continent maps fit, so "inside the
+ * frame" means the same thing when a table is offered a map and when the map is drawn. A lonMax past 180 wraps the
+ * antimeridian (Oceania reaches the Pacific islands east of it).
+ */
+export const REGION_FRAME_WINDOWS: Readonly<Record<RegionFrame, readonly [number, number, number, number]>> = {
+    "europe": [-25, 34, 45, 71.5],
+    "asia": [25, -11, 150, 56],
+    "africa": [-26, -35, 58, 38],
+    "south-america": [-92, -56, -34, 13],
+    "north-america": [-168, 7, -52, 72],
+    "oceania": [110, -48, 200, 20],
+};
+
+/** Is a coordinate inside a continent's frame window? */
+export function inRegionFrame(lat: number, lon: number, frame: RegionFrame): boolean {
+    const w = REGION_FRAME_WINDOWS[frame];
+    if (!w || lat < w[1] || lat > w[3]) return false;
+    if (lon >= w[0] && lon <= w[2]) return true;
+    return w[2] > 180 && lon + 360 >= w[0] && lon + 360 <= w[2];
 }
 
 /** What a country column says about its own region mix. */
@@ -47,6 +78,10 @@ export interface CountryRegionSummary {
     /** Distinct regions with at least one country present. A single-region set is the
      *  gray-world case; a spread of four is a genuinely global one. */
     regionCount: number;
+    /** Share of resolved rows in the MIDDLE EAST, 0..100. An OVERLAPPING frame: the regions above partition the world, so
+     *  a Middle East table splits between Asia and Africa (and Cyprus, Europe) and no single region holds it; this share
+     *  is what offers the Middle East map. */
+    middleEastPct: number;
     /** Country values that resolved to a region at all. */
     n: number;
 }
@@ -97,12 +132,17 @@ export function summarizeGeoExtent(
 ): GeoExtentSummary | null {
     const lats: number[] = [], lons: number[] = [];
     let usa = 0, na = 0;
+    const frames = Object.keys(REGION_FRAME_WINDOWS) as RegionFrame[];
+    const inFrame = new Map<RegionFrame, number>(frames.map(f => [f, 0]));
     for (const p of points) {
         const lat = p?.lat, lon = p?.lon;
         if (typeof lat !== "number" || typeof lon !== "number") continue;
         if (!isFinite(lat) || !isFinite(lon)) continue;
         if (lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
         lats.push(lat); lons.push(lon);
+        // The frame shares are geometric on purpose: a frame is a rectangle on the map, and a country's continent is not
+        // where its points draw (a French row in Reunion sits in Africa's window, not Europe's).
+        for (const f of frames) if (inRegionFrame(lat, lon, f)) inFrame.set(f, inFrame.get(f)! + 1);
         // COUNTRY FIRST when the caller has one. It is an exact answer where the boxes are an
         // approximation, and the one place they disagree is the populous one — the Great Lakes
         // and St. Lawrence corridor, where Canada lies south of much of the northern US.
@@ -120,12 +160,21 @@ export function summarizeGeoExtent(
     if (n < minPoints) return null;
     lats.sort((a, b) => a - b);
     lons.sort((a, b) => a - b);
+    const regionPct = {} as Record<RegionFrame, number>;
+    let dominantFrame: RegionFrame | undefined, best = 0;
+    for (const f of [...frames].sort()) {
+        const c = inFrame.get(f)!;
+        regionPct[f] = round1((c / n) * 100);
+        if (c > best) { best = c; dominantFrame = f; }
+    }
     return {
         pctUsa: round1((usa / n) * 100),
         pctNa: round1((na / n) * 100),
         latP5: round1(quantile(lats, 0.05)), latP95: round1(quantile(lats, 0.95)),
         lonP5: round1(quantile(lons, 0.05)), lonP95: round1(quantile(lons, 0.95)),
         n,
+        regionPct,
+        ...(dominantFrame ? { dominantFrame, dominantFramePct: round1((best / n) * 100) } : {}),
     };
 }
 
@@ -236,6 +285,8 @@ export function summarizeCountryRegionsWeighted(
         n += c;
     }
     if (n < minCountries || !counts.size) return null;
+    let me = 0;
+    for (const [v, w] of entries) if (inMiddleEast(v)) me += typeof w === "number" && isFinite(w) && w > 0 ? w : 1;
     let best: GeoRegion = "europe", bestN = -1;
     // Ties resolve by the region's own name so the answer is deterministic across runs —
     // a signal that changes between identical renders is worse than no signal.
@@ -247,6 +298,21 @@ export function summarizeCountryRegionsWeighted(
         dominantGeoRegion: best,
         dominantGeoRegionPct: round1((bestN / n) * 100),
         regionCount: counts.size,
+        middleEastPct: round1((Math.min(me, n) / n) * 100),
         n,
     };
+}
+
+// The Middle East frame's 17 members: an OVERLAPPING set beside the partition above (Egypt stays Africa's, Iran Asia's,
+// Cyprus Europe's), the countries the Middle East map draws as members.
+const MIDDLE_EAST_ISO2 = new Set("AE BH CY EG IL IQ IR JO KW LB OM PS QA SA SY TR YE".split(" "));
+const MIDDLE_EAST_ISO3 = new Set([...MIDDLE_EAST_ISO2].map(a2 => ISO2_TO_ISO3.get(a2)).filter((x): x is string => !!x));
+
+/** Is a country value (ISO-2, ISO-3 or a name) one of the Middle East frame's members? */
+export function inMiddleEast(code: string | null | undefined): boolean {
+    if (!code) return false;
+    const raw = String(code).trim().toUpperCase();
+    if (MIDDLE_EAST_ISO2.has(raw) || MIDDLE_EAST_ISO3.has(raw)) return true;
+    const iso3 = countryIso3(String(code));
+    return !!iso3 && MIDDLE_EAST_ISO3.has(iso3);
 }

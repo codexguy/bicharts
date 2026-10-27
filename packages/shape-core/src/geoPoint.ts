@@ -41,6 +41,8 @@ import { ADMIN1_PACKED, ZIP3_PACKED, COUNTRY_PACKED } from "./geoPointTables.gen
 // a STATIC import, so it ships in every bundle. That is the point — see the note below.
 import { CITY_PACKED } from "./geoPointCities.generated";
 import { countryIso3, iso2ToIso3 } from "./geoCountryNames";
+import { admin1LookupRegistered, resolveCityAdmin1, resolveProvinceValue, provinceCenter } from "./admin1Lookup";
+import type { GeoRegion } from "./geoExtent";
 // ONE notion of "this cell is empty", shared with the role classifier — see matchQuality.
 import { isBlankLike } from "./matchQuality";
 
@@ -485,6 +487,12 @@ const ZIP_COUNTRIES = new Set(["USA", "PRI", "VIR", "GUM", "ASM", "MNP"]);
  */
 export const NORTH_AMERICA_COUNTRIES = new Set(["USA", "CAN", "MEX"]);
 
+/** May a hosted-lookup tier place a point in this country on the map on screen? The North America map draws only its
+ *  three countries; any other declared map (or none) draws everywhere, the country tier's rule. */
+function inMapScope(iso3: string | null | undefined, mapKind: GeoMapKind | null | undefined): boolean {
+    return mapKind !== "north-america" || (!!iso3 && NORTH_AMERICA_COUNTRIES.has(iso3));
+}
+
 /** Resolve a state/province token ("TX", "Texas", "ON", "Ontario", "Jalisco") to its
  *  canonical admin1 key. Null when unrecognized. */
 export function resolveAdmin1(value: string | null | undefined): string | null {
@@ -652,6 +660,9 @@ export function resolveGeoPoint(args: {
     /** Which map's candidate rows the CITY tier may use (default "north-america", which
      *  is byte-identical to the pre-v2 candidate set). The WORLD map passes "world". */
     mapKind?: GeoMapKind | null;
+    /** The continent a continent bubble map shows: a province or city name that several countries share is narrowed to
+     *  that continent before it is called ambiguous. Read only by the hosted-lookup tiers. */
+    region?: GeoRegion | null;
 }): GeoPointResult | GeoPointAmbiguity | null {
     // 1. Explicit coordinates — trust the data over any table. TRIMMED first: a
     // whitespace-only string is "no value", but `+" "` coerces to 0, and an untrimmed
@@ -704,6 +715,9 @@ export function resolveGeoPoint(args: {
     // precision with the bad slot gone. Column-level evidence can tell which field is wrong;
     // a single row cannot.
     if (a1 && iso3 && admin1Iso3(a1) !== iso3) a1 = null;
+    // A continent map that is not North America cannot draw a US, Canadian or Mexican state, so the bundled state is no
+    // answer there: "Georgia" on a map of Asia is the country's capital region, not the US state.
+    if (a1 && args.region && args.region !== "north-america") a1 = null;
 
     // 2. City — the v2 COMMON matching rules (2026-08-02), identical for every
     //    point-map type; only the candidate SCOPE differs (row kind flags):
@@ -760,6 +774,21 @@ export function resolveGeoPoint(args: {
             if (distinct.size > 1) return { ambiguous: true, matches: distinct.size };
             // zero candidates in scope → fall through to the coarser tiers
         }
+        // 2b. City through the HOSTED admin-1 lookup, once a host has registered it: every town of 15,000+ worldwide,
+        //     where the bundled gazetteer stops at the larger cities. Reached only when the bundled tier had NO
+        //     candidate in scope, so nothing it placed before can move. The same rules hold: a state value must name
+        //     the city's own province (or the row falls to the province tier), the map's scope bounds the country, and
+        //     an ambiguity is terminal.
+        if (admin1LookupRegistered()) {
+            const hit = resolveCityAdmin1(String(args.city), { country: args.country ?? null, region: args.region ?? null });
+            if (hit.status === "ambiguous") return { ambiguous: true, matches: hit.candidates };
+            if (hit.status === "resolved" && inMapScope(iso2ToIso3(hit.cc), args.mapKind)) {
+                const stateRaw = args.state === undefined || args.state === null ? "" : String(args.state).trim();
+                const want = stateRaw ? resolveProvinceValue(stateRaw, { country: args.country ?? null, region: args.region ?? null }) : null;
+                if (!want || (want.status === "resolved" && want.provinceId === hit.provinceId))
+                    return { lat: hit.lat, lon: hit.lon, precision: "city" };
+            }
+        }
     }
 
     // 3. ZIP-5 / ZIP-3 -> the 3-digit prefix centroid. Try each interpretation in
@@ -790,6 +819,20 @@ export function resolveGeoPoint(args: {
     if (a1) {
         const row = adminIndex().get(normalizePlaceName(a1));
         if (row) return { lat: row.lat, lon: row.lon, precision: "state" };
+    }
+    // 4b. Any country's province, through the hosted lookup's centers (population-weighted over the province's cities,
+    //     else its largest part's center). After the bundled US/Canada/Mexico tier, so those rows place exactly as
+    //     before. A province the row's country contradicts is dropped, as the bundled tier drops a state; a name that
+    //     still names several provinces after the country and the map's continent narrowed it is refused and counted.
+    if (!a1 && args.state !== undefined && args.state !== null && String(args.state).trim() && admin1LookupRegistered()) {
+        const p = resolveProvinceValue(String(args.state), { country: args.country ?? null, region: args.region ?? null });
+        if (p.status === "ambiguous") return { ambiguous: true, matches: p.candidates };
+        if (p.status === "resolved") {
+            const pIso3 = iso2ToIso3(p.provinceId.split("-")[0]);
+            const center = provinceCenter(p.provinceId);
+            if (center && (!iso3 || pIso3 === iso3) && inMapScope(pIso3, args.mapKind))
+                return { lat: center[1], lon: center[0], precision: "state" };
+        }
     }
 
     // 5. COUNTRY alone — the coarsest honest answer, and the point is the country's LARGEST
@@ -898,6 +941,8 @@ export function buildGeoPointColumns(
      *  blank, so an unplaced row can be reported by name. See describeRow. */
     rows: Array<{ lat?: any; lon?: any; city?: any; state?: any; zip?: any; country?: any; label?: any }>,
     mapKind?: GeoMapKind | null,
+    /** The continent a continent bubble map shows (resolveGeoPoint's `region`). Absent: no continent narrowing. */
+    region?: GeoRegion | null,
 ): GeoPointColumns {
     const lat: (number | null)[] = new Array(rows.length);
     const lon: (number | null)[] = new Array(rows.length);
@@ -917,7 +962,7 @@ export function buildGeoPointColumns(
 
     for (let i = 0; i < rows.length; ++i) {
         const r = rows[i];
-        const hit = resolveGeoPoint({ ...r, mapKind });
+        const hit = resolveGeoPoint({ ...r, mapKind, region });
         if (isGeoPointAmbiguity(hit)) {
             // v2 rule: multiple possible matches → NOT plotted, reported as info. Null
             // coordinates on purpose — that is also what keeps OLDER generated chart code

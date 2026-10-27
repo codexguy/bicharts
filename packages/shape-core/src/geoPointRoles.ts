@@ -37,6 +37,7 @@
 
 import { normalizePlaceName, resolveAdmin1, isKnownCity, zipPrefixCandidates, type GeoMapKind } from "./geoPoint";
 import { countryIso3 } from "./geoCountryNames";
+import { admin1LookupRegistered, resolveProvinceValue } from "./admin1Lookup";
 import { ROLE_MATCH_PCT, CITY_ROLE_MATCH_PCT, isBlankLike } from "./matchQuality";
 // ONE tokenizer for "is this column NAMED like a ZIP" — geoDetector owns it and both
 // classifiers have to agree on the answer. (One-directional: geoDetector never imports back.)
@@ -224,11 +225,21 @@ export function countryMatchPct(values: Array<unknown>): number {
 }
 
 /** Share of DISTINCT values that resolve to a state/province, 0..100 (one decimal). */
+/** A state or province value: a US / Canadian / Mexican one from the bundled table, or - once a host has registered the
+ *  hosted admin-1 lookup - any country's first-level division, by code or by name. A name several countries share
+ *  (Punjab, Limburg) still IS a province name; which one is decided per row, with the row's country. */
+function isProvinceValue(v: string): boolean {
+    if (resolveAdmin1(v)) return true;
+    if (!admin1LookupRegistered()) return false;
+    // The values arrive normalized (punctuation as spaces), so an ISO 3166-2 code "FR-IDF" reads "fr idf" here.
+    return resolveProvinceValue(v).status !== "unmatched" || resolveProvinceValue(v.trim().replace(/\s+/g, "-")).status !== "unmatched";
+}
+
 export function admin1MatchPct(values: Array<unknown>): number {
     const d = distinctNormalized(values);
     if (d.length === 0) return 0;
     let n = 0;
-    for (const v of d) if (resolveAdmin1(v)) n++;
+    for (const v of d) if (isProvinceValue(v)) n++;
     return Math.round((n / d.length) * 1000) / 10;
 }
 
@@ -432,8 +443,8 @@ export function resolvePointRoles(
             // any column to one distinct value, and demanding two flatly would drop the
             // state role on every single-row subset — degrading precision for no reason. One
             // "TX" is proof enough; one "CA" is not, because it is equally Canada.
-            const hits = distinctMatches(vals, v => !!resolveAdmin1(v));
-            const unambiguous = distinctMatches(vals, v => !!resolveAdmin1(v) && !isAmbiguousCountryState(v, mapKind));
+            const hits = distinctMatches(vals, isProvinceValue);
+            const unambiguous = distinctMatches(vals, v => isProvinceValue(v) && !isAmbiguousCountryState(v, mapKind));
             if (hits < MIN_DISTINCT_BACKFILL && unambiguous < 1) continue;
             if (!best || pct > best.pct) best = { name: c, pct };
         }

@@ -91,6 +91,10 @@ export {
     loadGeo, geoFromCache, registerGeo, registerGeoAsset, geoAssetFor, clearGeoCache,
     type GeoAssetName,
 } from "./geoLazy";
+// Province maps (the continent geometry, its render key, placing a coordinate, the admin-1 lookup loader) are their own
+// entry, "@bicharts/chart-host/provinces", off the main entry's eager closure.
+// The admin-1 lookup (cities and first-level divisions) is SERVED, not bundled: a host loads it once, on the first
+// table that could use it, before profiling. Until it arrives province maps are not offered.
 // The city gazetteer is BUNDLED in the resolver (shape-core), deliberately — a served table
 // silently coarsens by-name point maps in air-gapped and shared-report sessions, and the
 // Power BI sandbox has no durable cache to soften that. registerCityTable is the escape
@@ -103,7 +107,7 @@ import { registerCityTable as _registerCityTable } from "@bicharts/shape-core";
 /** REPLACE the bundled city gazetteer with another packed table. Rarely needed — see the
  *  note above registerCityTable in shape-core's geoPoint.ts before using it. */
 export function registerCityTable(packed: string): void { _registerCityTable(packed); }
-export { buildRenderPayload, type RenderPayload, type GeoPointBinding } from "./payload";
+export { buildRenderPayload, type RenderPayload, type GeoPointBinding, type GeoBinding, type GeoProvinceReport, type ProvinceJoin } from "./payload";
 // Which clock a chart reads its dates in - a host asks before passing buildRenderPayload opts.utcDays.
 export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./dateCells";
 // requiredD3Plugins + explainRenderFailure are the two halves of the d3-plugin story (GAP-6):

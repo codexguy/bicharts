@@ -170,7 +170,7 @@ const COUNTRY_NAME_TOKENS = new Set(["country", "countries", "nation", "national
 const STATE_NAME_TOKENS = new Set(["state", "province", "st"]);
 export const ZIP_NAME_TOKENS = new Set(["zip", "zipcode", "postal", "postcode", "plz"]);
 const COUNTY_NAME_TOKENS = new Set(["county", "fips", "borough", "parish"]);
-const CITY_NAME_TOKENS = new Set(["city", "cities", "town", "municipality", "metro", "location", "place"]);
+export const CITY_NAME_TOKENS = new Set(["city", "cities", "town", "municipality", "metro", "location", "place"]);
 
 export function hasAnyToken(columnName: string | undefined, tokens: Set<string>): boolean {
     if (!columnName) return false;
@@ -197,7 +197,11 @@ export type GeoKind =
     // Abidjan / Aachen / Abeokuta must not make NORTH AMERICA (Bubbles) offerable, whose
     // basemap cannot show any of them. World declares this one in PointGeoKinds; NA does
     // not, exactly as they already differ over the country kinds.
-    | "city-name-world";
+    | "city-name-world"
+    // A PROVINCE column: first-level divisions as ISO 3166-2 codes or as names. Set only by the province post-pass
+    // (admin1Signals.ts), and only once a host has registered the hosted admin-1 lookup; detectGeo never returns them.
+    | "admin1-code"
+    | "admin1-name";
 
 export type GeoDetectionResult = {
     geoKind: GeoKind;
@@ -212,7 +216,7 @@ const THRESHOLD_PCT = ROLE_MATCH_PCT;
 // Dictionary-word kinds (country/state NAMES) collide with person/place names
 // (Chad, Georgia, Jordan). Require either a decent number of matched distinct
 // values OR a geo-ish column name, so a 3-name roster doesn't read as countries.
-const NAME_KIND_MIN_DISTINCT = 5;
+export const NAME_KIND_MIN_DISTINCT = 5;
 // Cap the work on pathological high-cardinality free-text columns. Real geo
 // columns are far below this (≤ ~250 countries, 56 states, ~42k ZIPs). ZIP/FIPS
 // are cheap regex either way; this only bounds the dictionary path.

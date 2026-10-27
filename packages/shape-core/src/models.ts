@@ -538,6 +538,16 @@ export type LLMColumnWithValue =
         dominantGeoRegion?: string
         dominantGeoRegionPct?: number
         geoRegionCount?: number
+        // The share of resolved rows in the Middle East frame (an overlapping frame beside the partition above), 0..100.
+        // Sent only when some row is there; absent on older clients, so the Middle East map is simply not offered.
+        middleEastPct?: number
+        // PROVINCES, read through the hosted admin-1 lookup (absent until a host registers it). On a CITY column: the
+        // share of its distinct (city, country) pairs that resolve to exactly one province, and how many provinces and
+        // countries they reach; dominantGeoRegion/Pct then describe where those rows sit. On a PROVINCE column
+        // (geoKind admin1-code / admin1-name): how many provinces and countries its values reach.
+        admin1RollupPct?: number
+        admin1RegionCount?: number
+        admin1CountryCount?: number
     }
 
 // Raw setting/viewport/shape state shipped on every Generate. Server's
@@ -653,6 +663,12 @@ export type LLMClientHints =
          * host learned the gesture.
          */
         supportsLasso?: boolean,
+        /**
+         * Can this host draw a PROVINCE map: load the hosted admin-1 lookup before profiling, fetch a continent's province
+         * geometry and build the province join (chart-host's "@bicharts/chart-host/provinces" entry)? Absent or false
+         * means province maps are not offered, and an explicit pick of one is refused.
+         */
+        supportsProvinceMaps?: boolean,
         favorLimitTo?: string,
         favorLimitCount?: number,
         groupToOthersLabel?: string,
@@ -705,6 +721,8 @@ export type LLMClientHints =
             pctUsa: number, pctNa: number,
             latP5: number, latP95: number, lonP5: number, lonP95: number,
             n: number,
+            // The continent frames' shares and the one holding most points (wire-additive; a server without them ignores them).
+            regionPct?: Record<string, number>, dominantFrame?: string, dominantFramePct?: number,
         },
         // LEVEL OF DETAIL: "High" | "Medium" | "Low", or absent for "Leave to
         // visual". How much of the data the viewer wants to SEE - every observation as its own
@@ -1186,6 +1204,12 @@ export type LLMRequestCodeResult =
         // Null for every non-geo chart.
         geoColumn?: string,
         geoKind?: string,
+        // A continent map names its continent (geoRegion) and a province map its level (geoGrain "admin1") and what
+        // placed its rows (geoSource: "admin1", "latlon" or "city"), so the host loads the continent's province geometry
+        // and builds the province join. Absent on every other chart, and on an older server.
+        geoRegion?: string,
+        geoGrain?: string,
+        geoSource?: string,
         // POINT-map render contract (2026-07-25). Sibling of geoColumn/geoKind but a
         // different job: those name ONE column whose values become a polygon join key;
         // these name the SEVERAL columns a COORDINATE can be resolved from, because the

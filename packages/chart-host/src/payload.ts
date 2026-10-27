@@ -15,7 +15,7 @@
 // through `paths`, so `tsc -b` failed where the bundler succeeded.
 import {
     buildGeoIsoColumn, isJoinGeoKind, buildGeoPointColumns, resolvePointRoles, type GeoKind,
-    normalizeLocalMidnightDates, anchorLocalWallClockDates,
+    normalizeLocalMidnightDates, anchorLocalWallClockDates, type GeoRegion,
 } from "@bicharts/shape-core";
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
@@ -39,6 +39,9 @@ export interface GeoPointBinding {
     // declaring its own scope. Absent = "north-america" — the pre-v2 candidate set
     // exactly, so an older caller that never sends this is byte-identical.
     mapKind?: GeoMapKind;
+    // The continent a continent bubble map shows (the generation's GeoRegion): a province or town name several
+    // countries share is narrowed to it before it is called ambiguous. Absent: no continent narrowing.
+    region?: string | null;
 }
 
 /** What a point binding's resolution ACHIEVED, so the chart can annotate honestly rather
@@ -72,9 +75,49 @@ export interface GeoPointReport {
     rolesRefused?: string[];
 }
 
+/** How a province map's rows were placed (geo binding with grain "admin1"), so the chart can say what its provinces
+ *  rest on: the reader's province values, their coordinates, or their cities rolled up. */
+export interface GeoProvinceReport {
+    /** Rows placed by each source. */
+    sources: { province: number; coordinates: number; city: number };
+    /** Rows whose city matched more than one province: not placed, never guessed. */
+    ambiguousRows: number;
+    ambiguousExamples: string[];
+    /** Rows whose coordinates landed in no province. */
+    unplacedPoints: number;
+}
+
+/** The province join a host hands a province-map binding: shape-core's buildProvinceIsoColumn. Typed here, not imported,
+ *  because the province code lives off this package's main entry (its eager budget): a host already loads shape-core to
+ *  profile, so it passes the function it has rather than this bundle carrying a second copy. */
+export type ProvinceJoin = (
+    rows: Array<{ province?: unknown; city?: unknown; country?: unknown; lat?: unknown; lon?: unknown }>,
+    opts: { provinceKind?: string | null; deriveProvinces?: boolean; locate?: (lat: number, lon: number) => string | null },
+) => { iso: (string | null)[]; source: ("province" | "coordinates" | "city" | null)[]; unmatched: string[]; matchedRows: number;
+       totalRows: number; ambiguousRows: number; ambiguousExamples: string[]; unplacedPoints: number };
+
+/** A geo binding. A province map adds `grain: "admin1"`, its continent and `join`; the province value, a blank province's
+ *  coordinates (through `locate`, from "@bicharts/chart-host/provinces" provinceLocator) and its city are then read in that
+ *  order (the city and coordinate columns may be named in `fallback` beside the bound column), unless the reader turned
+ *  deriving provinces off. A province binding without `join` builds no join column. */
+export interface GeoBinding {
+    column: string;
+    kind: string;
+    grain?: string | null;
+    region?: string | null;
+    fallback?: { city?: string | null; country?: string | null; lat?: string | null; lon?: string | null } | null;
+    deriveProvinces?: boolean;
+    /** Places a coordinate in its province (provinceLocator over the continent's geometry). Absent: coordinates do not place. */
+    locate?: ((lat: number, lon: number) => string | null) | null;
+    /** Builds the province join (shape-core buildProvinceIsoColumn). Required for grain "admin1". */
+    join?: ProvinceJoin | null;
+}
+
 export interface RenderPayload {
     columns: any[];
     rows: any[][];
+    /** Present only for a province map: what placed its rows. */
+    geoProvince?: GeoProvinceReport;
     // Present only when a geo binding was given: feeds options.geoUnmatched
     // ("N regions unmatched"). undefined for non-geo payloads.
     geoUnmatched?: { count: number; examples: string[] };
@@ -217,7 +260,7 @@ function resolvePointChannel(
             zip: p.zip ? r[p.zip] : null,
             country: p.country ? r[p.country] : null,
             label: labelCol ? r[labelCol] : null,
-        })), point?.mapKind);
+        })), point?.mapKind, (point?.region ?? null) as GeoRegion | null);
         pLat = built.lat; pLon = built.lon; pPrec = built.precisions;
         geoPoint = {
             precision: built.precision,
@@ -245,7 +288,7 @@ function resolvePointChannel(
 export function buildRenderPayload(
     cols: Array<{ name: string } & Record<string, any>>,
     rowObjs: Array<Record<string, any>>,
-    geo?: { column: string; kind: string } | null,
+    geo?: GeoBinding | null,
     point?: GeoPointBinding | null,
     // THE SECOND ENDPOINT (2026-08-15, origin-destination flow map). When present, `point`
     // is the ORIGIN and this is the DESTINATION, and the payload gains __geoLatD__ /
@@ -315,7 +358,31 @@ export function buildRenderPayload(
     // GeoKind but not a JOIN kind — building __geoIso__ from it nulls every row and
     // the choropleth draws blank with "N regions unmatched" = 100%. Skip instead: no
     // __geoIso__ appended → the archetype's guarded probe reports honestly.
-    if (geo && geo.column && geo.kind && isJoinGeoKind(geo.kind)) {
+    let geoProvince: GeoProvinceReport | undefined;
+    if (geo && geo.column && geo.grain && geo.grain.toLowerCase() === "admin1" && geo.join) {
+        // PROVINCE MAP: __geoIso__ holds the province id. The bound column is the province, the city or the latitude,
+        // whichever the server resolved; the other sources fill a blank province (shape-core buildProvinceIsoColumn).
+        const kind = (geo.kind || "").toLowerCase();
+        const fb = geo.fallback ?? {};
+        const isProvince = kind.startsWith("admin1-") || kind.startsWith("us-state-");
+        const latCol = kind === "latlon" ? geo.column : fb.lat ?? null;
+        const lonCol = fb.lon ?? (latCol ? longitudeBeside(cols.map(c => c.name)) : null);
+        const cityCol = kind.startsWith("city") ? geo.column : fb.city ?? null;
+        const locate = geo.locate ?? undefined;
+        const built = geo.join(rowObjs.map(r => ({
+            province: isProvince ? r[geo.column] : undefined,
+            city: cityCol ? r[cityCol] : undefined,
+            country: fb.country ? r[fb.country] : undefined,
+            lat: latCol ? r[latCol] : undefined,
+            lon: lonCol ? r[lonCol] : undefined,
+        })), { provinceKind: isProvince ? kind : null, deriveProvinces: geo.deriveProvinces, locate: locate ?? undefined });
+        geoIso = built.iso;
+        geoUnmatched = { count: built.totalRows - built.matchedRows, examples: built.unmatched.slice(0, 8) };
+        geoUnmatchedDistinct = built.unmatched.length;
+        const sources = { province: 0, coordinates: 0, city: 0 };
+        for (const s of built.source) if (s) sources[s]++;
+        geoProvince = { sources, ambiguousRows: built.ambiguousRows, ambiguousExamples: built.ambiguousExamples, unplacedPoints: built.unplacedPoints };
+    } else if (geo && geo.column && geo.kind && isJoinGeoKind(geo.kind)) {
         const built = buildGeoIsoColumn(rowObjs.map(r => r[geo.column]), geo.kind as GeoKind);
         geoIso = built.iso;
         geoUnmatched = { count: built.totalRows - built.matchedRows, examples: built.unmatched.slice(0, 8) };
@@ -401,6 +468,13 @@ export function buildRenderPayload(
         ...(rolesRefused.length ? { geoPointRefused: rolesRefused } : {}),
         ...(utcDayColumns ? { dateCellsAreUtcDays: true, utcDayColumns } : {}),
         ...(utcWallClockColumns ? { dateCellsAreUtcWallClock: true, utcWallClockColumns } : {}),
+        ...(geoProvince ? { geoProvince } : {}),
     };
+}
+
+/** The longitude column of a lat/lon pair, read from the names the profile reads them by (lon, lng, long, longitude). */
+function longitudeBeside(names: string[]): string | null {
+    const words = (n: string) => n.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-zÀ-ɏ]+/);
+    return names.find(n => words(n).some(w => w === "lon" || w === "lng" || w === "long" || w === "longitude")) ?? null;
 }
 

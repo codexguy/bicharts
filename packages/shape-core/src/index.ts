@@ -128,8 +128,13 @@ export type { GeoKind, GeoDetectionResult, GeoIsoColumn } from "./geoDetector";
 // still the wrong data for a North America basemap. Numbers only — percentages and quantiles —
 // so this is the same privacy class as GeoKind, which is what makes it shippable at all: the
 // server never sees the coordinates these are measured from.
-export { summarizeGeoExtent, summarizeCountryRegions, countryRegion, registerIso3Regions } from "./geoExtent";
-export type { GeoRegion, GeoExtentSummary, CountryRegionSummary } from "./geoExtent";
+export { summarizeGeoExtent, summarizeCountryRegions, countryRegion, registerIso3Regions, REGION_FRAME_WINDOWS, inMiddleEast } from "./geoExtent";
+export type { GeoRegion, GeoExtentSummary, CountryRegionSummary, RegionFrame } from "./geoExtent";
+export { registerAdmin1Lookup, admin1LookupRegistered, clearAdmin1LookupForTests, resolveCityAdmin1, admin1CodesForName, countryIso2, CITY_TIE_RATIO } from "./admin1Lookup";
+export type { Admin1LookupDoc, CityAdmin1Result } from "./admin1Lookup";
+export { provinceIdForAdmin1Code, isKnownProvinceId } from "./admin1Lookup";
+export { measureAdmin1Columns, provinceIdForRow, buildProvinceIsoColumn, ADMIN1_MATCH_PCT, ADMIN1_MATCH_PCT_NAMED } from "./admin1Signals";
+export type { Admin1ColumnSignals, ProvinceIsoColumn, ProvinceSource } from "./admin1Signals";
 // Point geocoding — a COORDINATE for a row that has none (City+State / ZIP / State),
 // as opposed to geoDetector's polygon JOIN KEY. Cross-column by nature.
 export {

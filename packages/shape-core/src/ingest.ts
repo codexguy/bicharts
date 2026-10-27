@@ -82,6 +82,9 @@ export interface IngestOptions {
     nonAdditive?: string[];
     /** "0" | "10" | "20" | "30" — how much detail the measured shape carries. Default "20". */
     privacyLevel?: string;
+    /** The reader's "Derive provinces" setting: false measures no city or coordinate rollup to provinces, so only a real
+     *  province column offers a province map. Default true. (IndexedText.deriveProvinces.) */
+    deriveProvinces?: boolean;
     /** Locale for temporal classification (month-name matching), and the tiebreak for a text
      *  column whose values do not say which character is the decimal point (`12,500` alone could
      *  be either). Default "en". */
@@ -291,6 +294,7 @@ function buildProfile(
     // 3. Feed the engine.
     const index = new IndexedText();
     index.dedupRows = opts.dedup !== false;      // default true
+    index.deriveProvinces = opts.deriveProvinces !== false;   // default true
     index.setColumns(cols);
     // The caller's `dimensions` hold through the stats pass too. Without this the engine's
     // measure inference, which runs after the ladder above, promoted any of them whose values

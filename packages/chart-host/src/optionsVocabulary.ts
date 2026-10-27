@@ -106,7 +106,12 @@ export const OPTIONS_VOCABULARY = Object.freeze({
      * that made the chart asked for them. "on" / "off" is a reader's choice and wins either way.
      */
     hoverDropLines: entry({ timing: "live", default: "", values: ["", "on", "off"] }),
+    /** A province map draws the national borders over its provinces unless this is false (a reader's "Country borders"). */
+    geoBorders: entry({ timing: "live", default: true }),
     // ---- the next generated chart ----
+    /** A reader's "Derive provinces": false measures no city or coordinate rollup, so only a real province column offers
+     *  a province map. It changes what the profile measures, so it travels in the shape rather than as a field. */
+    deriveProvinces: entry({ timing: "next-generate", default: true }),
     levelOfDetail: entry({ timing: "next-generate", default: "", values: ["", "High", "Medium", "Low"], wire: "clientHints" }),
     favorLimitTo: entry({ timing: "next-generate", default: "", values: ["", "latest", "top / greatest", "bottom / smallest", "most common", "outliers"], wire: "clientHints" }),
     /** 0 asks for no limit, and travels as absent (`wireLimitCount`): any value the server receives is a limit. */

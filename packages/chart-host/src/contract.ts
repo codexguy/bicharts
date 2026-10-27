@@ -601,6 +601,9 @@ export interface RenderOptions {
     // these directly and never branches on isHighContrast (same contract as themeAccent).
     geoLandColor?: string;
     geoNoDataColor?: string;
+    // A province map draws the national borders over its provinces unless this is false (the reader's Country Borders
+    // setting). Always a boolean after resolution.
+    geoBorders?: boolean;
     aggregation?: string;
     // Persisted view-state (animated charts persist {frame, selIdx}).
     uiState?: unknown;

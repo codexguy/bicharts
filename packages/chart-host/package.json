@@ -64,6 +64,11 @@
       "import": "./dist/legend-fit.mjs",
       "default": "./dist/legend-fit.mjs"
     },
+    "./provinces": {
+      "types": "./dist/types/provinces.d.ts",
+      "import": "./dist/provinces.mjs",
+      "default": "./dist/provinces.mjs"
+    },
     "./zoom-memory": {
       "types": "./dist/types/zoomMemory/index.d.ts",
       "import": "./dist/zoom-memory.mjs",

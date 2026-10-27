@@ -86,6 +86,8 @@ const result = await build({
         "legend-fit": join(here, "src/legendFit/index.ts"),
         // Remembered zoom/pan on a d3-zoom chart, the hook a host hands createChartHost; off the main entry (its eager budget).
         "zoom-memory": join(here, "src/zoomMemory/index.ts"),
+        // Province maps (geometry, the admin-1 lookup loader, coordinates to provinces); off the main entry (its eager budget).
+        provinces: join(here, "src/provinces.ts"),
     },
     bundle: true,
     splitting: true,
