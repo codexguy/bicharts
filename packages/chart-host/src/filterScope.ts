@@ -93,8 +93,9 @@ export interface Filter {
     /** Bumped on every change: a cheap identity for memoising on the filter's state. */
     readonly version: number;
 
-    /** Select these rows' keys (replacing the selection). An empty list clears. */
-    selectRows(rows: readonly Record<string, unknown>[], reason?: FilterChangeReason): void;
+    /** Select these rows' keys (replacing the selection). An empty list clears. `keep` adds keys held already that these
+     *  rows cannot name (keys another filter hid from the chart that made the selection): they stay selected. */
+    selectRows(rows: readonly Record<string, unknown>[], reason?: FilterChangeReason, keep?: readonly FilterKey[]): void;
     /** Select keys by value: one value per key (a one-column filter) or one array per key. */
     set(keys: readonly unknown[] | readonly FilterKey[] | unknown, reason?: FilterChangeReason): void;
     /** Clear the selection (and every bound chart's marks). */
@@ -272,10 +273,15 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         },
         get reason() { return reason; },
         get version() { return version; },
-        selectRows(selected, why = "page") {
+        selectRows(selected, why = "page", keep) {
             const list = (selected ?? []).filter(r => r && typeof r === "object") as Record<string, unknown>[];
             remember(list);
-            commit(dedupe(list.map(r => keyOfRow(r, cols))), list, why);
+            const held = dedupe(toKeys(keep ?? [], cols.length));
+            if (!held.length) { commit(dedupe(list.map(r => keyOfRow(r, cols))), list, why); return; }
+            // The kept keys keep the rows already known for them, so their chips keep their names.
+            const keepSet = new Set(held.map(keyString));
+            const known = rows.filter(r => keepSet.has(keyString(keyOfRow(r, cols))));
+            commit(dedupe(list.map(r => keyOfRow(r, cols)).concat(held)), list.concat(known), why);
         },
         set(input, why = "page") {
             const ks = dedupe(toKeys(input, cols.length));
@@ -488,23 +494,40 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         return out;
     };
 
+    // THE KEYS THIS CHART'S ROWS CANNOT SHOW (contract 1.21.0): selected keys no row of its current data carries, because
+    // another filter narrowed the data. The filter goes on holding them, so the chart is told how many (a checkbox column
+    // says "2 selected, 2 hidden"), and a selection the chart makes among the rows in view keeps them (keepHidden).
+    const hiddenKeys = (): FilterKey[] => {
+        if (!filter.active) return [];
+        const carried = new Set<string>();
+        const n = opts.rowCount();
+        for (let i = 0; i < n; i++) {
+            const r = opts.rowAt(i);
+            if (r) carried.add(keyString(keyOfRow(r, filter.columns)));
+        }
+        return filter.keys.filter(k => !carried.has(keyString(k)));
+    };
+
     const paint = () => {
         const want = wanted();
         const cur = host.selection.current ?? [];
-        if (sortedEq(want, cur)) return;
-        if (want.length) host.selection.highlight(want);
-        else if (cur.length) host.selection.clear();
+        if (!sortedEq(want, cur)) {
+            if (want.length) host.selection.highlight(want);
+            else if (cur.length) host.selection.clear();
+        }
+        host.selection.setHidden?.(hiddenKeys().length);
     };
 
-    const offHost = host.selection.onChange((idxs, source) => {
+    const offHost = host.selection.onChange((idxs, source, meta) => {
         if (source === "host") return;
-        if (!idxs.length) {
+        const keep = meta?.keepHidden ? hiddenKeys() : [];
+        if (!idxs.length && !keep.length) {
             if (filter.active) filter.clear("clear");
             return;
         }
         const rows = idxs.map(i => opts.rowAt(i)).filter((r): r is Record<string, unknown> => !!r);
-        if (!rows.length) return;
-        filter.selectRows(rows, "click");
+        if (!rows.length && !keep.length) return;
+        filter.selectRows(rows, "click", keep);
         owners.set(filter, { token, keys: ownerKeys(), orphan: false });
     });
     const offFilter = filter.onChange(() => {

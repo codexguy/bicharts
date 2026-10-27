@@ -12,6 +12,7 @@
 //     final value; resolveOptions passes it through untouched.
 import {
     type RenderOptions,
+    type HostSelectionFact,
     ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX,
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
@@ -47,6 +48,22 @@ function themedLand(p: { geoLandColor?: string; backgroundColor?: string; themeF
     if (!bg || bg[3] < 1 || relativeLuminance([bg[0], bg[1], bg[2]]) > 0.2) return undefined;
     const fg = toRGBA(p.themeFg) ?? [255, 255, 255, 1];
     return "#" + compositeOver([fg[0], fg[1], fg[2], 0.18], [bg[0], bg[1], bg[2]]).map(v => v.toString(16).padStart(2, "0")).join("");
+}
+
+// WHAT THE HOST HOLDS OF THE SELECTION (contract 1.21.0), made safe to hand a chart: rows kept to whole non-negative
+// numbers, each once and ascending; hidden to a whole count; narrowed only when both counts are whole and it kept fewer.
+// Anything that is not an object with a rows array is absent: a host that cannot say must not look as though it held nothing.
+export function cleanHostSelection(v: unknown): HostSelectionFact | undefined {
+    if (!v || typeof v !== "object" || !Array.isArray((v as any).rows)) return undefined;
+    const raw = (v as any).rows as unknown[];
+    const rows = Array.from(new Set(raw.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0))).sort((a, b) => a - b);
+    const h = Number((v as any).hidden);
+    const out: HostSelectionFact = { rows, hidden: Number.isFinite(h) && h > 0 ? Math.floor(h) : 0 };
+    const n = (v as any).narrowed;
+    if (n && typeof n === "object" && Number.isInteger(n.published) && Number.isInteger(n.kept) && n.kept >= 0 && n.kept < n.published) {
+        out.narrowed = { published: n.published, kept: n.kept };
+    }
+    return out;
 }
 
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
@@ -88,6 +105,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         dataComplete: p.dataComplete,
         rowsWithheld: p.rowsWithheld,
         rowsFilteredOut: p.rowsFilteredOut,
+        // A host FACT about its selection (contract 1.21.0), cleaned, never invented: absent stays absent.
+        hostSelection: cleanHostSelection(p.hostSelection),
         // Host services (contract 1.18.0): a FUNCTION or nothing, so a junk value never reaches a chart as something
         // it would try to call. Passed through untouched otherwise: the host owns what opening or copying means.
         openUrl: typeof p.openUrl === "function" ? p.openUrl : undefined,

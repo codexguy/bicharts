@@ -22,7 +22,14 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.20.0";
+export const HOST_CONTRACT_VERSION = "1.21.0";
+// 1.21.0 (2026-10-27): THE HOST SAYS WHAT IT HOLDS OF THE SELECTION. A filter that hides selected rows does not always drop
+// them: Power BI keeps their identities, and the report goes on filtering by them while no mark can show them. RenderOptions
+// gains hostSelection {rows, hidden, narrowed?}: the rows of THIS draw the host's selection holds, and how many held identities
+// match no row of it. Between draws the host calls the container slot CONTAINER_SLOT_HOST_SELECTION with the same fact (after a
+// selection settles). The row-set form of the refresh event gains keepHidden: a chart whose set means "what the reader holds
+// among the rows in view" (a checkbox column) asks the host to carry the hidden held rows along instead of replacing them.
+// Additive: a host that sends no fact leaves a chart mirroring the paint as before; a host that ignores keepHidden replaces.
 // 1.20.0 (2026-10-23): A CHART CAN ASK FOR ITS NOTES AS DOTS. NOTE_STYLE_ATTR="dot" on the element holding a chart's
 // marks (or on a mark) draws each host note there as one small dot at a fixed spot inside the mark's top-right corner,
 // its label in the tooltip, instead of a badge moved clear of text - which, where marks sit edge to edge, landed on a
@@ -236,7 +243,22 @@ export const XFILTER_REFRESH_EVENT = "llm-xfilter-refresh";
 export type XfilterRefreshDetail =
     | { clear: true; source?: string }
     | { mark: Element; source?: string }
-    | { rows: readonly number[]; source?: string };
+    | { rows: readonly number[]; source?: string; keepHidden?: boolean };
+
+/**
+ * WHAT THE HOST HOLDS OF THE SELECTION (1.21.0), as RenderOptions.hostSelection on a draw and as the argument of the
+ * CONTAINER_SLOT_HOST_SELECTION slot between draws. Untrusted on the chart side like every option: rows are this draw's
+ * row indices (whole, non-negative), hidden a count.
+ */
+export interface HostSelectionFact {
+    /** Row indices of this draw's data the host's selection holds, ascending. */
+    rows: readonly number[];
+    /** Held identities that match no row of this draw: a filter hid them, and the host still filters by them. */
+    hidden: number;
+    /** Set when the host kept fewer identities than a publish gave it. */
+    narrowed?: { published: number; kept: number };
+}
+export const CONTAINER_SLOT_HOST_SELECTION = "__lchHostSelection";   // the chart sets it; the host calls it with a HostSelectionFact
 
 // Lifecycle slots the generated code sets on the container; the host calls/reads them.
 export const CONTAINER_SLOT_ANIM_STOP = "__llmAnimStop";           // call before unmount/re-render
@@ -529,6 +551,10 @@ export interface RenderOptions {
     dataComplete?: boolean;
     rowsWithheld?: number;
     rowsFilteredOut?: number;
+    // WHAT THE HOST HOLDS OF THE SELECTION (1.21.0): the rows of this draw it holds and how many held identities a filter
+    // hid (see HostSelectionFact). A chart with its own selection display (a checkbox column) starts from it and can say
+    // "2 selected, 2 hidden". Absent means the host cannot say: the chart mirrors the selection paint, as before.
+    hostSelection?: HostSelectionFact;
     // HOST SERVICES A CHART MAY CALL (1.18.0). `openUrl` opens an address the host's own way: a sandboxed visual
     // cannot navigate itself, so a link a chart draws calls this, and only http(s) and mailto addresses are ever
     // handed to it. `copyText` writes text to the reader's clipboard the host's own way: a returned or resolved `false`,
