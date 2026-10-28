@@ -122,7 +122,7 @@ describe("mountProductFeedbackBox", () => {
         const opener = box.element.querySelector(".bic-product-feedback-open") as HTMLButtonElement;
         const panel = box.element.querySelector(".bic-product-feedback-panel") as HTMLElement;
         expect(opener.hidden).toBe(false);
-        expect(opener.textContent).toBe("Suggest an improvement");
+        expect(opener.textContent).toBe("Send a suggestion to the product team");
         expect(panel.hidden).toBe(true);
         expect(box.element.getAttribute("data-open")).toBe("false");
         opener.click();
@@ -144,7 +144,9 @@ describe("mountProductFeedbackBox", () => {
         const label = box.element.querySelector(".bic-product-feedback-label")!.textContent!;
         const hint = box.element.querySelector(".bic-product-feedback-hint")!;
         expect(label).not.toMatch(/chart/i);
-        expect(input.placeholder).not.toMatch(/chart/i);
+        // The placeholder names the chart only to refuse it, and says who the message is for.
+        expect(input.placeholder).toMatch(/makers of this product/);
+        expect(input.placeholder).toMatch(/not a chart request/);
         expect(hint.textContent).toMatch(/won't draw a chart/);
         // The hint is read before typing starts, not discovered under the box afterwards.
         expect(hint.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

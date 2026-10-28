@@ -127,10 +127,10 @@ export interface ProductFeedbackText {
 // old placeholder ("an idea, a missing chart, ...") had invited exactly that. The not-a-prompt line comes BEFORE the box,
 // so it is read before typing starts rather than found under the box afterwards.
 const DEFAULT_TEXT: Required<ProductFeedbackText> = {
-    label: "Ideas to improve this product",
-    placeholder: "A feature you'd like, or something that got in your way",
-    hint: "This sends a note to our team. It won't draw a chart.",
-    open: "Suggest an improvement",
+    label: "Suggestions for the team that makes this product",
+    placeholder: "Message to the makers of this product: a feature you'd like, or something that got in your way. This is not a chart request.",
+    hint: "This goes to the people who build this product, not to the chart. It won't draw a chart.",
+    open: "Send a suggestion to the product team",
     send: "Send",
     sending: "Sending...",
     sent: "Thank you - your suggestion was sent.",
