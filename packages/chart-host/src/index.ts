@@ -26,6 +26,7 @@ export {
     XFILTER_REFRESH_EVENT,
     CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_SCROLL,
+    CONTAINER_SLOT_HOST_SELECTION,
     VIEW_ONLY_UI_STATE_KEYS, withoutViewOnlyKeys,
     HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS,
     DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, DIM_OPACITY_MIN,
@@ -43,9 +44,9 @@ export {
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode, type FlipDirection,
     type ApproximatePositions, type ValueAxisBaseline, type SeasonalMarkers,
     type ColorScaleScope, type RenderOptions, type ViewStateProvider, type ChartControlChange,
-    type XfilterRefreshDetail,
+    type XfilterRefreshDetail, type HostSelectionFact,
 } from "./contract";
-export { resolveOptions, type ResolveOptionsInput } from "./defaults";
+export { resolveOptions, cleanHostSelection, type ResolveOptionsInput } from "./defaults";
 // The host services a chart may call (contract 1.18.0), built with one set of rules in every host.
 export { hostLinkServices, type HostLinkServices, type ClipboardLike } from "./hostLinks";
 // Exporting a chart's rows to a file (contract 1.19.0): the CSV and .xlsx writers, and the file service for a page in a
@@ -118,7 +119,7 @@ export { codeReadsDatesInLocalTime, vegaSpecReadsDatesInLocalTime } from "./date
 // host applies, or the two paths disagree about what a valid chart artifact is.
 export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, explainRenderFailure,
     sessionViewStateProvider, noopViewStateProvider, assembleD3, D3_PLUGIN_PACKAGES,
-    type ChartHost, type ChartHostConfig, type RenderFn, type SelectionPaintReport } from "./host";
+    type ChartHost, type ChartHostConfig, type RenderFn, type SelectionPaintReport, type SelectionChangeMeta } from "./host";
 // NOTES ON MARKS: badges the host draws on a key's mark after every render (ChartHostConfig.annotations).
 export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
 // READERS' NOTES, IN-CHART CONTROLS AS PAGE STATE, PAGE FILTERS (2026-10-02): their TYPES here, so a generated

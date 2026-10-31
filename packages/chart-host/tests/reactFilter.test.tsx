@@ -126,12 +126,16 @@ describe("selects: the page filter owns the chart's selection", () => {
         expect(selected("map")).toEqual(["IND"]);
     });
 
-    it("new rows without the key clear the filter, reason 'data' (the live defect: a stale pick on the page)", async () => {
+    // The rule changed (contract 1.21.0): a pick the new rows do not carry is KEPT, as Power BI keeps it; the chip still names it
+    // and the chart is told it holds a hidden key. It used to be cleared with reason "data".
+    it("new rows without the key keep the filter: the chip still names it and the page still filters by it", async () => {
         await act(async () => { root.render(createElement(Page, { initial: ["AUS", "CHL", "IND"] })); });
         await click(mark("map", "CHL"));
         await act(async () => { setRows(rowsOf(["AUS", "USA"])); });
-        expect(readout()).toBe("All");
-        expect(country!.reason).toBe("data");
+        expect(readout()).toBe("Filtered to Chile");
+        expect(country!.reason).toBe("click");
+        expect(el.querySelector(".bic-filter-chip")?.textContent).toContain("Country: Chile");
+        expect(selected("map")).toEqual([]);
     });
 
     it("a chart that remounts (a panel showing Loading...) shows the page's selection again", async () => {
@@ -143,14 +147,14 @@ describe("selects: the page filter owns the chart's selection", () => {
         expect(selected("map")).toEqual(["CHL"]);
     });
 
-    it("a chart that remounts on new rows without its key drops the selection it made (a re-query behind Loading...)", async () => {
+    it("a chart that remounts on new rows without its key keeps the selection it made (a re-query behind Loading...)", async () => {
         await act(async () => { root.render(createElement(Page, { initial: ["AUS", "CHL", "IND"] })); });
         await click(mark("map", "CHL"));
         await act(async () => { (Page as any).setShow(false); });
         await act(async () => { setRows(rowsOf(["AUS", "USA"])); });
         await act(async () => { (Page as any).setShow(true); });
-        expect(readout()).toBe("All");
-        expect(country!.reason).toBe("data");
+        expect(readout()).toBe("Filtered to Chile");
+        expect(country!.reason).toBe("click");
     });
 
     it("a selection the page set is kept when the chart doesn't draw it", async () => {

@@ -124,7 +124,7 @@ export interface BicChartProps {
      * THE PAGE FILTER THIS CHART SELECTS - from useBicFilter("RegionCode"). A click sets it, the
      * same click or a click on empty canvas clears it, and the filter's state is painted onto the
      * marks whoever changed it: `filter.clear()` from a page button clears the marks too. New data
-     * keeps a selection whose key is still drawn and clears (reason "data") one whose key is gone.
+     * keeps the selection, a key it no longer draws included; the chart is told how many are hidden.
      * The page reads `filter.value` / `filter.row` and never writes a select handler. With
      * `selects`, the filter owns what this chart shows as selected.
      */

@@ -22,7 +22,7 @@ import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_F
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_CLICKED_MARKS, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
     MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, LIFT_SELECTED_CLASS,
     chartOwnsTimeline, periodTickSuppressesFeedback,
-    HOST_CONTRACT_VERSION, type ViewStateProvider } from "./contract";
+    HOST_CONTRACT_VERSION, CONTAINER_SLOT_HOST_SELECTION, type HostSelectionFact, type ViewStateProvider } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
 import { stripJsComments } from "./codeComments";
 // Deliberately NOT "./geo": that module statically imports ~1.3 MB of generated geometry,
@@ -35,6 +35,10 @@ import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, ma
     type ClickedMarks, type SelectionRule, type SelectionPaintMode, type GlyphCenter } from "./selection";
 
 /** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
+/** What a selection change carries besides its rows (1.21.0): `keepHidden` when the chart's set is what the reader holds among
+ *  the rows in view, so a subscriber that holds keys the data no longer carries keeps them. */
+export interface SelectionChangeMeta { keepHidden?: boolean }
+
 export interface SelectionPaintReport {
     rule: SelectionRule;
     mode: SelectionPaintMode;
@@ -351,7 +355,7 @@ export interface ChartHost {
     selection: {
         /** Subscribe to cross-filter changes (mark clicks + the chart's own
          *  llm-xfilter-refresh dispatches). rowIdxs = [] means cleared. */
-        onChange(cb: (rowIdxs: number[], source: string) => void): () => void;
+        onChange(cb: (rowIdxs: number[], source: string, meta?: SelectionChangeMeta) => void): () => void;
         /** Clear the chart's own selection (calls __llmXfClear when the chart set it). */
         clear(): void;
         /**
@@ -370,6 +374,12 @@ export interface ChartHost {
          * republish what the other just sent and fight itself.
          */
         highlight(rowIdxs: number[]): void;
+        /**
+         * How many of the selection's identities the data on screen does not carry (1.21.0): a filter keyed by value that
+         * another filter narrowed knows, this host does not. Told to the chart (RenderOptions.hostSelection and the
+         * CONTAINER_SLOT_HOST_SELECTION slot), so a checkbox column can say "2 selected, 2 hidden". A clear resets it.
+         */
+        setHidden?(count: number): void;
         readonly current: number[] | null;
     };
     animation: {
@@ -768,7 +778,24 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // CONTAINER (CONTAINER_SLOT_CLICKED_MARKS), so a host re-created on the same element keeps it.
     const clickedMarks = (): ClickedMarks | null => (container as any)[CONTAINER_SLOT_CLICKED_MARKS] ?? null;
     const setClickedMarks = (c: ClickedMarks | null) => { try { (container as any)[CONTAINER_SLOT_CLICKED_MARKS] = c; } catch { /* frozen element */ } };
-    const subs = new Set<(rowIdxs: number[], source: string) => void>();
+    const subs = new Set<(rowIdxs: number[], source: string, meta?: SelectionChangeMeta) => void>();
+    // HOW MANY OF THE SELECTION'S IDENTITIES THE DATA ON SCREEN DOES NOT CARRY (contract 1.21.0). This host holds row indices
+    // only, so it cannot know: a page filter that does (one keyed by value) says so through selection.setHidden.
+    let hiddenHeld = 0;
+    // Whether `current` is in the indices of the data on screen. New data renumbers rows and only the next selection change
+    // (a page filter's reconcile, a click) says which rows are held now: until then a draw gets NO fact, never a stale one.
+    let factFresh = true;
+    const selectionFact = (): HostSelectionFact => {
+        const n = Array.isArray(data?.rows) ? data.rows.length : 0;
+        const rows = Array.from(new Set((current ?? []).filter(r => Number.isInteger(r) && r >= 0 && r < n))).sort((a, b) => a - b);
+        return { rows, hidden: hiddenHeld };
+    };
+    // Tell the chart on screen what is held, through its slot. A chart that set none is left alone; one that throws is not ours.
+    const tellSelection = () => {
+        const slot = (container as any)[CONTAINER_SLOT_HOST_SELECTION];
+        if (typeof slot !== "function") return;
+        try { slot(selectionFact()); } catch { /* the chart's display is its own concern */ }
+    };
 
     // ---- Selection affordance ------------------------------------------------
     // Inject the dim/hover rules ONCE per document, scoped to hosted containers, using
@@ -1101,7 +1128,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // click / a clear. It decides BOTH the affordance anchor and, with the container's own
     // timeline slots, whether the marks dim at all.
     // `publish` false paints the selection without telling the subscribers: a highlight-only lasso.
-    const notify = (rowIdxs: number[], source: string, tick?: any, fromChart = false, publish = true) => {
+    // `meta.keepHidden` (1.21.0) rides to the subscribers: the chart's set is what the reader holds among the rows in view,
+    // so a page filter that holds keys the data no longer carries keeps them rather than replacing them.
+    const notify = (rowIdxs: number[], source: string, tick?: any, fromChart = false, publish = true, meta?: SelectionChangeMeta) => {
         if (destroyed) return;
         current = rowIdxs;
         selectionFromChart = rowIdxs.length > 0 && fromChart;
@@ -1109,10 +1138,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         activeTickEl = rowIdxs.length ? (tick ?? null) : null;
         selectionIsPeriod = rowIdxs.length > 0
             && periodTickSuppressesFeedback(!!tick, chartOwnsTimeline(container));
+        if (!rowIdxs.length && !meta?.keepHidden) hiddenHeld = 0;      // a clear holds nothing, hidden or not
+        factFresh = true;
         paintSelection();
         paintGlyphLayer();
-        if (!publish) return;
-        for (const cb of subs) { try { cb(rowIdxs, source); } catch { /* subscriber error is not ours */ } }
+        if (publish) for (const cb of subs) { try { cb(rowIdxs, source, meta); } catch { /* subscriber error is not ours */ } }
+        tellSelection();
     };
 
     // WHAT A LASSO DOES TO THE PAGE (contract 1.17.0). "filter", the default, publishes the circled rows exactly as
@@ -1158,7 +1189,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // A selection the chart COMPUTED (a drawn region, a brushed range) has no element to point at, so it
         // carries the row indices themselves. Untrusted, so read through validRowSet; an empty set is a clear.
         // fromChart, like a mark: the chart owns this selection, so an empty click calls its clear slot first.
-        else if (Array.isArray(d.rows)) notify(validRowSet(d.rows), d.source || "chart", null, true);
+        else if (Array.isArray(d.rows)) notify(validRowSet(d.rows), d.source || "chart", null, true, true, d.keepHidden === true ? { keepHidden: true } : undefined);
     };
     // Plain mark clicks (static charts + choropleth regions): the chart does NOT
     // dispatch the event for these — the host reads data-row-idx itself.
@@ -1550,6 +1581,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                     zoomCap = zoomMemory.capture(chartD3);
                 } catch { zoomCap = null; }
             }
+            // WHAT THIS HOST HOLDS OF THE SELECTION (1.21.0), unless the caller states its own: the rows of THIS data the
+            // selection holds and the hidden count a page filter reported. A draw with different data reads it afresh.
+            if (raw.hostSelection == null) resolved.hostSelection = factFresh ? selectionFact() : undefined;
             try {
                 try {
                     outcome = renderFn(container, { columns: data.columns, rows: data.rows }, resolved);
@@ -1621,6 +1655,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         setData(next) {
             if (destroyed) return;
             data = next;
+            factFresh = false;
             host.render();
         },
         get options() { return resolved; },
@@ -1663,6 +1698,15 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 // same rows repainted (a group re-deriving the origin's own selection) leave it where it is.
                 if (lasso && lasso.rows().length && !sameRowSet(rows, lasso.rows())) lasso.clear({ publish: false, source: "host" });
                 notify(rows, "host");
+            },
+            setHidden(count) {
+                if (destroyed) return;
+                const n = Number(count);
+                const next = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+                if (next === hiddenHeld && factFresh) return;
+                hiddenHeld = next;
+                factFresh = true;
+                tellSelection();
             },
             get current() { return current; },
         },
