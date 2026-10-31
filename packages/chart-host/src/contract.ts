@@ -500,6 +500,10 @@ export interface RenderOptions {
         rolesBackfilled?: string[];
         rolesRefused?: string[];
     } | null;
+    // WHY A POINT MAP HAS NO COORDINATES (a refusal that placed nothing, so geoPoint is absent): the resolver's own
+    // sentences, e.g. that every row resolves to the same country. Promoted from the payload like geoPoint, so a map
+    // filtered down to one country can say so quietly instead of failing. Absent when nothing was refused.
+    geoPointRefused?: string[];
     // THE ROUTE'S OTHER END (origin-destination flow map, 2026-08-15). Identical shape to
     // geoPoint, produced by the identical resolver: on a flow map `geoPoint` describes the
     // ORIGINS and this describes the DESTINATIONS. Null/absent on every other chart, which

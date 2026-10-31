@@ -426,7 +426,9 @@ describe("a cancelled generation ends the recovery", () => {
         const m = await import("../src/pendingGenerate");
         expect(m.generationCancelledMessage("Server says so.")).toBe("Server says so.");
         expect(m.generationCancelledMessage("  ")).toBe(m.GENERATION_CANCELLED_MESSAGE);
-        expect(m.GENERATION_CANCELLED_MESSAGE).toBe("The connection dropped before the chart finished - nothing was charged. Generate again.");
+        // The service bills a cancel for the passes that ran, so the sentence changed with the rule: byte-identical
+        // to the server's own (CancelledPollAnswer), which this is the copy of.
+        expect(m.GENERATION_CANCELLED_MESSAGE).toBe("The connection dropped before the chart finished. You were charged only for the work already done. Generate again.");
     });
 
     it("the transport-loss sentence promises nothing", async () => {
@@ -469,9 +471,10 @@ describe("the recovery poll's final answers", () => {
         expect(m.recoveryFinalOutcome({ isVersionNotFound: false, errorCode: "GENERATION_NOT_RECEIVED" })).toBeNull();
     });
 
-    it("only a cancel and a request never received prove nothing was charged", async () => {
+    it("only a request never received proves nothing was charged", async () => {
         const m = await import("../src/pendingGenerate");
-        expect(m.recoveryProvesNothingCharged("cancelled")).toBe(true);
+        // The service: a cancel is billed for the passes that ran before it, so it proves nothing about charges.
+        expect(m.recoveryProvesNothingCharged("cancelled")).toBe(false);
         expect(m.recoveryProvesNothingCharged("not-received")).toBe(true);
         expect(m.recoveryProvesNothingCharged("failed")).toBe(false);
         expect(m.recoveryProvesNothingCharged(null)).toBe(false);

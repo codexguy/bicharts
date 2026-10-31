@@ -79,6 +79,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // tests/defaults.test.ts now compares the two lists, because four instances of one
         // omission is a missing check, not four mistakes.
         geoPointDest: p.geoPointDest,
+        // Why a point map placed nothing (the resolver's sentences), passed through untouched.
+        geoPointRefused: p.geoPointRefused,
         // A host FACT about the data it serialised (contract 1.9.0), passed through untouched.
         dateCellsAreUtcDays: p.dateCellsAreUtcDays,
         // Host FACTS about whether every row arrived (contract 1.15.0), passed through untouched: an

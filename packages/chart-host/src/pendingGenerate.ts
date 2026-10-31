@@ -341,7 +341,7 @@ export const TRANSPORT_LOST_CHECKING_MESSAGE =
  * sentence, for a server that set the flag and left the message blank.
  */
 export const GENERATION_CANCELLED_MESSAGE =
-    "The connection dropped before the chart finished - nothing was charged. Generate again.";
+    "The connection dropped before the chart finished. You were charged only for the work already done. Generate again.";
 
 /**
  * Is this recovery answer the server saying the generation was CANCELLED - so nothing will ever be ready?
@@ -386,11 +386,12 @@ export function recoveryFinalOutcome(r: { isPollFinal?: boolean | null; pollOutc
     return null;
 }
 
-/** Did the server PROVE nothing was charged? Only a cancel and a request it never received do; a
- *  failed generation's charge is its own, and a generate that died with a restart may have been charged
- *  before its record was written, so a host claims nothing about either. */
+/** Did the server PROVE nothing was charged? Only a request it never received does. A cancel is billed for
+ *  the passes that ran before it; a failed generation's charge is its own, and a
+ *  generate that died with a restart may have been charged before its record was written, so a host claims
+ *  nothing about any of those. */
 export function recoveryProvesNothingCharged(o: string | null | undefined): boolean {
-    return o === "cancelled" || o === "not-received";
+    return o === "not-received";
 }
 
 /** Does a recovery that ended this way send the refund? Only when it ended with NOTHING PAINTED and

@@ -115,6 +115,8 @@ export interface ChartHostConfig {
          *  into options exactly like geoPoint, so a host that hands over the whole payload
          *  gets both ends annotated without knowing the field exists. */
         geoPointDest?: RenderOptions["geoPointDest"];
+        /** Why a point map placed nothing (the resolver's sentences) - promoted into options exactly like geoPoint. */
+        geoPointRefused?: string[];
         /** Set by buildRenderPayload(..., { utcDays: true }) - promoted into options exactly like geoPoint. */
         dateCellsAreUtcDays?: boolean;
         /** Provenance the MCP stamps into data.sample.json. `hostContract` is checked
@@ -1523,6 +1525,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // an arc is only as honest as its worse endpoint, and a chart that cannot tell
             // which end is coarse cannot say so.
             if (resolved.geoPointDest === undefined && data.geoPointDest) resolved = { ...resolved, geoPointDest: data.geoPointDest };
+            // Why a point map placed nothing: a map filtered down to one country can then say so quietly.
+            if (resolved.geoPointRefused === undefined && data.geoPointRefused?.length) resolved = { ...resolved, geoPointRefused: data.geoPointRefused };
             // A fact about the cells themselves: without it a date shim inside the chart re-examines rows the
             // host already re-anchored. Harmless (it would find nothing to move), but the declaration is the contract.
             if (resolved.dateCellsAreUtcDays === undefined && data.dateCellsAreUtcDays) resolved = { ...resolved, dateCellsAreUtcDays: true };
