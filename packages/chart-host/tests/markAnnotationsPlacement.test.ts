@@ -128,6 +128,33 @@ describe("where a note's badge goes on its mark", () => {
         expect(parseFloat(b[0].style.top)).toBe(52);     // the label's middle (46..58)
     });
 
+    // A ROW HALF SCROLLED OUT. The row's label had left the scroller's window, so
+    // the badge lost its place after the label and fell back to the top-right corner of the sliver still in view - the
+    // table's top-right corner, far from any country. A row whose label is out of view gets no badge, as a mark with
+    // nothing in view gets none; the same row scrolled back gets its badge after its label again.
+    const SCROLLED = TABLE.replace("data.rows.forEach", `const sc = doc.createElement("div");
+  sc.style.overflowY = "auto";
+  sc.setAttribute("data-box", "0,30,400,170");
+  container.appendChild(sc);
+  container = sc;
+  data.rows.forEach`);
+    it("a row whose label is scrolled out of view gets no badge, rather than one in the table's corner", () => {
+        const label: Array<[string, string]> = [["Japan", "6,20,30,12"]];
+        const values: Array<[string, string]> = [["+5.9%", "200,20,30,12"]];
+        const { el, host } = mount(SCROLLED, [["JPN", "0,14,400,24", label, values]], ["JPN"]);
+        expect(badges(el)).toHaveLength(0);
+        expect(host.annotationReport).toEqual({ shown: 0, notShown: 1 });
+    });
+    it("the same row with its label in view keeps its badge after the label", () => {
+        const label: Array<[string, string]> = [["Japan", "6,46,30,12"]];
+        const values: Array<[string, string]> = [["+5.9%", "200,46,30,12"]];
+        const { el } = mount(SCROLLED, [["JPN", "0,40,400,24", label, values]], ["JPN"]);
+        const b = badges(el);
+        expect(b).toHaveLength(1);
+        expect(badgeBox(b[0]).l).toBeGreaterThanOrEqual(36);
+        expect(parseFloat(b[0].style.top)).toBe(52);
+    });
+
     it("a row with no text at all keeps the corner placement", () => {
         const { el } = mount(TABLE, [["JPN", "0,40,400,24", [], []]], ["JPN"]);
         const b = badges(el);

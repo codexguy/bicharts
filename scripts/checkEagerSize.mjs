@@ -81,9 +81,15 @@ import { resolve, dirname, join } from "node:path";
 // No geometry is in the closure; closure (~802 KB) + the smallest map asset (223 KB) is ~1025 KB, far above 820.
 // Province maps stay off this entry: "@bicharts/chart-host/provinces" carries the geometry and the admin-1 lookup loader,
 // and a host hands a province binding its join; what remains here is the point cascade's lookup tiers.
+//
+// 820 -> 840 KB, deliberately, as ordinary growth, measured first: 818 KB before, 831 KB after. A reader's view state
+// survives an options change, a chart's own redraw keeps the host's layers, marks that select nothing are drawn inert,
+// a scrolled-out row's badge hides, focus and caret survive a redraw, and a stamped chart works from the keyboard
+// (about 13 KB together). Each runs in the synchronous render or click path, so none can sit behind a dynamic import.
+// No geometry is in the closure; closure (~831 KB) + the smallest map asset (223 KB) is ~1054 KB, far above 840.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 820);
+const limitKB = Number(process.argv[3] ?? 840);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //

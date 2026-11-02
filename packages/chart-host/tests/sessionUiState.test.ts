@@ -100,6 +100,46 @@ describe("session view-state store", () => {
         expect(again.seen.uiState).toEqual({ knobs: { rate: 0.09 } });
     });
 
+    // A PAGE'S STARTING STATE IS A STARTING STATE. A React page passes a fixed uiState
+    // (sort by attainment) inside options, so every options change - a resize, a theme switch - went
+    // through setOptions, which merged that object back over the reader's sort.
+    it("an options change keeps what the reader did when the page sends the same starting state again", () => {
+        const seed = { sort: { key: "TargetAttainment", asc: false } };
+        const { host } = mount({ uiState: seed, themeFg: "#111" });
+        (container as any).__seenOptions.setUiState({ sort: { key: "Revenue", asc: true } });
+
+        host.setOptions({ uiState: { sort: { key: "TargetAttainment", asc: false } }, themeFg: "#eee" });
+        const seen = (container as any).__seenOptions;
+        expect(seen.themeFg).toBe("#eee");
+        expect(seen.uiState).toEqual({ sort: { key: "Revenue", asc: true } });
+    });
+
+    it("a NEW starting state sent on purpose replaces what the reader did", () => {
+        const { host } = mount({ uiState: { sort: { key: "TargetAttainment", asc: false } } });
+        (container as any).__seenOptions.setUiState({ sort: { key: "Revenue", asc: true } });
+
+        host.setOptions({ uiState: { sort: { key: "Country", asc: true } } });
+        expect((container as any).__seenOptions.uiState).toEqual({ sort: { key: "Country", asc: true } });
+        // ...and it is now the reader's to change again.
+        (container as any).__seenOptions.setUiState({ sort: { key: "Revenue", asc: false } });
+        host.setOptions({ uiState: { sort: { key: "Country", asc: true } } });
+        expect((container as any).__seenOptions.uiState).toEqual({ sort: { key: "Revenue", asc: false } });
+    });
+
+    it("an explicit undefined uiState in a patch is not a reset (the add-in clears live knobs that way)", () => {
+        const { host } = mount();
+        (container as any).__seenOptions.setUiState({ knobs: { rate: 0.05 } });
+        host.setOptions({ uiState: undefined });
+        expect((container as any).__seenOptions.uiState).toEqual({ knobs: { rate: 0.05 } });
+    });
+
+    it("a caller that owns its setter still gets its uiState through setOptions untouched", () => {
+        const writes: unknown[] = [];
+        const { host } = mount({ uiState: { frame: 1 }, setUiState: (s: unknown) => writes.push(s) });
+        host.setOptions({ uiState: { frame: 2 } });
+        expect((container as any).__seenOptions.uiState).toEqual({ frame: 2 });
+    });
+
     it("gives a different container a different store", () => {
         const other = document.createElement("div");
         document.body.appendChild(other);

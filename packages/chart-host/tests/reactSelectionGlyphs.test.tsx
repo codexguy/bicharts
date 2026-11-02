@@ -46,12 +46,13 @@ describe("<BicChart onSelectionGlyphs>", () => {
         const second: unknown[] = [];
         const options = { selectionGlyph: "dot" };
         await act(async () => {
-            root.render(createElement(BicChart, { code: CODE, data: DATA, d3: D3, options, onSelectionGlyphs: r => { first.push(r); } }));
+            // onSelect: a click on a chart nobody listens to selects nothing, so the page listens here.
+            root.render(createElement(BicChart, { code: CODE, data: DATA, d3: D3, options, onSelect: () => {}, onSelectionGlyphs: r => { first.push(r); } }));
         });
         await act(async () => { clickMark(1); });
         expect(first).toEqual([{ mode: "dot", drawn: 1, total: 1, suppressed: false }]);
         await act(async () => {
-            root.render(createElement(BicChart, { code: CODE, data: DATA, d3: D3, options, onSelectionGlyphs: r => { second.push(r); } }));
+            root.render(createElement(BicChart, { code: CODE, data: DATA, d3: D3, options, onSelect: () => {}, onSelectionGlyphs: r => { second.push(r); } }));
         });
         await act(async () => { clickMark(0); });
         expect(second.length).toBeGreaterThanOrEqual(1);

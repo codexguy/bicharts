@@ -13,7 +13,10 @@ import * as pkg from "../src/index";
 
 describe("the contract and the option", () => {
     it("is announced and exported", () => {
-        expect(HOST_CONTRACT_VERSION).toBe("1.21.0");
+        // Announced from 1.21.0 on (the pin is "at least", so a later bump keeps it).
+        const [major, minor] = HOST_CONTRACT_VERSION.split(".").map(Number);
+        expect(major).toBe(1);
+        expect(minor).toBeGreaterThanOrEqual(21);
         expect(pkg.CONTAINER_SLOT_HOST_SELECTION).toBe("__lchHostSelection");
         expect(typeof pkg.cleanHostSelection).toBe("function");
     });

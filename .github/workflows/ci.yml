@@ -187,5 +187,7 @@ jobs:
       # RAISED 780 -> 800, to the script's default: the packed install now measures the same closure as the repo
       # build, so the two checks share one ceiling. Installed closure + 223 KB is still far above 800.
       # RAISED 800 -> 820 with the script's default: badges follow a scrolling box, and a chart type can ask for a dot.
+      # RAISED 820 -> 840 with the script's default: view state, a chart's own redraw, inert marks, focus kept across a
+      # redraw and keyboard access for a stamped chart, measured first (818 -> 831 KB). No geometry; + 223 KB is far above 840.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 820
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 840

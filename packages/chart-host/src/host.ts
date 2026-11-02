@@ -20,7 +20,7 @@
 import { type RenderOptions, ROW_IDX_ATTR, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS,
     XFILTER_REFRESH_EVENT, CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_CLICKED_MARKS, HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS,
-    MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, LIFT_SELECTED_CLASS,
+    MARK_SELECTED_CLASS, MARKS_INERT_CLASS, CONTROL_CLASS, ACTIVE_TICK_CLASS, DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, LIFT_SELECTED_CLASS,
     chartOwnsTimeline, periodTickSuppressesFeedback,
     HOST_CONTRACT_VERSION, CONTAINER_SLOT_HOST_SELECTION, type HostSelectionFact, type ViewStateProvider } from "./contract";
 import { resolveOptions, type ResolveOptionsInput } from "./defaults";
@@ -56,7 +56,9 @@ import { fitRenderedChart, unpinScrolledAxis, rememberScroll, takeScroll, clipWi
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
-import { createAnnotationLayer, type MarkAnnotation, type AnnotationReport } from "./annotations";
+import { createAnnotationLayer, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
+import { rememberFocus, restoreFocus, type FocusMemory } from "./focusKeep";
+import { codeHasKeyboardStamp, installKeyboard, rowNameOf, KEYBOARD_CLASS, WIRED_ATTR, type KeyboardHandle } from "./keyboardMarks";
 import { installLasso, lassoEffect, claimParkedLasso, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
 // TYPES ONLY: the zoom memory is its own entry ("@bicharts/chart-host/zoom-memory"), off the main entry's eager closure.
 import type { ZoomMemoryHook, ZoomCapture } from "./zoomMemory/zoomMemoryDom";
@@ -325,6 +327,16 @@ export interface ChartHostConfig {
      * `selects` and the group itself. Never throws through: an answer that throws counts as reached.
      */
     selectionReachesPage?: () => boolean;
+    /**
+     * WHETHER A CLICK ON A MARK SELECTS ANYTHING. False: nothing listens to this chart's selection - no
+     * page filter, no group sibling, no callback - so its marks are drawn inert: no pointer cursor (over the chart's own
+     * inline one), no hover dimming of the others, and the reader's click, or a selection the chart dispatches itself,
+     * lights and dims nothing. A selection the page hands in (selection.highlight) still paints. Read at every click and
+     * every paint, so a binding added later counts at once. Absent: true, which every host but React relies on (a Power
+     * BI click always reaches its selection manager; an Excel click always opens a selection card). An answer that
+     * throws counts as true.
+     */
+    marksSelect?: () => boolean;
 }
 
 export interface ChartHost {
@@ -673,6 +685,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         try { lassoKey = Function.prototype.toString.call(config.renderFn); } catch { lassoKey = config.renderFn; }
     }
     let lassoClaimed = false;
+    // The bag THIS host owns (null when the caller supplies its own setter), and the caller's starting state as it was
+    // last sent, so setOptions can tell the same starting state handed over again from a new one (takeSeed below).
+    let ownBag: { bag: Record<string, unknown>; provider: ViewStateProvider } | null = null;
+    const seedKey = (s: unknown) => (s && typeof s === "object") ? JSON.stringify(s) : undefined;
+    let lastSeed = seedKey(raw.uiState);
     if (typeof raw.setUiState !== "function") {
         const provider = config.viewState ?? sessionViewStateProvider(container);
         let bag: Record<string, unknown>;
@@ -690,6 +707,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         if (raw.uiState && typeof raw.uiState === "object" && Object.keys(bag).length === 0)
             Object.assign(bag, raw.uiState as Record<string, unknown>);
         raw.uiState = bag;
+        ownBag = { bag, provider };
         raw.setUiState = (s: unknown) => {
             if (!s || typeof s !== "object") return;
             try {
@@ -697,6 +715,25 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             } catch { /* a chart must never fail to repaint because a save failed */ }
         };
     }
+    // A PAGE'S uiState IS ITS STARTING STATE. A React page passes a fixed one inside options, so every
+    // options change (a resize, a theme switch) arrives at setOptions carrying it again, and merging it back undid the
+    // reader's sort. While this host owns the bag, a patch's uiState counts only when its VALUE differs from the last one
+    // the page sent: that is a new starting state on purpose, and it replaces the bag. The same value again, or an
+    // explicit undefined (the add-in clears its live knobs that way), leaves what the reader did.
+    const takeSeed = (partial: ResolveOptionsInput): ResolveOptionsInput => {
+        if (typeof partial.setUiState === "function") { ownBag = null; return partial; }   // the caller owns it now
+        if (!ownBag || !("uiState" in partial)) return partial;
+        const { uiState: seed, ...rest } = partial;
+        const key = seedKey(seed);
+        if (key !== undefined && key !== lastSeed) {
+            lastSeed = key;
+            const { bag, provider } = ownBag;
+            for (const k of Object.keys(bag)) delete bag[k];
+            Object.assign(bag, seed as Record<string, unknown>);
+            try { provider.save({ ...bag }); } catch { /* the bag on screen is already right */ }
+        }
+        return rest;
+    };
     // NO HOST TOOLTIP HERE, SO AN UNSENT FLAG MEANS THE CHART OWNS HOVER. Generated code draws
     // its own tooltip only when `options.allowTooltips` is truthy, because a host that shows its
     // own (the Power BI visual) sends false to stop two tooltips fighting. This runtime draws
@@ -727,7 +764,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let renderSeq = 0;
     // Notes on marks (annotations.ts): drawn by the host after every settled render, keyed by a
     // column value in THIS chart's data, so a filter or a group member's own payload never moves one.
-    const annotationLayer = createAnnotationLayer(container, a => config.onAnnotationClick?.(a));
+    // WORKED FROM THE KEYBOARD when the server stamped this chart's code; the handle is installed with the
+    // click wiring below.
+    const keyboardOn = codeHasKeyboardStamp(config.code);
+    let keyboard: KeyboardHandle | null = null;
+    const annotationLayer = createAnnotationLayer(container, a => config.onAnnotationClick?.(a), { keyboard: () => keyboardOn });
     const drawAnnotations = () => annotationLayer.draw(
         { columns: data.columns, rows: data.rows },
         { fg: (resolved as any).themeFg, accent: (resolved as any).themeAccent,
@@ -827,7 +868,18 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
    anomaly badge, a highlight stroke) and must keep dimming with its datum. */
 .${HOST_CONTAINER_CLASS} .${MARK_CLASS} { cursor: pointer; transition: opacity 120ms ease-in-out, filter 100ms ease-in-out; }
 .${HOST_CONTAINER_CLASS} .${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover { filter: brightness(1.1) drop-shadow(0 0 1.5px rgba(0,0,0,0.5)) !important; }
-.${HOST_CONTAINER_CLASS}:has(.${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover) .${MARK_CLASS}:not(:hover):not([${ROW_IDX_ATTR}=""]) { opacity: 0.55; }
+.${HOST_CONTAINER_CLASS}:not(.${MARKS_INERT_CLASS}):has(.${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover) .${MARK_CLASS}:not(:hover):not([${ROW_IDX_ATTR}=""]) { opacity: 0.55; }
+/* A MARK THAT SELECTS NOTHING DOESN'T LOOK CLICKABLE: no pointer, over the inline cursor generated code
+   sets on its marks, and no dimming of the others on hover (the rule above). A control the chart draws keeps its own. */
+.${HOST_CONTAINER_CLASS}.${MARKS_INERT_CLASS} .${MARK_CLASS} { cursor: default !important; }
+/* THE KEYBOARD'S FOCUS: a ring on the mark, control or badge that holds keyboard focus, in the colour the
+   chart's text is drawn in, so it reads in either theme. A pointer's focus shows none. */
+.${HOST_CONTAINER_CLASS}.${KEYBOARD_CLASS} [${WIRED_ATTR}]:focus:not(:focus-visible) { outline: none; }
+.${HOST_CONTAINER_CLASS}.${KEYBOARD_CLASS} [${WIRED_ATTR}]:focus-visible,
+.${HOST_CONTAINER_CLASS} .bic-annotation:focus-visible { outline: 2px solid var(--lch-focus-ring, currentColor) !important; outline-offset: 2px; }
+/* A dimmed mark that takes keyboard focus is drawn at full strength while it has it, ring included: the dim would
+   otherwise fade the ring with the mark. */
+.${HOST_CONTAINER_CLASS}.${KEYBOARD_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}[${WIRED_ATTR}]:focus-visible:not(.${MARK_SELECTED_CLASS}) { opacity: 1 !important; }
 .${HOST_CONTAINER_CLASS}.${SELECTION_ACTIVE_CLASS} .${MARK_CLASS}:not(.${MARK_SELECTED_CLASS}):not([${ROW_IDX_ATTR}=""]) {
     opacity: var(${DIM_OPACITY_VAR}, ${DIM_OPACITY_DEFAULT}) !important;
 }
@@ -860,12 +912,18 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         } catch { /* no document (jsdom edge) — affordance is cosmetic, never fatal */ }
     };
 
+    // Whether a click on a mark selects nothing (ChartHostConfig.marksSelect); an answer that throws counts as selecting.
+    const marksInert = (): boolean => {
+        if (typeof config.marksSelect !== "function") return false;
+        try { return config.marksSelect() === false; } catch { return false; }
+    };
     // Paint the current selection onto the marks. Re-run after EVERY render, because
     // the chart rebuilds its DOM and the classes would otherwise be lost on repaint.
     const paintSelection = () => {
         // A destroyed host owns nothing on the container any more: a late highlight or clear must not paint on it.
         if (destroyed) return;
         try {
+            container.classList?.[marksInert() ? "add" : "remove"](MARKS_INERT_CLASS);
             const sel = current;
             const active = !!sel && sel.length > 0;
             // A PERIOD selection filters everything downstream but never repaints THIS
@@ -1142,6 +1200,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         factFresh = true;
         paintSelection();
         paintGlyphLayer();
+        keyboard?.refresh();
         if (publish) for (const cb of subs) { try { cb(rowIdxs, source, meta); } catch { /* subscriber error is not ours */ } }
         tellSelection();
     };
@@ -1185,6 +1244,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // an honest 'user' when the reader clicked it.
         // A clear of a highlight-only lasso (its clear slot dispatching) is not told to the page, which never heard it.
         if (d.clear) notify([], d.source || "chart", undefined, false, selectionPublished || !(current && current.length));
+        // A chart whose selection reaches nothing lights nothing for its own dispatch either; a clear still settles.
+        else if (marksInert()) return;
         else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark, true);
         // A selection the chart COMPUTED (a drawn region, a brushed range) has no element to point at, so it
         // carries the row indices themselves. Untrusted, so read through validRowSet; an empty set is a clear.
@@ -1256,6 +1317,11 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         const wasDrag = clickWasDrag(container, e);
         clearPress(container);
         if (wasDrag) return;
+        // A CLICK THAT SELECTS NOTHING: nothing listens to this chart's selection, so the click lights and dims
+        // nothing. Asked at every click; the class follows the answer.
+        const inert = marksInert();
+        container.classList?.[inert ? "add" : "remove"](MARKS_INERT_CLASS);
+        if (inert) return;
         // A chart that dispatched for THIS gesture has already been handled by onXf, which
         // runs first (the chart's own handler sits on the tick; this one on the container).
         if (Date.now() - xfAt < XF_ECHO_MS) return;
@@ -1305,6 +1371,29 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     container.addEventListener(XFILTER_REFRESH_EVENT, onXf);
     const untrackPress = trackPress(container);
     container.addEventListener("click", onClick);
+    // THE KEYBOARD: Enter or Space on a mark is a click on it, so the chart's own click handlers and the host's
+    // selection run exactly as for a pointer; Escape is the reader's clear.
+    if (keyboardOn) {
+        const nameOfRow = (m: Element): string | null => {
+            const r = parseRowIdxs(m.getAttribute(ROW_IDX_ATTR))[0];
+            return rowNameOf(data.columns || [], r == null ? null : data.rows?.[r], resolved.cultureCode);
+        };
+        keyboard = installKeyboard({
+            container,
+            markSelector: clickSel,
+            pressSelector: `.${CONTROL_CLASS}`,
+            skipSelector: `.${ANNOTATION_LAYER_CLASS}, .${GLYPH_LAYER_CLASS}, .${LASSO_OUTLINE_CLASS}`,
+            inert: marksInert,
+            select: (m, mods) => {
+                const ME = ((win as any)?.MouseEvent ?? MouseEvent) as typeof MouseEvent;
+                m.dispatchEvent(new ME("click", { bubbles: true, cancelable: true, ctrlKey: mods.ctrl, shiftKey: mods.shift }));
+            },
+            clear: clearFromGesture,
+            isSelected: m => !!m.classList?.contains(MARK_SELECTED_CLASS),
+            labelOf: nameOfRow,
+            keyOf: m => m.getAttribute(ROW_IDX_ATTR) ?? "",
+        });
+    }
     container.classList?.add(HOST_CONTAINER_CLASS);
     ensureAffordanceStyles();
 
@@ -1481,6 +1570,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // measured and moved the chart. A chart that is not capable, a reader who switched it off, and a chart over
         // the row cap each get nothing here (the last gets its caption); and a lasso kept from before is re-applied
         // and announced to the chart without being published.
+        installLassoHere();
+        keyboard?.refresh();
+        // FOCUS BACK where the reader was typing before the host's clear took it, once everything has moved.
+        const fw = focusWas;
+        focusWas = null;
+        restoreFocus(container, fw);
+        // Everything above is the host's own writing, not the chart redrawing itself.
+        selfRedraw?.takeRecords();
+        watchSelfRedraw();
+    };
+    function installLassoHere() {
         try {
             lasso = installLasso({
                 container, options: () => resolved, rows: data.rows ? data.rows.length : 0,
@@ -1488,7 +1588,40 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 clearSelection: clearFromGesture,
             });
         } catch { /* a lasso that cannot install is a chart without one, never a render that failed */ }
+    }
+
+    // A CHART THAT REDRAWS ITSELF. A generated table re-sorts on a header click by calling its own
+    // render(), which starts with container.replaceChildren(): the host's badge layer and every mark's selected class
+    // went with it while the container kept its selection class, so every row dimmed and every badge disappeared. The
+    // host owns those layers, so it puts them back after any redraw it didn't run itself, with no change to code already
+    // generated. Only a removal that took marks counts - the host never removes a mark, so its own writes can't start a
+    // loop - and only while the host has something there to put back.
+    let selfRedraw: MutationObserver | null = null;
+    let focusWas: FocusMemory | null = null;
+    let notesHeld = (config.annotations ?? []).length > 0;
+    const takesMarks = (n: Node) => n.nodeType === 1
+        && (!!(n as Element).classList?.contains(MARK_CLASS) || !!(n as Element).querySelector?.(`.${MARK_CLASS}`));
+    const lassoLost = () => !!lasso?.surface && !lasso.surface.isConnected;
+    const repaintAfterChart = () => {
+        if (destroyed) return;
+        try { ensureCrossfilterHitTargets(container, doc); } catch { /* the marks are the chart's; healing is a courtesy */ }
+        paintSelection();
+        try { drawAnnotations(); } catch { /* a badge must never break the chart on screen */ }
+        paintGlyphLayer(false);
+        if (lassoLost()) installLassoHere();
+        keyboard?.refresh();
+        selfRedraw?.takeRecords();
     };
+    function watchSelfRedraw() {
+        const MO = win?.MutationObserver as typeof MutationObserver | undefined;
+        if (selfRedraw || !MO || destroyed) return;
+        selfRedraw = new MO(records => {
+            if (destroyed || !records.some(r => Array.from(r.removedNodes).some(takesMarks))) return;
+            if (!(current && current.length) && !notesHeld && !lassoLost()) return;
+            repaintAfterChart();
+        });
+        selfRedraw.observe(container, { childList: true, subtree: true });
+    }
 
     // ONE FAILURE BODY for both lanes, for the same reason the passes above are one function:
     // a chart that fails by REJECTING and one that fails by THROWING said the same thing, and
@@ -1522,7 +1655,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             disposeLasso();                      // its surface is about to go; its listeners must go with it
             flushZoom();                         // a pending zoom gesture is read off the old chart first
             if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // where the reader was, before the clear sends it to the top
+            focusWas = rememberFocus(container);  // what the reader was typing in, before the clear takes it
             container.innerHTML = "";            // the host owns clearing between renders
+            selfRedraw?.takeRecords();           // ...so that clear is not the chart redrawing itself
             hasRendered = true;
             if (!renderFn) {
                 if (!config.code) throw new Error("createChartHost: provide code or renderFn");
@@ -1564,6 +1699,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // The generate answer's glyph suppression, when the host handed over the whole payload rather than the option.
             if (resolved.suppressSelectionGlyph === undefined && data.meta?.suppressSelectionGlyph === true)
                 resolved = { ...resolved, suppressSelectionGlyph: true };
+            // The chart is told it works from the keyboard, so its own controls take focus too.
+            if (keyboardOn) resolved = { ...resolved, keyboardMarks: true };
             // THE RENDER ITSELF, AND WHAT IT HANDED BACK. A generated chart whose drawing
             // library has no synchronous API — one that must parse, lay out or fetch before it
             // can paint — returns a PROMISE, and anything measured before that settles is not
@@ -1648,7 +1785,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // callback) must not clear, stop or annotate the chart that is on screen now.
         setOptions(partial) {
             if (destroyed) return;
-            raw = { ...raw, ...partial };
+            raw = { ...raw, ...takeSeed(partial ?? {}) };
             resolved = resolveForHost(raw);
             host.render();
         },
@@ -1661,6 +1798,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         get options() { return resolved; },
         setAnnotations(list) {
             if (destroyed) return;
+            notesHeld = (list ?? []).length > 0;
             annotationLayer.set(list);
             try { drawAnnotations(); } catch { /* never breaks the chart on screen */ }
         },
@@ -1716,6 +1854,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (destroyed) return;
             destroyed = true;
             stopAnim();
+            if (selfRedraw) { selfRedraw.disconnect(); selfRedraw = null; }
+            keyboard?.destroy();
+            keyboard = null;
             container.removeEventListener(XFILTER_REFRESH_EVENT, onXf);
             container.removeEventListener("click", onClick);
             untrackPress();

@@ -22,7 +22,12 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.21.0";
+export const HOST_CONTRACT_VERSION = "1.22.0";
+// 1.22.0 (2026-11-02): A CHART CAN BE WORKED FROM THE KEYBOARD. Code whose header carries the keyboard stamp
+// ("// bic:keyboard-marks", written by the server while its keyboard switch is on) gets its selectable marks made
+// focusable by the host - one tab stop per chart, arrows to move, Enter or Space to select as a click does, Escape to
+// clear - and RenderOptions gains keyboardMarks: true, so a chart or a helper drawing its own controls makes them
+// focusable too. Additive: unstamped code is untouched and an older host simply ignores the stamp.
 // 1.21.0 (2026-10-27): THE HOST SAYS WHAT IT HOLDS OF THE SELECTION. A filter that hides selected rows does not always drop
 // them: Power BI keeps their identities, and the report goes on filtering by them while no mark can show them. RenderOptions
 // gains hostSelection {rows, hidden, narrowed?}: the rows of THIS draw the host's selection holds, and how many held identities
@@ -336,6 +341,7 @@ export interface ViewStateProvider {
 export const HOST_CONTAINER_CLASS = "bic-chart-host";        // stamped on every hosted container
 export const SELECTION_ACTIVE_CLASS = "lch-has-selection";   // on the container while a selection exists
 export const MARK_SELECTED_CLASS = "lch-mark-selected";      // on each mark in the selection
+export const MARKS_INERT_CLASS = "lch-marks-inert";          // on the container while a click on a mark selects nothing
 export const ACTIVE_TICK_CLASS = "lch-tick-active";          // on the axis tick / group header driving the selection
 export const DIM_OPACITY_VAR = "--lch-dim-opacity";          // unselected-mark opacity (visual default 0.25)
 export const DIM_OPACITY_DEFAULT = 0.25;
@@ -654,6 +660,10 @@ export interface RenderOptions {
     selectionGlyph?: "none" | "dot" | "check";
     /** A host FACT from the generate answer: this chart's family never takes a selection glyph. */
     suppressSelectionGlyph?: boolean;
+    /** A host FACT: this chart works from the keyboard (its code carries the keyboard stamp), so the host has made its
+     *  selectable marks focusable. A chart or helper drawing its own controls (a flip arrow, a sort header) gives them
+     *  a tabindex, a role and an Enter / Space press when this is true. */
+    keyboardMarks?: boolean;
     // Animation.
     animAutoPlay?: boolean;
     animPlaySpeedMs?: number;

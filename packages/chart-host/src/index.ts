@@ -28,7 +28,7 @@ export {
     CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_SCROLL,
     CONTAINER_SLOT_HOST_SELECTION,
     VIEW_ONLY_UI_STATE_KEYS, withoutViewOnlyKeys,
-    HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, ACTIVE_TICK_CLASS,
+    HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, MARKS_INERT_CLASS, ACTIVE_TICK_CLASS,
     DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, DIM_OPACITY_MIN,
     chartOwnsTimeline, periodTickSuppressesFeedback,
     ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX,
@@ -122,6 +122,12 @@ export { createChartHost, compileRenderFn, stripEsmExports, requiredD3Plugins, e
     type ChartHost, type ChartHostConfig, type RenderFn, type SelectionPaintReport, type SelectionChangeMeta } from "./host";
 // NOTES ON MARKS: badges the host draws on a key's mark after every render (ChartHostConfig.annotations).
 export { ANNOTATION_CLASS, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
+// THE KEYBOARD (contract 1.22.0): the stamp a server writes into a chart's code, and the wiring a host that draws charts
+// without createChartHost (the Power BI visual) installs itself; createChartHost installs it for a stamped chart.
+export { KEYBOARD_STAMP, KEYBOARD_CLASS, WIRED_ATTR as KEYBOARD_WIRED_ATTR, codeHasKeyboardStamp, installKeyboard, rowNameOf,
+    type KeyboardEnv, type KeyboardHandle } from "./keyboardMarks";
+// What the reader was typing in, kept across a redraw that clears the container (createChartHost does this itself).
+export { rememberFocus, restoreFocus, type FocusMemory } from "./focusKeep";
 // READERS' NOTES, IN-CHART CONTROLS AS PAGE STATE, PAGE FILTERS (2026-10-02): their TYPES here, so a generated
 // component can name them; their code in "./page" (and "./react"), so this entry's eager closure - every host loads it -
 // stays within its budget (scripts/checkEagerSize.mjs). A host that only draws charts never loads them.

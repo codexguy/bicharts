@@ -190,7 +190,8 @@ export interface AnnotationLayer {
     destroy(): void;
 }
 
-export function createAnnotationLayer(container: HTMLElement, onClick?: (a: MarkAnnotation) => void): AnnotationLayer {
+export function createAnnotationLayer(container: HTMLElement, onClick?: (a: MarkAnnotation) => void,
+                                      opts?: { keyboard?: () => boolean }): AnnotationLayer {
     let list: MarkAnnotation[] = [];
     let report: AnnotationReport = { shown: 0, notShown: 0 };
     let last: { data: { columns: any[]; rows: any[][] }; theme: { fg?: string; accent?: string; bg?: string } } | null = null;
@@ -337,7 +338,7 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
         // control. Preferred, in order: covering no text (nor another badge) and on the mark's own shape where the
         // browser can say (a country's visible box can be mostly ocean), then covering no text, then on the shape,
         // then anywhere clear of the controls. None -> null.
-        const clear = (v: Box, len: number, mark: Element | null): [number, number] | null => {
+        const clear = (v: Box, len: number, mark: Element | null, whole: Box = v): [number, number] | null => {
             const hw = Math.max(16, len * 6 + 8) / 2, hh = 8, g = 2;
             const cx = (v.l + v.r) / 2, cy = (v.t + v.b) / 2;
             const at = (x: number, y: number): Box => ({ l: x - hw, t: y - hh, r: x + hw, b: y + hh });
@@ -353,6 +354,9 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             const tries: Array<{ x: number; y: number; px: number; py: number }> = [];
             const add = (x: number, y: number, px = x, py = y) => tries.push({ x: clampX(x, hw), y: clampY(y, hh), px, py });
             const label = rowLabel(v, mark);
+            // A ROW WHOSE LABEL IS OUT OF VIEW (scrolled half out of its table) gets no badge: what is left in view is
+            // a sliver of values, and its corner is the table's corner, far from the row a reader would look for.
+            if (!label && whole !== v && rowLabel(whole, mark)) return null;
             if (label) {
                 const x = label.r + g + hw;
                 if (x + hw <= label.next - g || label.next >= v.r) add(x, label.y, Math.min(x, v.r - 1), label.y);
@@ -427,7 +431,7 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             const dot = wantsDot(bestMark ?? hits.values().next().value ?? null);
             // Nothing of it in view: no badge (counted below as not shown). A mark with no box yet keeps the old way.
             const pt: [number, number] | null = !best ? null
-                : dot ? dotSpot(best, bestWhole!) : clear(best, (a.label ?? "•").length, bestMark);
+                : dot ? dotSpot(best, bestWhole!) : clear(best, (a.label ?? "•").length, bestMark, bestWhole ?? best);
             if (laidOut && !pt) continue;
             shown++;
             const badge = doc.createElement("div");
@@ -464,6 +468,16 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
                 e.stopPropagation();
                 onClick?.(a);
             });
+            // A chart that works from the keyboard: the badge takes focus, and Enter or Space opens it.
+            if (opts?.keyboard?.()) {
+                badge.setAttribute("tabindex", "0");
+                badge.addEventListener("keydown", e => {
+                    if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClick?.(a);
+                });
+            }
             layer.appendChild(badge);
         }
         report = { shown, notShown: list.length - shown };

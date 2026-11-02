@@ -358,7 +358,12 @@ export function BicChart(props: BicChartProps) {
                                            // siblings of a chart that has an id in a group. This binding always
                                            // subscribes to the selection (for onSelect), so the host cannot count
                                            // subscribers here; an onSelect callback alone is not the page's filter.
-                                           selectionReachesPage: () => !!reachRef.current.selects || !!(reachRef.current.group && reachRef.current.id) });
+                                           selectionReachesPage: () => !!reachRef.current.selects || !!(reachRef.current.group && reachRef.current.id),
+                                           // Whether a click on a mark does anything at all: the same two,
+                                           // or an onSelect the page passed. A chart with none of them draws its marks
+                                           // inert rather than dimming the others for a click that filters nothing.
+                                           marksSelect: () => !!reachRef.current.selects || !!(reachRef.current.group && reachRef.current.id)
+                                               || typeof onSelectRef.current === "function" });
         hostRef.current = host;
         builtAnnKeyRef.current = annKey;
         const off = host.selection.onChange((payloadIdxs, source) => {

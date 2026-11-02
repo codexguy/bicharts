@@ -162,6 +162,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         })(),
         // A host FACT from the generate answer, true only for a literal true: silence never suppresses anything.
         suppressSelectionGlyph: p.suppressSelectionGlyph === true ? true : undefined,
+        // A host FACT (1.22.0): the chart works from the keyboard. True only for a literal true, like the one above.
+        keyboardMarks: p.keyboardMarks === true ? true : undefined,
         onSelect: p.onSelect,
         // Control gestures (1.10.0). Passed straight through like onSelect: the host owns what a gesture MEANS,
         // and a host that supplies nothing leaves every control behaving exactly as before.
