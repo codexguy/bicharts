@@ -13,6 +13,7 @@
 import {
     type RenderOptions,
     type HostSelectionFact,
+    type FilterScopeFact,
     ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX,
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
     ANIM_MAX_IDEAL_FRAMES_DEFAULT, ANIM_MAX_IDEAL_FRAMES_MIN, ANIM_MAX_IDEAL_FRAMES_MAX,
@@ -66,6 +67,25 @@ export function cleanHostSelection(v: unknown): HostSelectionFact | undefined {
     return out;
 }
 
+// THE PAGE FILTER THAT NARROWED THE ROWS (contract 1.23.0), made safe to hand a chart: each value as trimmed text, blanks
+// and repeats dropped (a number or a boolean read as its text, anything else dropped); the field as trimmed text, "" when
+// it isn't text; a label only when it says something. No value left means nothing narrowed: absent, never an empty scope.
+export function cleanFilterScope(v: unknown): FilterScopeFact | undefined {
+    if (!v || typeof v !== "object" || !Array.isArray((v as any).values)) return undefined;
+    const values: string[] = [];
+    for (const x of (v as any).values as unknown[]) {
+        if (typeof x !== "string" && typeof x !== "number" && typeof x !== "boolean" && typeof x !== "bigint") continue;
+        const s = String(x).trim();
+        if (s && !values.includes(s)) values.push(s);
+    }
+    if (!values.length) return undefined;
+    const field = typeof (v as any).field === "string" ? ((v as any).field as string).trim() : "";
+    const out: FilterScopeFact = { field, values };
+    const label = typeof (v as any).label === "string" ? ((v as any).label as string).trim() : "";
+    if (label) out.label = label;
+    return out;
+}
+
 // Raw input: every field optional/loose (the knobs arrive as raw setting values).
 export type ResolveOptionsInput = { [K in keyof RenderOptions]?: any };
 
@@ -107,6 +127,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         rowsFilteredOut: p.rowsFilteredOut,
         // A host FACT about its selection (contract 1.21.0), cleaned, never invented: absent stays absent.
         hostSelection: cleanHostSelection(p.hostSelection),
+        // A host FACT about a filter applied before the rows arrived (contract 1.23.0), cleaned, never invented.
+        filterScope: cleanFilterScope(p.filterScope),
         // Host services (contract 1.18.0): a FUNCTION or nothing, so a junk value never reaches a chart as something
         // it would try to call. Passed through untouched otherwise: the host owns what opening or copying means.
         openUrl: typeof p.openUrl === "function" ? p.openUrl : undefined,

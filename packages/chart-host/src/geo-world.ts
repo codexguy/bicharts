@@ -5,4 +5,4 @@
 // each one, so a host that wanted the world map but not the 810 KB ZIP-3 table had no way to
 // say so. Pair with registerGeoAsset("world", WORLD_110M) to seed the shared cache, after
 // which geoFromCache serves every country-* kind AND the derived north-america basemap.
-export { WORLD_110M } from "./geoWorld110m.generated";
+export { WORLD_110M } from "./geoWorld110m";

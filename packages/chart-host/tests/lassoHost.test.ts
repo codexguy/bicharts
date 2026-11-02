@@ -353,6 +353,51 @@ describe("the host runs the lasso", () => {
             expect(selectedMarks()).toEqual([]);
         });
 
+        // A HIGHLIGHT IS NOT A SELECTION, SO A CLICK AFTER IT STARTS FROM WHAT THE PAGE HOLDS (2026-11-02). The Power BI
+        // visual has always done this; the host added a Ctrl+click to the highlighted rows and published them all, so one
+        // modifier click turned a look-only lasso into a page filter, and the hosts disagreed on the same gesture.
+        const ctrlClick = (i: number, x: number, y: number) => {
+            mark(i).dispatchEvent(ptr("pointerdown", x, y, { ctrlKey: true }));
+            mark(i).dispatchEvent(ptr("click", x, y, { ctrlKey: true }));
+        };
+        it("after a highlight-only lasso, a Ctrl+click publishes only the clicked mark", () => {
+            make({ lasso: { capable: true, effect: "highlight" } });
+            drag(AROUND_012);
+            expect(seen).toEqual([]);
+            ctrlClick(4, 150, 200);
+            expect(seen.at(-1)).toEqual({ rows: [4], source: "user" });
+            expect(selectedMarks()).toEqual(["4"]);
+        });
+
+        it("a Ctrl+click after a highlight adds the clicked mark to what the page holds, not to the highlight", () => {
+            make({ lasso: { capable: true, effect: "highlight" } });
+            mark(5).dispatchEvent(ptr("pointerdown", 300, 150));
+            mark(5).dispatchEvent(ptr("click", 300, 150));
+            expect(seen.at(-1)).toEqual({ rows: [5], source: "user" });
+            drag(AROUND_012);
+            expect(seen.length).toBe(1);                                        // the highlight told nobody
+            ctrlClick(4, 150, 200);
+            expect([...seen.at(-1)!.rows].sort()).toEqual([4, 5]);
+            expect(selectedMarks().sort()).toEqual(["4", "5"]);
+        });
+
+        it("Escape on a highlight paints again what the page holds, and tells nobody", () => {
+            make({ lasso: { capable: true, effect: "highlight" } });
+            mark(5).dispatchEvent(ptr("pointerdown", 300, 150));
+            mark(5).dispatchEvent(ptr("click", 300, 150));
+            drag(AROUND_012);
+            expect(selectedMarks()).toEqual(["0", "1", "2"]);
+            esc();
+            expect(seen.length).toBe(1);                                        // still only the click
+            expect(host.selection.current).toEqual([5]);
+            expect(selectedMarks()).toEqual(["5"]);
+            // The page's selection is current again: an empty click now clears it, and says so.
+            surface().dispatchEvent(ptr("pointerdown", 260, 220));
+            surface().dispatchEvent(ptr("pointerup", 260, 220));
+            surface().dispatchEvent(ptr("click", 260, 220));
+            expect(seen.at(-1)).toEqual({ rows: [], source: "user" });
+        });
+
         it("a plain host whose selection nobody hears says so once; one with a subscriber does not", () => {
             host = createChartHost(container, { data: DATA, code: CHART, d3: {}, options: { lasso: { capable: true } } } as any);
             host.render();

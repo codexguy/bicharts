@@ -1,4 +1,4 @@
-import { WORLD_110M } from "./geoWorld110m.generated";
+import { WORLD_110M } from "./geoWorld110m";
 import { US_STATES } from "./geoUsStates.generated";
 import { US_ZIP3 } from "./geoUsZip3.generated";
 import { NA_ISO3, NA_LAT_MAX, clipFeatureToLat } from "./geoNaRegions";

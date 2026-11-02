@@ -815,6 +815,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // Whether the CURRENT selection was told to the subscribers. False only for a highlight-only lasso
     // (RenderOptions.lasso.effect "highlight"): the page never heard it, so its clear is not told either.
     let selectionPublished = true;
+    // WHAT THE PAGE HOLDS: the last selection told to the subscribers, and whether the chart owned it. A highlight-only
+    // lasso paints over it without telling anyone, so the highlight is not a selection: a click after it starts from
+    // this (a Ctrl+click adds the clicked mark to what the page holds, never to the highlight), and the highlight's
+    // clear paints this again.
+    let publishedRows: number[] = [];
+    let publishedFromChart = false;
     // The marks the reader clicked, for a chart that declared "clicked-marks". Parked on the
     // CONTAINER (CONTAINER_SLOT_CLICKED_MARKS), so a host re-created on the same element keeps it.
     const clickedMarks = (): ClickedMarks | null => (container as any)[CONTAINER_SLOT_CLICKED_MARKS] ?? null;
@@ -1193,6 +1199,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         current = rowIdxs;
         selectionFromChart = rowIdxs.length > 0 && fromChart;
         selectionPublished = publish;
+        if (publish) { publishedRows = rowIdxs; publishedFromChart = selectionFromChart; }
         activeTickEl = rowIdxs.length ? (tick ?? null) : null;
         selectionIsPeriod = rowIdxs.length > 0
             && periodTickSuppressesFeedback(!!tick, chartOwnsTimeline(container));
@@ -1210,6 +1217,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // "highlight" lights them here and tells nobody. A filtering lasso whose selection reaches nothing outside the
     // chart is a highlight in effect, and the host says so once: a page built without wiring the chart to a filter
     // otherwise looks as though the lasso did nothing to the rest of the page, with nothing to say why.
+    // A highlight-only lasso's clear: paint what the page holds again and tell nobody, since the page never heard the
+    // highlight. The page's selection is current again, so the next clear or click is told as usual.
+    const restorePublished = (source: string) => {
+        notify(publishedRows, source, undefined, publishedFromChart, false);
+        selectionPublished = true;
+    };
     const selectFromLasso = (rows: number[]) => {
         if (lassoEffect(resolved.lasso) === "highlight") { notify(rows, "user", null, true, false); return; }
         notify(rows, "user", null, true);
@@ -1242,8 +1255,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // period tick — so it anchors the affordance and, on a timeline-owning chart, marks
         // the selection as a PERIOD. `source` cannot be used for this: the scrubber reports
         // an honest 'user' when the reader clicked it.
-        // A clear of a highlight-only lasso (its clear slot dispatching) is not told to the page, which never heard it.
-        if (d.clear) notify([], d.source || "chart", undefined, false, selectionPublished || !(current && current.length));
+        // A clear of a highlight-only lasso (its clear slot dispatching) is not told to the page, which never heard it:
+        // it paints what the page holds again.
+        if (d.clear) {
+            if (!selectionPublished && current && current.length) restorePublished(d.source || "chart");
+            else notify([], d.source || "chart", undefined, false, true);
+        }
         // A chart whose selection reaches nothing lights nothing for its own dispatch either; a clear still settles.
         else if (marksInert()) return;
         else if (d.mark) notify(parseRowIdxs(d.mark.getAttribute?.(ROW_IDX_ATTR)), d.source || "chart", d.mark, true);
@@ -1293,12 +1310,16 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // the period they were reading - measured in Chromium, the unconditional call
             // jumped that chart to All. A selection read off a clicked mark, or handed in by
             // the host, is not the chart's to undo; it clears exactly as it did before.
+            // Decided BEFORE the slot runs: its own dispatch may already have put the page's selection back (onXf).
+            const clearingHighlight = !selectionPublished;
             const slot = (container as any)[CONTAINER_SLOT_XF_CLEAR];
             if (selectionFromChart && typeof slot === "function") {
                 try { slot(); } catch { /* chart already clear */ }
             }
-            // A highlight-only lasso was never told to the page, so neither is its clear.
-            if (current && current.length) notify([], "user", undefined, false, selectionPublished);
+            // A highlight-only lasso was never told to the page, so neither is its clear: it paints what the page holds
+            // again, unless the chart's own clear already did.
+            if (clearingHighlight) { if (!selectionPublished) restorePublished("user"); }
+            else if (current && current.length) notify([], "user", undefined, false, true);
         }
     };
 
@@ -1360,11 +1381,14 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // ticks do not participate in multi-select in practice, so this stays simple rather than
         // tracking a per-row origin map. A plain click that clears (a toggle-off) lights no tick.
         const multi = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
-        const next = nextSelection(current, rows, { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey });
+        // A click starts from what the PAGE holds: a highlight-only lasso painted over it, but was never a selection, so a
+        // Ctrl+click adds the clicked mark to the page's selection, never to the highlight (as the Power BI visual does).
+        const base = selectionPublished ? current : publishedRows;
+        const next = nextSelection(base, rows, { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey });
         const toggledOff = !multi && next.length === 0;
         // Which mark was clicked: what a chart that declared "clicked-marks" lights. Kept for every
         // chart; one that declared nothing never reads it.
-        setClickedMarks(nextClickedMarks(clickedMarks(), current, markKeyOf(el), next,
+        setClickedMarks(nextClickedMarks(clickedMarks(), base, markKeyOf(el), next,
             { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey }));
         notify(next, "user", toggledOff ? null : tick);
     };

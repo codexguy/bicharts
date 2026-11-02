@@ -85,6 +85,9 @@ export function isPlaceBlank(value: string): boolean {
 
 // languages) is derived at runtime from Intl. Packed as "A2 A3" pairs to keep
 // the source compact and the structure typo-resistant.
+// KOSOVO (XK / XKX) is the one entry ISO 3166-1 does not assign itself: it is a user-assigned code, the one the EU, the
+// IMF, the World Bank and the runtime's own region names use. Without it a row naming Kosovo resolved to no country at
+// all, so a tile grid, a choropleth and a world bubble map each dropped it.
 export const ISO_3166_PAIRS =
     "AD AND,AE ARE,AF AFG,AG ATG,AI AIA,AL ALB,AM ARM,AO AGO,AQ ATA,AR ARG,AS ASM,AT AUT,AU AUS,AW ABW,AX ALA,AZ AZE," +
     "BA BIH,BB BRB,BD BGD,BE BEL,BF BFA,BG BGR,BH BHR,BI BDI,BJ BEN,BL BLM,BM BMU,BN BRN,BO BOL,BQ BES,BR BRA,BS BHS,BT BTN,BV BVT,BW BWA,BY BLR,BZ BLZ," +
@@ -109,6 +112,7 @@ export const ISO_3166_PAIRS =
     "UA UKR,UG UGA,UM UMI,US USA,UY URY,UZ UZB," +
     "VA VAT,VC VCT,VE VEN,VG VGB,VI VIR,VN VNM,VU VUT," +
     "WF WLF,WS WSM," +
+    "XK XKX," +
     "YE YEM,YT MYT," +
     "ZA ZAF,ZM ZMB,ZW ZWE";
 
@@ -223,6 +227,8 @@ export const COUNTRY_FORMAL_ALIASES: Readonly<Record<string, string>> = Object.f
     "Saint Martin (French part)": "MAF", "Sint Maarten (Dutch part)": "SXM",
     "Netherlands (Kingdom of the)": "NLD",
     "Macedonia, the former Yugoslav Republic of": "MKD",
+    // A user-assigned code (see ISO_3166_PAIRS), so its name is held here too rather than left to the runtime's tables.
+    "Kosovo": "XKX", "Republic of Kosovo": "XKX",
 });
 
 // Country-name → ISO3 lookup, built once (lazily) from Intl across all supported

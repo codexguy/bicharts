@@ -4,7 +4,8 @@
 // and a page that needs a picked country (to add an action item to it) was closed to them. The host knows which
 // elements select (the marks it wires for clicks), so the host makes them reachable: one tab stop per chart (a roving
 // tabindex), arrows and Home / End move it, Enter or Space selects exactly as a click does (Ctrl or Shift add), Escape
-// clears. A note's badge and a control the chart declares (CONTROL_CLASS) take focus too, and Enter presses them.
+// clears. A note's badge and a control the chart declares (CONTROL_CLASS) take focus too, and Enter presses them; a
+// control that only wraps other controls, buttons, boxes or a slider takes none, so what it holds is what is reached.
 //
 // BEHIND A FLAG ON EVERY PATH. The server writes KEYBOARD_STAMP at the head of a chart's code while its
 // keyboard switch is on, and the host wires keys only for a stamped chart. The stamp travels with the
@@ -66,8 +67,12 @@ export interface KeyboardHandle {
     destroy(): void;
 }
 
-/** What a screen reader calls a row: its first few values, numbers in the reader's culture, internal columns left out.
- *  Shared so every host names a mark the same way. */
+/** A Date from any window (a chart drawn in a frame hands over its own realm's Date). */
+const isDate = (v: unknown): v is Date => Object.prototype.toString.call(v) === "[object Date]";
+
+/** What a screen reader calls a row: its first few values, numbers and dates in the reader's culture, internal columns
+ *  left out. A Date is read as the reader's date, never as its String() (weekday, time and time zone); one that names
+ *  no day is skipped like a blank. Text is kept as it is. Shared so every host names a mark the same way. */
 export function rowNameOf(columns: ReadonlyArray<unknown>, row: ReadonlyArray<unknown> | null | undefined,
                           culture?: string): string | null {
     if (!row) return null;
@@ -76,6 +81,10 @@ export function rowNameOf(columns: ReadonlyArray<unknown>, row: ReadonlyArray<un
         const name = typeof c === "string" ? c : c?.name;
         const v = row[i];
         if (parts.length >= 4 || v == null || v === "" || (typeof name === "string" && name.startsWith("__"))) return;
+        if (isDate(v)) {
+            if (!Number.isNaN(v.getTime())) parts.push(v.toLocaleDateString(culture || undefined));
+            return;
+        }
         parts.push(typeof v === "number" ? v.toLocaleString(culture || undefined, { maximumFractionDigits: 2 }) : String(v));
     });
     return parts.length ? parts.join(", ") : null;
@@ -86,6 +95,19 @@ const isClearChord = (e: KeyboardEvent) => !!e.ctrlKey && !!e.shiftKey && (e.key
 
 const NATIVE = new Set(["input", "select", "textarea", "button", "a"]);
 const isNative = (el: Element) => NATIVE.has((el.localName || "").toLowerCase()) || (el as HTMLElement).isContentEditable === true;
+/** What already takes focus, or presses, on its own inside a control. */
+const OWN_FOCUS = "input, select, textarea, button, a[href], [role=slider]";
+
+/** A control the reader presses itself, not a WRAPPER around controls: a helper may put the control class on the element
+ *  holding the real controls (a pager around its buttons, a slider's group around its steppers and handle). A wrapper
+ *  given a tab stop is a stop that does nothing, and Enter inside one of its own buttons or boxes would press it. */
+function isLeafControl(el: Element, pressSelector: string): boolean {
+    try {
+        return !el.querySelector(pressSelector) && !el.querySelector(OWN_FOCUS);
+    } catch {
+        return true;
+    }
+}
 
 export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
     const { container } = env;
@@ -136,7 +158,7 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
                 setRoving(own, keep);
             }
             for (const c of Array.from(container.querySelectorAll<HTMLElement>(env.pressSelector))) {
-                if (isNative(c)) continue;
+                if (isNative(c) || !isLeafControl(c, env.pressSelector)) continue;
                 wire(c, "0", "button");
             }
         } catch { /* reachability is added on top of a chart that already drew; never a reason it fails */ }

@@ -44,9 +44,9 @@ export {
     type GeoPointPrecision, type GeoMapKind, type TimelineStyle, type FlipMode, type FlipDirection,
     type ApproximatePositions, type ValueAxisBaseline, type SeasonalMarkers,
     type ColorScaleScope, type RenderOptions, type ViewStateProvider, type ChartControlChange,
-    type XfilterRefreshDetail, type HostSelectionFact,
+    type XfilterRefreshDetail, type HostSelectionFact, type FilterScopeFact,
 } from "./contract";
-export { resolveOptions, cleanHostSelection, type ResolveOptionsInput } from "./defaults";
+export { resolveOptions, cleanHostSelection, cleanFilterScope, type ResolveOptionsInput } from "./defaults";
 // The host services a chart may call (contract 1.18.0), built with one set of rules in every host.
 export { hostLinkServices, type HostLinkServices, type ClipboardLike } from "./hostLinks";
 // Exporting a chart's rows to a file (contract 1.19.0): the CSV and .xlsx writers, and the file service for a page in a

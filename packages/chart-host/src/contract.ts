@@ -22,7 +22,14 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.22.0";
+export const HOST_CONTRACT_VERSION = "1.23.0";
+// 1.23.0 (2026-11-02): THE HOST SAYS WHAT FILTER NARROWED THE ROWS. A page filter is often applied to a chart's QUERY
+// (a KPI deck whose query takes the picked country), so the rows arrive already narrowed and the chart cannot tell: it
+// kept its region's title over one country's totals and ranked what the filter left. RenderOptions gains
+// filterScope {field, values, label?}: the field the filter is on, the values it keeps as the reader reads them, and
+// optionally the host's own phrase. A chart words it in its titles and comparisons ("North America · United States
+// only", "rank 2 of 3 (United States only)"). React's BicChart sets it from its scopedBy filters while they are active.
+// Additive: absent means the host says nothing narrowed the rows, and a chart that never reads it is unchanged.
 // 1.22.0 (2026-11-02): A CHART CAN BE WORKED FROM THE KEYBOARD. Code whose header carries the keyboard stamp
 // ("// bic:keyboard-marks", written by the server while its keyboard switch is on) gets its selectable marks made
 // focusable by the host - one tab stop per chart, arrows to move, Enter or Space to select as a click does, Escape to
@@ -264,6 +271,19 @@ export interface HostSelectionFact {
     narrowed?: { published: number; kept: number };
 }
 export const CONTAINER_SLOT_HOST_SELECTION = "__lchHostSelection";   // the chart sets it; the host calls it with a HostSelectionFact
+
+/**
+ * THE PAGE FILTER THAT NARROWED THIS CHART'S ROWS BEFORE THEY ARRIVED (1.23.0), as RenderOptions.filterScope. Untrusted
+ * on the chart side like every option: resolveOptions keeps values to non-blank text, each once.
+ */
+export interface FilterScopeFact {
+    /** The field the filter is on, as the reader knows it ("Country"); "" when the host can't name it. */
+    field: string;
+    /** The values it keeps, as the reader reads them ("United States"); never empty. */
+    values: string[];
+    /** The host's own phrase for the whole filter ("the two neighbours"), used instead of one made from the values. */
+    label?: string;
+}
 
 // Lifecycle slots the generated code sets on the container; the host calls/reads them.
 export const CONTAINER_SLOT_ANIM_STOP = "__llmAnimStop";           // call before unmount/re-render
@@ -561,6 +581,11 @@ export interface RenderOptions {
     // hid (see HostSelectionFact). A chart with its own selection display (a checkbox column) starts from it and can say
     // "2 selected, 2 hidden". Absent means the host cannot say: the chart mirrors the selection paint, as before.
     hostSelection?: HostSelectionFact;
+    // THE PAGE FILTER THAT NARROWED THE ROWS BEFORE THEY ARRIVED (1.23.0): a filter applied to this chart's query, which the
+    // chart cannot see in its rows (see FilterScopeFact). A chart says so where it names or compares what it drew: a title
+    // reads "North America · United States only", a rank "rank 2 of 3 (United States only)". ABSENT MEANS THE HOST SAYS
+    // NOTHING NARROWED THE ROWS: the chart titles and compares as before.
+    filterScope?: FilterScopeFact;
     // HOST SERVICES A CHART MAY CALL (1.18.0). `openUrl` opens an address the host's own way: a sandboxed visual
     // cannot navigate itself, so a link a chart draws calls this, and only http(s) and mailto addresses are ever
     // handed to it. `copyText` writes text to the reader's clipboard the host's own way: a returned or resolved `false`,

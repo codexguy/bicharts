@@ -20,14 +20,14 @@
 // THE GROUP ITSELF IS THE CORE'S createChartGroup (group.ts) since 2026-09-24, so a host with
 // no React coordinates charts by the same rules. What stays here is only what is React's: the
 // context, the effects that hand a member its payload, and the state a page reads.
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode, RefObject } from "react";
 import { createChartHost, type ChartHost, type ChartHostConfig } from "./host";
 import type { ResolveOptionsInput } from "./defaults";
 import type { GeoPointBinding } from "./payload";
 import { geoFromCache, loadGeo } from "./geoLazy";
 import { createChartGroup, syncMemberSelection, toSourceRows, type ChartGroup, type ChartGroupSelection } from "./group";
-import { bindFilter, createFilter, createFilterScope, payloadRowReader, viewToken, viewFromToken, type PageView,
+import { bindFilter, createFilter, createFilterScope, filterScopeOf, payloadRowReader, viewToken, viewFromToken, type PageView,
          type Filter, type FilterBinding, type FilterOptions, type FilterScope } from "./filterScope";
 
 export { assembleD3 } from "./host";
@@ -35,7 +35,7 @@ import { attachControls, createControls, type Controls, type ControlsAttachment 
 export { createControls, type Controls, type ControlInfo } from "./controls";
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
 export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
-export { createFilter, createFilterScope, fromVegaInteraction,
+export { createFilter, createFilterScope, fromVegaInteraction, filterScopeOf,
          type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
 
 export interface BicChartProps {
@@ -129,6 +129,15 @@ export interface BicChartProps {
      * `selects`, the filter owns what this chart shows as selected.
      */
     selects?: Filter;
+    /**
+     * THE PAGE FILTERS THIS CHART'S QUERY ALREADY APPLIES - a KPI deck whose query takes the picked country, a table the
+     * page narrows with `filter.keep(rows)` before handing it over. The rows arrive narrowed, so the chart can't see the
+     * filter; while one of these is active the chart is told (options.filterScope: the filter's label and the values its
+     * chip shows), and its titles and comparisons say so ("North America · United States only", "rank 2 of 3 (United
+     * States only)"). Cleared again when the filters clear. Not for the filter this chart `selects` unless its own rows
+     * are narrowed by it too. Absent: the page's own options.filterScope, if any, goes through untouched.
+     */
+    scopedBy?: Filter | readonly Filter[];
     /**
      * THE CHART'S OWN CONTROLS AS PAGE STATE - from useBicControls(). For a chart that draws
      * sliders (the What-if projection's rate and horizon): `controls.values` holds every
@@ -230,9 +239,32 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 }
 
 export function BicChart(props: BicChartProps) {
-    const { code, renderFn, options, d3, geoKind, viewState, zoomMemory, labelContrast, restoreScroll, onLabelContrast, onSelectionGlyphs, layoutPass,
+    const { code, renderFn, options: pageOptions, d3, geoKind, viewState, zoomMemory, labelContrast, restoreScroll, onLabelContrast, onSelectionGlyphs, layoutPass,
             onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
-            className, style, selects, controls, ariaLabel } = props;
+            className, style, selects, scopedBy, controls, ariaLabel } = props;
+
+    // THE FILTERS THIS CHART'S QUERY APPLIES (scopedBy): followed here, so the chart is told when one changes even when the
+    // page component that holds them doesn't re-render this one. While one is active, options.filterScope says what it
+    // keeps; otherwise the page's own options.filterScope, if any. Once scopedBy has been given the key is always sent,
+    // because an options change MERGES into what the chart was last handed: a fact left out would never clear.
+    const scopeList: readonly Filter[] = scopedBy == null ? [] : Array.isArray(scopedBy) ? scopedBy as readonly Filter[] : [scopedBy as Filter];
+    const scopeIds = scopeList.map(f => f?.id).join("\u0001");
+    const subscribeScope = useCallback((cb: () => void) => {
+        const offs = scopeList.map(f => f?.onChange?.(() => cb()));
+        return () => { for (const off of offs) off?.(); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scopeIds]);
+    const scopeSnapshot = () => scopeList.map(f => f?.version).join(",");
+    useSyncExternalStore(subscribeScope, scopeSnapshot, scopeSnapshot);
+    const [scopeEver, setScopeEver] = useState(scopedBy !== undefined);
+    if (scopedBy !== undefined && !scopeEver) setScopeEver(true);
+    const scopeFact = scopedBy === undefined ? undefined : filterScopeOf(scopeList);
+    const scopeKey = scopeFact ? JSON.stringify(scopeFact) : "";
+    const options = useMemo<ResolveOptionsInput | undefined>(
+        () => scopeEver ? { ...(pageOptions ?? {}), filterScope: scopeFact ?? pageOptions?.filterScope } : pageOptions,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [pageOptions, scopeEver, scopeKey]);
+
     const ref = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<ChartHost | null>(null);
     const rowMapRef = useRef<number[] | null>(null);

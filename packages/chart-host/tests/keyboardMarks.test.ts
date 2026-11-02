@@ -200,3 +200,77 @@ function render(container, data) {
         expect(marks(el)[1].getAttribute("tabindex")).toBe("0");
     });
 });
+
+// ONLY A LEAF CONTROL TAKES A TAB STOP. Some helpers put the control class on a WRAPPER that holds the real controls (a
+// pager's wrapper around its two buttons, a slider's group around its steppers and handle), so the wrapper took a tab
+// stop that did nothing, and Enter pressed inside one of its own buttons or boxes was taken as a press on the wrapper.
+describe("only a control with no control inside it takes a tab stop", () => {
+    const CONTROLS = `${KEYBOARD_STAMP}
+function render(container, data) {
+  const doc = container.ownerDocument;
+  const add = (parent, tag, cls, attrs) => {
+    const e = doc.createElement(tag);
+    if (cls) e.className = cls;
+    for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+    parent.appendChild(e);
+    return e;
+  };
+  for (let i = 0; i < data.rows.length; i++) add(container, "div", "d3-mark", { "data-row-idx": String(i) });
+  const pager = add(container, "div", "lch-control llm-pager");
+  const next = add(pager, "button", "", { type: "button" });
+  next.addEventListener("click", () => { container.__pages = (container.__pages || 0) + 1; });
+  add(pager, "button", "", { type: "button" });
+  const slider = add(container, "div", "lch-control llm-slider");
+  add(slider, "div", "lch-control llm-slider-step", { "aria-label": "Decrease" });
+  add(slider, "div", "lch-control llm-slider-step", { "aria-label": "Increase" });
+  add(slider, "div", "llm-slider-handle", { role: "slider", tabindex: "0" });
+  const knob = add(container, "div", "lch-control knob-strip");
+  const box = add(knob, "input", "", { type: "number" });
+  box.addEventListener("click", () => { container.__boxClicks = (container.__boxClicks || 0) + 1; });
+  const linkBox = add(container, "div", "lch-control link-box");
+  add(linkBox, "a", "", { href: "https://example.com" });
+  const handleOnly = add(container, "div", "lch-control handle-only");
+  add(handleOnly, "div", "", { role: "slider" });
+  add(container, "div", "lch-control flip-next", { "aria-label": "Next face" });
+}`;
+    const q = (el: HTMLElement, sel: string) => el.querySelector(sel) as HTMLElement;
+
+    it("a wrapper holding controls, buttons, a box, a link or a slider takes none; the controls inside do", () => {
+        const { el } = mount(CONTROLS);
+        for (const wrapper of [".llm-pager", ".llm-slider", ".knob-strip", ".link-box", ".handle-only"]) {
+            expect(q(el, wrapper).hasAttribute("tabindex"), wrapper).toBe(false);
+            expect(q(el, wrapper).hasAttribute("role"), wrapper).toBe(false);
+        }
+        const steps = Array.from(el.querySelectorAll<HTMLElement>(".llm-slider-step"));
+        expect(steps.map(s => s.getAttribute("tabindex"))).toEqual(["0", "0"]);
+        expect(steps.map(s => s.getAttribute("role"))).toEqual(["button", "button"]);
+        expect(q(el, ".flip-next").getAttribute("tabindex")).toBe("0");
+    });
+
+    it("Enter in a box inside a wrapper is the box's own, never a press on the wrapper", () => {
+        const { el } = mount(CONTROLS);
+        const box = q(el, ".knob-strip input");
+        const ev = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+        box.dispatchEvent(ev);
+        expect(ev.defaultPrevented).toBe(false);
+        expect((el as any).__boxClicks).toBeUndefined();
+    });
+});
+
+// A DATE IS NAMED AS A DATE. A screen reader read a row's Date as its whole String() - weekday, time and time zone
+// ("Fri Mar 01 2024 00:00:00 GMT-0800 (Pacific Standard Time)"); it says the reader's date instead.
+describe("rowNameOf", () => {
+    it("names a Date as the reader's date, and keeps strings and numbers as they were", async () => {
+        const { rowNameOf } = await import("../src/keyboardMarks");
+        const cols = [{ name: "Country" }, { name: "Day" }, { name: "Revenue" }, { name: "Note" }];
+        const day = new Date(2024, 2, 1);
+        expect(rowNameOf(cols, ["Brazil", day, 1234.5, "2024-03-01"], "en-US")).toBe("Brazil, 3/1/2024, 1,234.5, 2024-03-01");
+        expect(rowNameOf(cols, ["Brazil", day, 1234.5, "2024-03-01"], "de-DE")).toBe("Brazil, 1.3.2024, 1.234,5, 2024-03-01");
+        expect(rowNameOf(cols, ["Brazil", day], "en-US")).not.toContain("GMT");
+    });
+
+    it("skips a date that names no day, as it skips a blank", async () => {
+        const { rowNameOf } = await import("../src/keyboardMarks");
+        expect(rowNameOf([{ name: "Country" }, { name: "Day" }], ["Brazil", new Date(NaN)], "en-US")).toBe("Brazil");
+    });
+});

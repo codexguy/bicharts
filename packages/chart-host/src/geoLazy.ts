@@ -115,7 +115,7 @@ export async function loadGeo(geoKind: string | null | undefined): Promise<any |
     } else if (asset === "us-zip3") {
         byAsset.set(asset, (await import("./geoUsZip3.generated")).US_ZIP3);
     } else {
-        byAsset.set(asset, (await import("./geoWorld110m.generated")).WORLD_110M);
+        byAsset.set(asset, (await import("./geoWorld110m")).WORLD_110M);
     }
     return fromAssets(key);
 }

@@ -386,12 +386,18 @@ function poolUnderLooseKeys(index: Map<string, CityHit[]>): Map<string, CityHit[
 // island states and territories, whose stored point is already at or beside their largest city
 // (Greenland is Nuuk exactly, the Bahamas is Nassau exactly). Augmenting the gazetteer for
 // those, which needs the GeoNames source the generator reads, upgrades them automatically.
+//
+// A COUNTRY THE TABLES WERE BUILT WITHOUT. The generator takes its country list from ISO_3166_PAIRS, so a code added
+// there after the last build has no stored point and no city rows: Kosovo, whose user-assigned XKX joined the list
+// later. Its point here is its largest city, the rule above, by hand; the next build from GeoNames brings its cities
+// and its own point, which win over this one.
+const COUNTRY_POINTS_SINCE_BUILD = "XKX|21.17|42.67";   // Pristina
 let _countries: Map<string, { lon: number; lat: number }> | null = null;
 function countryIndex(): Map<string, { lon: number; lat: number }> {
     if (_countries) return _countries;
     const m = new Map<string, { lon: number; lat: number }>();
     // Fallback first, so a country the gazetteer does not reach still places.
-    for (const rec of COUNTRY_PACKED.split(",")) {
+    for (const rec of `${COUNTRY_POINTS_SINCE_BUILD},${COUNTRY_PACKED}`.split(",")) {
         const p = rec.split("|");
         if (p.length < 3) continue;
         m.set(p[0], { lon: +p[1], lat: +p[2] });

@@ -26,6 +26,7 @@
 
 import type { ChartHost } from "./host";
 import type { Controls } from "./controls";
+import type { FilterScopeFact } from "./contract";
 
 /** Why a filter changed. */
 export type FilterChangeReason = "click" | "clear" | "page" | "data";
@@ -403,6 +404,28 @@ export function createFilterScope(): FilterScope {
         },
     };
     return scope;
+}
+
+/**
+ * THE PAGE FILTERS THAT NARROWED A CHART'S ROWS, as the fact the chart is told (RenderOptions.filterScope, contract
+ * 1.23.0). For filters applied to the chart's QUERY, so its rows arrive already narrowed and it can't see the filter.
+ * Only the active ones count. The field is each one's label (its key columns when it has none), joined ", "; the values
+ * are what its chip shows for each key, in order, each once. Nothing active, nothing to say: undefined.
+ */
+export function filterScopeOf(filters: Filter | readonly Filter[] | null | undefined): FilterScopeFact | undefined {
+    const list = (Array.isArray(filters) ? filters : filters ? [filters] : []) as readonly Filter[];
+    const active = list.filter(f => f && f.active);
+    const values: string[] = [];
+    for (const f of active) {
+        for (const k of f.keys) {
+            const t = f.textOf(k).trim();
+            if (t && !values.includes(t)) values.push(t);
+        }
+    }
+    if (!values.length) return undefined;
+    const fields: string[] = [];
+    for (const f of active) if (f.label && !fields.includes(f.label)) fields.push(f.label);
+    return { field: fields.join(", "), values };
 }
 
 // ── the chart side ─────────────────────────────────────────────────────────────
