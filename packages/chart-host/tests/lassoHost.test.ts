@@ -217,6 +217,24 @@ describe("the host runs the lasso", () => {
             expect(outline().getAttribute("d")).toBe("");
         });
 
+        // A REDRAW KEEPS THE KEYBOARD ON THE LASSO (2026-11-02). A page that re-sends the data after the lasso's own
+        // selection (Power BI does, for a filtering lasso) redraws the chart, and the redraw replaced the focused surface:
+        // focus fell to the document, so the reader's Escape reached nothing and the filter stayed. Measured in Power BI
+        // Desktop. The key goes to whatever has focus, as a real keyboard's does - never straight to the surface.
+        it("a redraw after a filtering lasso keeps focus on the lasso, so Escape still clears it", () => {
+            make();
+            drag(AROUND_012);
+            expect(seen.at(-1)).toEqual({ rows: [0, 1, 2], source: "user" });
+            // Compared as plain values: a failing toBe on an SVG element breaks the test runner's printer.
+            const focused = () => (document.activeElement === surface() ? "the lasso surface" : document.activeElement?.localName ?? "nothing");
+            expect(focused()).toBe("the lasso surface");                  // a finished lasso focuses its surface
+            host.render();                                                // the page re-sends the data
+            expect(focused()).toBe("the lasso surface");                  // the NEW surface has it after the redraw
+            document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+            expect(seen.at(-1)).toEqual({ rows: [], source: "user" });
+            expect(outline().getAttribute("d")).toBe("");
+        });
+
         it("an empty click on the plot still clears a selection a mark click made", () => {
             make();
             mark(1).dispatchEvent(ptr("click", 150, 100));

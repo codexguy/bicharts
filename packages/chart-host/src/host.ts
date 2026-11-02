@@ -1676,10 +1676,13 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             const seq = ++renderSeq;
             stopAnim();                          // contract: stop the old timer before repaint
             followGlyphs(false);                 // the draw's own writes are not marks moving; the paint after it reconnects
+            // What the reader was typing in, before anything below takes it. BEFORE the lasso goes: a finished lasso
+            // focuses its surface, and removing it first left nothing to remember, so a redraw (a page that re-sends the
+            // data after the lasso's own selection) dropped focus and the reader's Escape reached nothing.
+            focusWas = rememberFocus(container);
             disposeLasso();                      // its surface is about to go; its listeners must go with it
             flushZoom();                         // a pending zoom gesture is read off the old chart first
             if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // where the reader was, before the clear sends it to the top
-            focusWas = rememberFocus(container);  // what the reader was typing in, before the clear takes it
             container.innerHTML = "";            // the host owns clearing between renders
             selfRedraw?.takeRecords();           // ...so that clear is not the chart redrawing itself
             hasRendered = true;
