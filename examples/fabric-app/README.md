@@ -13,6 +13,7 @@ Every number is generated. None of it describes a real company.
 | Path | What it is |
 | --- | --- |
 | `data/*.csv` | The nine tables the model reads. UTF-8, LF line endings, with a header row. |
+| `data-v3/*.csv` | The same nine tables, with marketing budgets that swing more from year to year (see [data-v3](#data-v3-budgets-you-can-plan-with)). |
 | `pbip/GlobalRevenueV2.pbip` | A Power BI project: the semantic model (TMDL) plus a one-page report. |
 | `generator/generate_data.py` | Rebuilds `data/` from a fixed seed. Every run is byte-identical. |
 | `generator/build_pbip.py` | Rebuilds the project folder. |
@@ -91,6 +92,19 @@ channel about 31%, and online share correlates with growth at r = 0.47. Of the 1
 fastest-growing countries, 11 are online-led; of the 15 slowest, 2 are. Monthly targets are
 the annual plan spread evenly across the year, so they don't follow the sales seasons.
 
+## data-v3: budgets you can plan with
+
+`data-v3/` is the same model generated the same way, with one change: each country's marketing budget swings more from
+year to year (the yearly budget factor's spread on the log scale is 0.4, against 0.16 in `data/`). In `data/`, a
+country's spend moves only about 2x over the seven years, mostly in step with its own growth, so its revenue's
+response to spend can't be told apart from that growth. In `data-v3/` each country's spend varies about 3-4x, and
+its revenue still responds with diminishing returns, as in `data/`. A budget planner that fits each region on its
+countries' years, with every country's own trend, can then find where the next dollar earns least.
+
+Every key, table and story is the same; the figures differ. Because budgets move growth, country growth spreads
+wider: year-on-year revenue growth runs from about -16% to +68% across countries and years, against -8% to +31%.
+Point `DataPath` at `codexguy/bicharts/main/examples/fabric-app/data-v3/` to use it.
+
 ## Using it
 
 **Power BI Desktop.** Open `pbip/GlobalRevenueV2.pbip` and refresh. Every table reads its CSV
@@ -116,7 +130,8 @@ literal in the `fnLoadCsv` function, and only the path under it comes from the p
 **Shipment measures** follow `DimOriginCountry` and `DimDestinationCountry`, not `DimCountry`.
 Grouped by `DimCountry`, they repeat the same total on every row.
 
-**Regenerating.** `python generator/generate_data.py` rewrites `data/`, and
+**Regenerating.** `python generator/generate_data.py` rewrites `data/`,
+`python generator/generate_data.py data-v3 --budget-sd 0.4` (from this folder) rewrites `data-v3/`, and
 `python generator/build_pbip.py` rewrites the project. Run `python generator/check_shapes.py`
 to confirm the shapes.
 

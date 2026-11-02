@@ -179,6 +179,23 @@ def main(folder: str) -> None:
     print(f"   cities with lat/lon: {sum(1 for c in city.values() if c['Latitude'] and c['Longitude'])} of {len(city)}, "
           f"in {len({c['CountryCode'] for c in city.values()})} countries")
 
+    # ---------------------------------------------------------------- budget planner
+    print("\n== Budget planner: Marketing Spend against Revenue by Region > Country x Year")
+    spend_cy = defaultdict(float)
+    for r in ops:
+        spend_cy[(r["CountryCode"], int(r["MonthStart"][:4]))] += float(r["MarketingSpendUSD"])
+    by_region = defaultdict(list)
+    for c in country:
+        by_region[country[c]["Region"]].append(c)
+    for reg in sorted(by_region):
+        spans, rs = [], []
+        for c in by_region[reg]:
+            xs = np.array([spend_cy[(c, y)] for y in years])
+            spans.append(xs.max() / xs.min())
+            rs.append(float(np.corrcoef(xs, np.array(years, dtype=float))[0, 1]))
+        print(f"   {reg[:20]:20s} {len(by_region[reg]):2d} countries x {len(years)} years: each country's spend varies "
+              f"{np.median(spans):.1f}x (median, max/min), its correlation with the year median {np.median(rs):+.2f}")
+
 
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))

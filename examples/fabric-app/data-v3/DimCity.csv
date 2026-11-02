@@ -1,0 +1,72 @@
+CityKey,City,CountryCode,CityTier,CityTierRank,Latitude,Longitude
+USA-NYC,New York,USA,Tier 1,1,40.71,-74.01
+USA-LAX,Los Angeles,USA,Tier 1,1,34.05,-118.24
+USA-CHI,Chicago,USA,Tier 1,1,41.88,-87.63
+USA-DFW,Dallas,USA,Tier 2,2,32.78,-96.80
+USA-SEA,Seattle,USA,Tier 2,2,47.61,-122.33
+USA-ATL,Atlanta,USA,Tier 2,2,33.75,-84.39
+CAN-YTO,Toronto,CAN,Tier 1,1,43.65,-79.38
+CAN-YVR,Vancouver,CAN,Tier 2,2,49.28,-123.12
+CAN-YMQ,Montréal,CAN,Tier 2,2,45.50,-73.57
+MEX-MEX,Mexico City,MEX,Tier 1,1,19.43,-99.13
+MEX-MTY,Monterrey,MEX,Tier 2,2,25.69,-100.32
+MEX-GDL,Guadalajara,MEX,Tier 3,3,20.66,-103.35
+BRA-SAO,São Paulo,BRA,Tier 1,1,-23.55,-46.63
+BRA-RIO,Rio de Janeiro,BRA,Tier 2,2,-22.91,-43.17
+BRA-BHZ,Belo Horizonte,BRA,Tier 3,3,-19.92,-43.94
+ARG-BUE,Buenos Aires,ARG,Tier 1,1,-34.60,-58.38
+CHL-SCL,Santiago,CHL,Tier 2,2,-33.45,-70.67
+COL-BOG,Bogotá,COL,Tier 2,2,4.71,-74.07
+PER-LIM,Lima,PER,Tier 2,2,-12.05,-77.04
+GBR-LON,London,GBR,Tier 1,1,51.51,-0.13
+GBR-MAN,Manchester,GBR,Tier 2,2,53.48,-2.24
+GBR-EDI,Edinburgh,GBR,Tier 3,3,55.95,-3.19
+FRA-PAR,Paris,FRA,Tier 1,1,48.86,2.35
+FRA-LYS,Lyon,FRA,Tier 2,2,45.76,4.84
+FRA-MRS,Marseille,FRA,Tier 3,3,43.30,5.37
+DEU-BER,Berlin,DEU,Tier 1,1,52.52,13.40
+DEU-MUC,Munich,DEU,Tier 1,1,48.14,11.58
+DEU-HAM,Hamburg,DEU,Tier 2,2,53.55,9.99
+ITA-MIL,Milan,ITA,Tier 1,1,45.46,9.19
+ITA-ROM,Rome,ITA,Tier 2,2,41.90,12.50
+ESP-MAD,Madrid,ESP,Tier 1,1,40.42,-3.70
+ESP-BCN,Barcelona,ESP,Tier 2,2,41.39,2.17
+NLD-AMS,Amsterdam,NLD,Tier 1,1,52.37,4.90
+SWE-STO,Stockholm,SWE,Tier 2,2,59.33,18.07
+NOR-OSL,Oslo,NOR,Tier 2,2,59.91,10.75
+POL-WAW,Warsaw,POL,Tier 2,2,52.23,21.01
+POL-KRK,Kraków,POL,Tier 3,3,50.06,19.94
+CHE-ZRH,Zürich,CHE,Tier 2,2,47.38,8.54
+IRL-DUB,Dublin,IRL,Tier 2,2,53.35,-6.26
+TUR-IST,Istanbul,TUR,Tier 1,1,41.01,28.98
+ARE-DXB,Dubai,ARE,Tier 1,1,25.20,55.27
+ARE-AUH,Abu Dhabi,ARE,Tier 2,2,24.45,54.38
+SAU-RUH,Riyadh,SAU,Tier 2,2,24.71,46.68
+ISR-TLV,Tel Aviv,ISR,Tier 2,2,32.09,34.78
+EGY-CAI,Cairo,EGY,Tier 2,2,30.04,31.24
+MAR-CAS,Casablanca,MAR,Tier 3,3,33.57,-7.59
+ZAF-JNB,Johannesburg,ZAF,Tier 2,2,-26.20,28.05
+ZAF-CPT,Cape Town,ZAF,Tier 3,3,-33.92,18.42
+NGA-LOS,Lagos,NGA,Tier 2,2,6.52,3.38
+KEN-NBO,Nairobi,KEN,Tier 3,3,-1.29,36.82
+CHN-SHA,Shanghai,CHN,Tier 1,1,31.23,121.47
+CHN-BJS,Beijing,CHN,Tier 1,1,39.90,116.41
+CHN-SZX,Shenzhen,CHN,Tier 1,1,22.54,114.06
+JPN-TYO,Tokyo,JPN,Tier 1,1,35.68,139.69
+JPN-OSA,Osaka,JPN,Tier 2,2,34.69,135.50
+KOR-SEL,Seoul,KOR,Tier 1,1,37.57,126.98
+IND-BOM,Mumbai,IND,Tier 1,1,19.08,72.88
+IND-BLR,Bengaluru,IND,Tier 1,1,12.97,77.59
+IND-DEL,Delhi,IND,Tier 1,1,28.61,77.21
+IND-MAA,Chennai,IND,Tier 2,2,13.08,80.27
+SGP-SIN,Singapore,SGP,Tier 1,1,1.35,103.82
+IDN-JKT,Jakarta,IDN,Tier 2,2,-6.21,106.85
+THA-BKK,Bangkok,THA,Tier 2,2,13.76,100.50
+VNM-SGN,Ho Chi Minh City,VNM,Tier 2,2,10.82,106.63
+VNM-HAN,Hanoi,VNM,Tier 3,3,21.03,105.85
+PHL-MNL,Manila,PHL,Tier 2,2,14.60,120.98
+MYS-KUL,Kuala Lumpur,MYS,Tier 2,2,3.14,101.69
+AUS-SYD,Sydney,AUS,Tier 1,1,-33.87,151.21
+AUS-MEL,Melbourne,AUS,Tier 2,2,-37.81,144.96
+AUS-BNE,Brisbane,AUS,Tier 3,3,-27.47,153.03
+NZL-AKL,Auckland,NZL,Tier 3,3,-36.85,174.76

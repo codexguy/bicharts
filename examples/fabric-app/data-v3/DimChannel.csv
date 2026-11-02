@@ -1,0 +1,4 @@
+Channel,ChannelDescription,ChannelOrder
+Online,Web store and marketplace orders placed directly by customers,1
+Retail,Orders through physical stores and consumer-electronics retailers,2
+Partner,"Orders through resellers, system integrators and managed-service partners",3

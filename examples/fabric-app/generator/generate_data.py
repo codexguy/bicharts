@@ -9,6 +9,8 @@ written in a fixed order with LF line endings.
 
     python generate_data.py            # writes ../data/*.csv
     python generate_data.py out_dir    # writes out_dir/*.csv
+    python generate_data.py ../data-v3 --budget-sd 0.4
+                                       # data-v3: budgets that swing more from year to year
 
 The data is fictional. Country centroids, city coordinates and populations are
 real (approximate) reference values; every revenue, order, shipment and target
@@ -637,7 +639,12 @@ def build_shipments(units_physical) -> list[list]:
 
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
-    target = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "data")
+    args = sys.argv[1:]
+    if "--budget-sd" in args:
+        i = args.index("--budget-sd")
+        BUDGET_SD = float(args[i + 1])
+        del args[i:i + 2]
+    target = args[0] if args else os.path.join(here, "..", "data")
     result = build(os.path.abspath(target))
     for name, n in result.items():
         print(f"{name:26s} {n:>8,d} rows")
