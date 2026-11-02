@@ -788,6 +788,12 @@ export type LLMRequestCode =
         // a request without it gets exactly the answers it always did, and a server that predates
         // the field drops it unread, so a poll against one simply keeps polling.
         fetchArmedAtMs?: number,
+        // WHEN AND WHY THE STREAM A CORRELATION POLL RECOVERS WAS CUT: epoch MILLISECONDS on the host's own clock
+        // (the clock fetchArmedAtMs uses), a positive whole number, and a short cause. Sent only beside
+        // fetchCorrelationId and only through fetchFields; the server logs them and stores them on the recovery
+        // row, and decides nothing on them. An older server drops both.
+        fetchCutAtMs?: number,
+        fetchCause?: string,
         model?: string,
         // Requested renderer — the "Render Type" setting ("" / VISUAL = leave to
         // visual, or explicit D3 / PLOTLY / PYMATPLOT / VEGA).

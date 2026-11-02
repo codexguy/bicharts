@@ -125,6 +125,16 @@ export interface FetchRequest {
      * milliseconds on the host's own clock. Used only with `fetchCorrelationId`; see `fetchFields`.
      */
     fetchArmedAtMs?: number | null;
+    /**
+     * When the stream of the generation a correlation poll recovers was cut: epoch milliseconds on the host's own
+     * clock (the clock `fetchArmedAtMs` uses). Used only with `fetchCorrelationId`; logged, never a decision input.
+     */
+    fetchCutAtMs?: number | null;
+    /**
+     * Why that poll runs - what cut the stream, as the host saw it ("stream-cut: terminated", "transport-lost").
+     * Used only with `fetchCorrelationId`; sent as one line of at most 120 characters, logged, never parsed.
+     */
+    fetchCause?: string | null;
     /** A recovery poll keyed by version. null/absent = not one. */
     recoveryFetchVersion?: number | null;
     /** A version the reader stated - asked for by number. null or 0 mean "no preference", never "version zero". */
@@ -141,6 +151,10 @@ export interface FetchFields {
     fetchCorrelationId: string | undefined;
     /** Present only on a poll by correlation that stated a usable arm time; never a key holding `undefined`. */
     fetchArmedAtMs?: number;
+    /** Present only on a poll by correlation that stated a usable cut time. */
+    fetchCutAtMs?: number;
+    /** Present only on a poll by correlation that stated a cause with any text in it. */
+    fetchCause?: string;
 }
 
 /**
@@ -206,6 +220,13 @@ export function resolveFetchVersion(i: {
  * server binds it as an integer, and a value it cannot bind (a fraction, a string, an exponent form)
  * fails the whole request rather than just that field, so it is sent only as a positive whole number
  * and its key is left off otherwise. A server that predates the field drops it unread.
+ *
+ * THE CUT TIME AND CAUSE ride a poll by correlation too, when the host knows them: when the stream it is
+ * recovering was cut, on the same clock as the arm time, and why. The server logs them and stores them on
+ * the row the poll writes; it decides nothing on them. The cut time follows the arm time's integer rule.
+ * The cause is free text from the host, so it is sent as one line - control characters become a space -
+ * of at most 120 characters, and not at all when nothing is left. Both keys come after the arm time, so a
+ * caller that states neither serialises exactly as before.
  */
 export function fetchFields(r: FetchRequest): FetchFields {
     const byCorrelation = r.fetchCorrelationId != null;
@@ -220,10 +241,24 @@ export function fetchFields(r: FetchRequest): FetchFields {
     });
     const armed = r.fetchArmedAtMs;
     const armedAtMs = byCorrelation && typeof armed === "number" && Number.isSafeInteger(armed) && armed > 0 ? armed : undefined;
+    const cut = r.fetchCutAtMs;
+    const cutAtMs = byCorrelation && typeof cut === "number" && Number.isSafeInteger(cut) && cut > 0 ? cut : undefined;
+    const causeText = byCorrelation ? oneLineCause(r.fetchCause) : "";
     return {
         genNew, version: v.version, fetchOnly: v.fetchOnly, fetchCorrelationId: r.fetchCorrelationId ?? undefined,
         ...(armedAtMs !== undefined ? { fetchArmedAtMs: armedAtMs } : {}),
+        ...(cutAtMs !== undefined ? { fetchCutAtMs: cutAtMs } : {}),
+        ...(causeText ? { fetchCause: causeText } : {}),
     };
+}
+
+/** A poll's cause as one line of plain text, at most 120 UTF-16 units, never ending in half a character; "" when none. */
+function oneLineCause(cause: unknown): string {
+    if (typeof cause !== "string") return "";
+    let s = cause.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 120);
+    // A cut through a surrogate pair would leave a lone high surrogate, which is not text.
+    if (/[\ud800-\udbff]$/.test(s)) s = s.slice(0, -1);
+    return s.trimEnd();
 }
 
 /** The renderer capability flags a generate request carries. */

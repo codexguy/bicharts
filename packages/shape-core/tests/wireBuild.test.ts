@@ -502,3 +502,80 @@ describe("qualifyOrderField - the what-fits list's order, stated once for every 
         expect(QUALIFY_ORDER_LABELS).toEqual({ fit: "Best fit", variety: "Something different" });
     });
 });
+
+// WHEN AND WHY THE STREAM A CORRELATION POLL RECOVERS WAS CUT. Two optional facts a host may state on its
+// poll; the server logs them and decides nothing on them. The cut time is bound as an integer like the arm
+// time, so only a positive whole number is sent; the cause is logged as one line of plain text, never parsed.
+describe("fetchFields - the cut time and cause of a recovery poll", () => {
+    const ARMED = 1_760_000_000_000;
+    const CUT = ARMED + 263_000;
+    const poll = { genNew: true, fetchCorrelationId: "c-1" } as const;
+
+    it("a poll by correlation sends both, after the arm time, and the cause as one line", () => {
+        const f = fetchFields({ ...poll, fetchArmedAtMs: ARMED, fetchCutAtMs: CUT, fetchCause: "stream-cut:\nterminated" });
+        expect(f.fetchCutAtMs).toBe(CUT);
+        expect(f.fetchCause).toBe("stream-cut: terminated");
+        expect(JSON.stringify(f)).toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c-1",'
+            + '"fetchArmedAtMs":1760000000000,"fetchCutAtMs":1760000263000,"fetchCause":"stream-cut: terminated"}');
+    });
+
+    it("an old caller, which states neither, serialises exactly as it did before", () => {
+        expect(JSON.stringify(fetchFields({ ...poll, fetchArmedAtMs: ARMED })))
+            .toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c-1","fetchArmedAtMs":1760000000000}');
+        expect(JSON.stringify(fetchFields(poll))).toBe('{"genNew":false,"version":null,"fetchOnly":true,"fetchCorrelationId":"c-1"}');
+        expect(JSON.stringify(fetchFields({ genNew: true, settingVersion: 0 }))).toBe('{"genNew":true,"version":0}');
+        for (const none of [undefined, null]) {
+            expect(Object.keys(fetchFields({ ...poll, fetchCutAtMs: none, fetchCause: none })))
+                .toEqual(["genNew", "version", "fetchOnly", "fetchCorrelationId"]);
+        }
+    });
+
+    it("each is sent on its own: a cut time without a cause, a cause without a cut time or an arm time", () => {
+        expect(Object.keys(fetchFields({ ...poll, fetchCutAtMs: CUT }))).toEqual(["genNew", "version", "fetchOnly", "fetchCorrelationId", "fetchCutAtMs"]);
+        expect(Object.keys(fetchFields({ ...poll, fetchCause: "finishLoad" }))).toEqual(["genNew", "version", "fetchOnly", "fetchCorrelationId", "fetchCause"]);
+    });
+
+    it("sends only a positive whole number as the cut time - anything else would fail the server's binding", () => {
+        const unusable: unknown[] = [0, -3, NaN, Infinity, -Infinity, 1.5, CUT + 0.5, Number.MAX_SAFE_INTEGER + 2, 1e21,
+            "1760000263000", "x", "", {}, [], true];
+        for (const bad of unusable) {
+            const f = fetchFields({ ...poll, fetchCutAtMs: bad as number });
+            expect("fetchCutAtMs" in f, String(bad)).toBe(false);
+            expect(JSON.stringify(f), String(bad)).not.toContain("fetchCutAtMs");
+        }
+        expect(fetchFields({ ...poll, fetchCutAtMs: 1 }).fetchCutAtMs).toBe(1);
+    });
+
+    it("the cause is one trimmed line of at most 120 characters, and a blank or non-text cause is not sent", () => {
+        expect(fetchFields({ ...poll, fetchCause: "  pre-header:\r\n\tfetch failed \u0000\u007f " }).fetchCause).toBe("pre-header: fetch failed");
+        const long = fetchFields({ ...poll, fetchCause: "x".repeat(300) }).fetchCause!;
+        expect(long).toBe("x".repeat(120));
+        for (const blank of ["", "   ", "\r\n\t", "\u0000"]) {
+            expect("fetchCause" in fetchFields({ ...poll, fetchCause: blank }), JSON.stringify(blank)).toBe(false);
+        }
+        for (const bad of [42, {}, [], true]) {
+            expect("fetchCause" in fetchFields({ ...poll, fetchCause: bad as unknown as string }), String(bad)).toBe(false);
+        }
+    });
+
+    it("cutting at 120 never leaves half a character or a trailing space", () => {
+        const emoji = "\u{1F4A5}";   // two UTF-16 units
+        const cut = fetchFields({ ...poll, fetchCause: "a".repeat(119) + emoji + "tail" }).fetchCause!;
+        expect(cut).toBe("a".repeat(119));
+        expect(fetchFields({ ...poll, fetchCause: "a".repeat(119) + " b" }).fetchCause).toBe("a".repeat(119));
+    });
+
+    it("rides only a poll by correlation: never a generate, a poll by version or a refetch", () => {
+        const facts = { fetchCutAtMs: CUT, fetchCause: "stream-cut: terminated" };
+        for (const r of [
+            { genNew: true, settingVersion: 0, ...facts },
+            { genNew: true, recoveryFetchVersion: 7, ...facts },
+            { genNew: false, codeVersion: 4, ...facts },
+            { genNew: false, settingVersion: 3, ...facts },
+            { genNew: true, fetchCorrelationId: null, ...facts },
+        ]) {
+            const f = fetchFields(r);
+            expect("fetchCutAtMs" in f || "fetchCause" in f, JSON.stringify(r)).toBe(false);
+        }
+    });
+});
