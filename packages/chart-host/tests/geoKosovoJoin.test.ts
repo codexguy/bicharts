@@ -35,9 +35,15 @@ describe("a Kosovo row joins Kosovo's polygon on a world choropleth", () => {
     });
 
     it("and nothing else moved: every other feature keeps its id, in order", () => {
+        // The one other change is deliberate (geoWorld110m.ts): a territory with its own code is split out of its
+        // sovereign and follows it, French Guiana after France and Svalbard after Norway.
+        const FOLLOWS: Record<string, string> = { FRA: "GUF", NOR: "SJM" };
         const before = (RAW.features as any[]).map(f => f.id);
         const after = (WORLD_110M.features as any[]).map(f => f.id);
-        expect(after).toEqual(before.map(id => (id === "Kosovo" ? "XKX" : id)));
+        expect(after).toEqual(before.flatMap(id => {
+            const kept = id === "Kosovo" ? "XKX" : id;
+            return FOLLOWS[id] && !before.includes(FOLLOWS[id]) ? [kept, FOLLOWS[id]] : [kept];
+        }));
         expect(after).toContain("N. Cyprus");
         expect(after).toContain("Somaliland");
     });
