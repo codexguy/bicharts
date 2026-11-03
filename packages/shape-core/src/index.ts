@@ -92,6 +92,7 @@ export type {
     SimpleColumn,
     VegaRendererPayload,
     LLMClientHints,
+    LLMDirectionOfGood,
     LLMRequestCode,
     LLMQualifyResult,
     LLMRequestCodeResult,

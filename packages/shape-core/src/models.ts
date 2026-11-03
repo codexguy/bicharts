@@ -558,6 +558,10 @@ export type LLMColumnWithValue =
 // previously duplicated in visual.ts and harness/client.py. The visual
 // keeps client-emitting only modifiers driven by state the server can't
 // see: AVOIDERR (last-attempt error), PLOTLY_INTERACTIVE (renderer wire).
+
+/** One measure's direction of good, as the reader set it (LLMClientHints.directionOfGood). */
+export type LLMDirectionOfGood = { measure: string, better: "higher" | "lower" };
+
 export type LLMClientHints =
     {
         viewportWidth?: number,
@@ -736,6 +740,11 @@ export type LLMClientHints =
         // ignored by the server (it maps to multiplier 1.0), so the wire stays forgiving across
         // client/server version skew in both directions.
         levelOfDetail?: string,
+        // WHICH WAY IS GOOD, the reader's own setting per measure: for a chart that judges a measure (a variance against a
+        // target, a rank, ahead or behind), whether a higher or a lower value is good. `measure` is the column name as sent.
+        // The reader's setting outranks anything the server would infer; a measure not listed is left to the server.
+        // Omitted when the reader set none, so a request without it is unchanged.
+        directionOfGood?: LLMDirectionOfGood[],
         // WHERE THE CLIENT ID CAME FROM: "persisted" (a minted id the host keeps), "fingerprint" (derived from the
         // browser - chart-host's stableFingerprintOptions) or "session" (neither was available, so it lives for this
         // session only). Telemetry, never a gate: it measures on every request how durable each host's identity is.
