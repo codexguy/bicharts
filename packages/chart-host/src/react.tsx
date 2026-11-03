@@ -35,7 +35,7 @@ import { attachControls, createControls, type Controls, type ControlsAttachment 
 export { createControls, type Controls, type ControlInfo } from "./controls";
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
 export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
-export { createFilter, createFilterScope, fromVegaInteraction, filterScopeOf,
+export { createFilter, createFilterScope, fromVegaInteraction, filterScopeOf, ANY_VALUE, isAnyValue,
          type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
 
 export interface BicChartProps {

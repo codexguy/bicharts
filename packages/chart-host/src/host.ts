@@ -37,7 +37,12 @@ import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, ma
 /** What onSelectionPaint reports: the declared rule, how this paint decided, and how many marks it lit. */
 /** What a selection change carries besides its rows (1.21.0): `keepHidden` when the chart's set is what the reader holds among
  *  the rows in view, so a subscriber that holds keys the data no longer carries keeps them. */
-export interface SelectionChangeMeta { keepHidden?: boolean }
+export interface SelectionChangeMeta {
+    keepHidden?: boolean;
+    /** The pick was a category label (an axis label carrying its category's rows), not a mark: a page filter selects on
+     *  the label's own field (bindFilter), leaving the key columns the label doesn't name free. */
+    fromLabel?: boolean;
+}
 
 export interface SelectionPaintReport {
     rule: SelectionRule;
@@ -1402,7 +1407,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // chart; one that declared nothing never reads it.
         setClickedMarks(nextClickedMarks(clickedMarks(), base, markKeyOf(el), next,
             { ctrl: !!(e?.ctrlKey || e?.metaKey), shift: !!e?.shiftKey }));
-        notify(next, "user", toggledOff ? null : tick);
+        // A CATEGORY LABEL (not a period tick, not part of a multi-select) says so, so a page filter picks the label's own field.
+        const fromLabel = !!tick && !multi && !toggledOff && !chartOwnsTimeline(container);
+        notify(next, "user", toggledOff ? null : tick, false, true, fromLabel ? { fromLabel: true } : undefined);
     };
     container.addEventListener(XFILTER_REFRESH_EVENT, onXf);
     const untrackPress = trackPress(container);

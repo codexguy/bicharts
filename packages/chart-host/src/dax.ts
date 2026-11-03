@@ -11,6 +11,7 @@
 // A filter keyed by several columns names a column reference for each, in the filter's order.
 
 import type { Filter, FilterKey } from "./filterScope";
+import { isAnyValue } from "./filterScope";
 
 /** A DAX column reference: Table[Column] or 'Table name'[Column]. */
 const COLUMN_REF = /^(?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_]*)\[[^\]]+\]$/;
@@ -51,8 +52,21 @@ export function treatAs(selection: Filter | readonly (FilterKey | unknown)[] | n
     for (const k of keys) {
         if (k.length < width) throw new Error(`treatAs: a key has ${k.length} value(s) for ${width} column(s)`);
     }
-    const rows = keys.map(k => (width === 1 ? daxLiteral(k[0]) : `(${k.slice(0, width).map(daxLiteral).join(", ")})`));
-    return `TREATAS({${rows.join(", ")}}, ${columnRefs.map(c => c.trim()).join(", ")})`;
+    // A LABEL'S PICK LEAVES SOME COLUMNS FREE (a region in any stage): the query is filtered by the columns it names only.
+    // Keys that all free the same columns go into one TREATAS over the rest; keys that free different ones (a region picked
+    // whole beside one region-and-stage) can't share a TREATAS, so they go in as one FILTER over the columns' values.
+    const refs = columnRefs.map(c => c.trim());
+    const pattern = (k: FilterKey) => k.slice(0, width).map(v => (isAnyValue(v) ? "*" : "=")).join("");
+    const patterns = new Set(keys.map(pattern));
+    if (patterns.size === 1) {
+        const fixed = [...patterns][0].split("").map((p, i) => (p === "=" ? i : -1)).filter(i => i >= 0);
+        if (!fixed.length) return null;                                  // every column free: nothing to filter by
+        const rows = keys.map(k => (fixed.length === 1 ? daxLiteral(k[fixed[0]]) : `(${fixed.map(i => daxLiteral(k[i])).join(", ")})`));
+        return `TREATAS({${rows.join(", ")}}, ${fixed.map(i => refs[i]).join(", ")})`;
+    }
+    const preds = keys.map(k => `(${k.slice(0, width).map((v, i) => (isAnyValue(v) ? null : `${refs[i]} = ${daxLiteral(v)}`))
+        .filter(Boolean).join(" && ") || "TRUE()"})`);
+    return `FILTER(CROSSJOIN(${refs.map(r => `VALUES(${r})`).join(", ")}), ${preds.join(" || ")})`;
 }
 
 /**

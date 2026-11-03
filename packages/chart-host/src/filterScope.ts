@@ -169,9 +169,27 @@ export function viewFromToken(token: string | null | undefined): PageView | null
 
 // ── keys ────────────────────────────────────────────────────────────────────
 
-/** One comparable string per key: a Date by its instant, everything else by JSON. */
+/**
+ * A KEY VALUE THAT MATCHES ANY VALUE. A label pick (an axis label naming a region on a chart of region by stage) selects on
+ * the label's own field, so the filter's other key columns are left free: the key is (EMEA, ANY_VALUE), "EMEA in any
+ * stage", and a stage that comes back once another filter clears is still in the pick. JSON-safe: a saved view's
+ * `{ "__bicAny": true }` reads back as the same wildcard.
+ */
+export const ANY_VALUE: Readonly<{ __bicAny: true }> = Object.freeze({ __bicAny: true as const });
+
+/** Whether a key value is the wildcard (ANY_VALUE, or its JSON round trip). */
+export function isAnyValue(v: unknown): boolean {
+    return !!v && typeof v === "object" && (v as { __bicAny?: unknown }).__bicAny === true;
+}
+
+/** One comparable string per key: a Date by its instant, the wildcard as itself, everything else by JSON. */
 function keyString(values: readonly unknown[]): string {
-    return JSON.stringify(values.map(v => (v instanceof Date ? `__date:${v.getTime()}` : v === undefined ? null : v)));
+    return JSON.stringify(values.map(v => (v instanceof Date ? `__date:${v.getTime()}` : isAnyValue(v) ? "__bic:any" : v === undefined ? null : v)));
+}
+
+/** Does a key match a row read on `columns` - position by position, a wildcard matching anything? */
+function keyMatchesRow(key: FilterKey, row: Record<string, unknown>, columns: readonly string[]): boolean {
+    return columns.every((c, i) => isAnyValue(key[i]) || keyString([key[i]]) === keyString([row?.[c]]));
 }
 
 function keyOfRow(row: Record<string, unknown>, columns: readonly string[]): FilterKey {
@@ -200,6 +218,7 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
     const display = opts.display == null ? cols : (Array.isArray(opts.display) ? opts.display.slice() : [opts.display as string]);
     let keys: FilterKey[] = [];
     let keySet = new Set<string>();
+    let wildKeys: FilterKey[] = [];       // the keys a label pick left partly free, matched position by position
     let rows: Record<string, unknown>[] = [];
     let reason: FilterChangeReason | null = null;
     let version = 0;
@@ -219,6 +238,7 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         }
         keys = nextKeys;
         keySet = nextSet;
+        wildKeys = nextKeys.filter(k => k.some(isAnyValue));
         rows = nextRows;
         reason = why;
         version++;
@@ -239,8 +259,9 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         const s = keyString(k);
         const row = (more ?? []).find(r => keyString(keyOfRow(r, cols)) === s) ?? seen.get(s);
         const parts = row ? display.map(d => row[d]) : k;
-        const text = parts.filter(p => p != null && p !== "").map(String).join(" → ");
-        return text || k.filter(p => p != null && p !== "").map(String).join(" → ");
+        const shown = (p: unknown) => p != null && p !== "" && !isAnyValue(p);
+        const text = parts.filter(shown).map(String).join(" → ");
+        return text || k.filter(shown).map(String).join(" → ");
     };
     let warnedKeep = false;
 
@@ -298,7 +319,8 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
                 // A one-column key read across several columns: any of them carrying it counts.
                 return where.some(c => keySet.has(keyString([row[c]])));
             }
-            return keySet.has(keyString(keyOfRow(row, where)));
+            if (keySet.has(keyString(keyOfRow(row, where)))) return true;
+            return wildKeys.some(k => keyMatchesRow(k, row, where));
         },
         keep(input, on) {
             const list = input ?? [];
@@ -514,7 +536,11 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
             const r = opts.rowAt(i);
             if (r) carried.add(keyString(keyOfRow(r, filter.columns)));
         }
-        return filter.keys.filter(k => !carried.has(keyString(k)));
+        const anyRowMatches = (k: FilterKey) => {
+            for (let i = 0; i < n; i++) { const r = opts.rowAt(i); if (r && keyMatchesRow(k, r, filter.columns)) return true; }
+            return false;
+        };
+        return filter.keys.filter(k => k.some(isAnyValue) ? !anyRowMatches(k) : !carried.has(keyString(k)));
     };
 
     const paint = () => {
@@ -536,8 +562,25 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         }
         const rows = idxs.map(i => opts.rowAt(i)).filter((r): r is Record<string, unknown> => !!r);
         if (!rows.length && !keep.length) return;
+        // A LABEL PICKS ITS OWN FIELD: the key columns its rows share and that tell this label from the chart's others;
+        // the rest are left free. A label whose rows share every key column (or none) is an ordinary pick.
+        const label = meta?.fromLabel && !keep.length ? labelKey(rows) : null;
+        if (label) { filter.set([label], "click"); return; }
         filter.selectRows(rows, "click", keep);
     });
+    const labelKey = (rows: Record<string, unknown>[]): FilterKey | null => {
+        const n = opts.rowCount();
+        const key = filter.columns.map(c => {
+            const v = rows[0][c];
+            if (!rows.every(r => keyString([r[c]]) === keyString([v]))) return ANY_VALUE;
+            for (let i = 0; i < n; i++) {                                   // shared by the label: does it tell labels apart?
+                const r = opts.rowAt(i);
+                if (r && keyString([r[c]]) !== keyString([v])) return v;
+            }
+            return ANY_VALUE;                                               // the same in every row of the chart: not its field
+        });
+        return key.some(isAnyValue) && !key.every(isAnyValue) ? key : null;
+    };
     const offFilter = filter.onChange(() => paint());
 
     // LINKED HOVER: this chart's hovered mark sets the filter's hovered key; any hovered key lights this chart's marks.
