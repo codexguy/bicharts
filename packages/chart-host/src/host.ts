@@ -30,7 +30,7 @@ import { stripJsComments } from "./codeComments";
 // cache and the dynamic loader but no asset, so the runtime entry stays lean.
 import { geoFromCache } from "./geoLazy";
 import { createMarkResolver, isInsideControl, nextSelection, selectionRuleOf, markKeyOf, planSelectionPaint,
-    nextClickedMarks, trackPress, clickWasDrag, clearPress, validRowSet, sameRowSet,
+    nextClickedMarks, trackPress, clickWasDrag, clearPress, validRowSet,
     collectGlyphCentersWhere, paintSelectionGlyphs, clearSelectionGlyphs,
     type ClickedMarks, type SelectionRule, type SelectionPaintMode, type GlyphCenter } from "./selection";
 
@@ -57,7 +57,7 @@ import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
 import { createAnnotationLayer, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
-import { rememberFocus, restoreFocus, type FocusMemory } from "./focusKeep";
+import { rememberFocus, restoreFocus, trackFocus, type FocusMemory, type FocusTracker } from "./focusKeep";
 import { codeHasKeyboardStamp, installKeyboard, rowNameOf, KEYBOARD_CLASS, WIRED_ATTR, type KeyboardHandle } from "./keyboardMarks";
 import { installLasso, lassoEffect, claimParkedLasso, LASSO_OUTLINE_CLASS, type LassoHandle } from "./lasso";
 // TYPES ONLY: the zoom memory is its own entry ("@bicharts/chart-host/zoom-memory"), off the main entry's eager closure.
@@ -743,9 +743,21 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // Applied HERE rather than in resolveOptions on purpose: resolveOptions is also the visual's
     // option assembly, where the flag is always a computed boolean and the premise above is not
     // true, and it is locked to pass host fields through untouched.
+    //
+    // ONE BACKGROUND UNDER BOTH NAMES. Charts read the page background as `backgroundColor` or as `themeBg`, whichever
+    // their code was written against, and a page usually names only one. A chart painting `themeBg || '#fff'` on a
+    // page that passed only backgroundColor drew white cards under a dark theme's white text. So the host fills
+    // each from the other when one is unset (absent or blank); a page that names both keeps both. Applied here, not in
+    // resolveOptions, for the reason above: the visual names both on purpose (its own card colour and the report
+    // canvas), and that assembly passes host fields through untouched.
     const resolveForHost = (input: ResolveOptionsInput): RenderOptions => {
         const out = resolveOptions(input);
-        return out.allowTooltips == null ? { ...out, allowTooltips: true } : out;
+        const named = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+        const bg = named(out.backgroundColor) ? out.backgroundColor : undefined;
+        const themeBg = named(out.themeBg) ? out.themeBg : undefined;
+        const filled = bg && !themeBg ? { themeBg: bg } : themeBg && !bg ? { backgroundColor: themeBg } : null;
+        const withBg = filled ? { ...out, ...filled } : out;
+        return withBg.allowTooltips == null ? { ...withBg, allowTooltips: true } : withBg;
     };
     if (!lassoClaimed) claimParkedLasso(container, lassoKey);
     let resolved = resolveForHost(raw);
@@ -1636,13 +1648,21 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         keyboard?.refresh();
         selfRedraw?.takeRecords();
     };
+    // FOCUS TOO: the redraw removed the focused header or row before the host heard of it, so a standing note of what
+    // has focus (taken as focus arrives) is what puts it back on the replacement. A keyboard-wired chart always has
+    // something to put back - its new marks need their tab stops - even with nothing selected.
+    const focusTrack: FocusTracker | null = (() => { try { return trackFocus(container); } catch { return null; } })();
     function watchSelfRedraw() {
         const MO = win?.MutationObserver as typeof MutationObserver | undefined;
         if (selfRedraw || !MO || destroyed) return;
         selfRedraw = new MO(records => {
-            if (destroyed || !records.some(r => Array.from(r.removedNodes).some(takesMarks))) return;
-            if (!(current && current.length) && !notesHeld && !lassoLost()) return;
-            repaintAfterChart();
+            if (destroyed) return;
+            const tookMarks = records.some(r => Array.from(r.removedNodes).some(takesMarks));
+            const lost = focusTrack?.takeLost() ?? null;
+            if (tookMarks && ((current && current.length) || notesHeld || lassoLost() || keyboard)) repaintAfterChart();
+            else if (lost) keyboard?.refresh();
+            if (lost) { try { restoreFocus(container, lost); } catch { /* focus is a courtesy on a chart already drawn */ } }
+            selfRedraw?.takeRecords();
         });
         selfRedraw.observe(container, { childList: true, subtree: true });
     }
@@ -1685,6 +1705,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             if (hasRendered && keepScroll) rememberScroll(container, scrollKey());   // where the reader was, before the clear sends it to the top
             container.innerHTML = "";            // the host owns clearing between renders
             selfRedraw?.takeRecords();           // ...so that clear is not the chart redrawing itself
+            focusTrack?.forget();                // ...and focus across it is focusWas's, given back after the draw
             hasRendered = true;
             if (!renderFn) {
                 if (!config.code) throw new Error("createChartHost: provide code or renderFn");
@@ -1859,9 +1880,14 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 // pair of mutually-linked charts each republish what the other just sent and
                 // the dashboard fights itself.
                 const rows = Array.isArray(rowIdxs) ? rowIdxs.slice() : [];
-                // A selection handed in that is not the lasso's rows is no longer what the outline describes. The
-                // same rows repainted (a group re-deriving the origin's own selection) leave it where it is.
-                if (lasso && lasso.rows().length && !sameRowSet(rows, lasso.rows())) lasso.clear({ publish: false, source: "host" });
+                // A selection handed in that leaves out a row the lasso circled is no longer what the outline describes.
+                // One that covers them all keeps it: the same rows repainted (a group re-deriving the origin's own
+                // selection), or more - a page filter keyed coarser than the marks paints every mark of each circled key,
+                // and the group the reader drew is still the one drawn.
+                if (lasso && lasso.rows().length) {
+                    const painted = new Set(rows);
+                    if (!lasso.rows().every(r => painted.has(r))) lasso.clear({ publish: false, source: "host" });
+                }
                 notify(rows, "host");
             },
             setHidden(count) {
@@ -1882,6 +1908,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             destroyed = true;
             stopAnim();
             if (selfRedraw) { selfRedraw.disconnect(); selfRedraw = null; }
+            focusTrack?.dispose();
             keyboard?.destroy();
             keyboard = null;
             container.removeEventListener(XFILTER_REFRESH_EVENT, onXf);

@@ -264,6 +264,20 @@ describe("the host runs the lasso", () => {
             expect(outline().getAttribute("d")).toBe("");
             expect(events.at(-1)).toMatchObject({ rows: [], source: "host" });
         });
+
+        // A HIGHLIGHT NEVER ERASES THE GROUP THE READER DREW. A page filter keyed coarser than the marks (a product, on a
+        // chart of product-by-region points) paints every mark of each circled key - more than were circled - and that
+        // superset cleared the lasso: the outline went, and an explainer of the circled group described one the page no
+        // longer showed as drawn. A painted set that covers the lasso's rows keeps it; one that leaves a circled row out
+        // still replaces it.
+        it("a highlight that covers the lasso's rows keeps the lasso; one that leaves a circled row out replaces it", () => {
+            make();
+            drag(AROUND_012);
+            host.selection.highlight([0, 1, 2, 3]);                           // a coarser key paints a fourth mark too
+            expect(outline().getAttribute("d")).toMatch(/^M/);
+            host.selection.highlight([0, 3]);                                 // rows 1 and 2 left out: not the group drawn
+            expect(outline().getAttribute("d")).toBe("");
+        });
     });
 
     // WHAT A LASSO DOES TO THE PAGE (contract 1.17.0). By default circling a group FILTERS: the marks inside are published
