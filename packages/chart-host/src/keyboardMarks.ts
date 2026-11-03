@@ -199,16 +199,55 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
                 rovingKey = env.keyOf(mark);
                 env.select(mark, { ctrl: !!(e.ctrlKey || e.metaKey), shift: !!e.shiftKey });
                 break;
-            case "Escape": if (env.escapeClears !== false) env.clear(); break;
+            case "Escape": hideTip(); if (env.escapeClears !== false) env.clear(); break;
         }
     };
     container.addEventListener("keydown", onKey);
+
+    // A FOCUSED MARK SHOWS ITS TOOLTIP. The chart's own tooltip opens on the pointer's hover, so a sighted keyboard reader
+    // who tabbed to a tile or a point saw its name read out and none of its figures. Focus on a mark the host wired plays
+    // the chart's own hover path at the mark's centre (pointer and mouse over / enter / move), and blur or Escape plays the
+    // leave; the chart draws and removes its tooltip exactly as for a pointer, with no change to code already generated.
+    let tipOn: HTMLElement | null = null;
+    const hover = (el: HTMLElement, enter: boolean) => {
+        try {
+            const view = container.ownerDocument.defaultView as any;
+            const r = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
+            const x = r ? r.left + r.width / 2 : 0, y = r ? r.top + r.height / 2 : 0;
+            const ME = (view?.MouseEvent ?? MouseEvent) as typeof MouseEvent;
+            const PE = view?.PointerEvent as typeof MouseEvent | undefined;
+            const names = enter ? ["pointerover", "pointerenter", "mouseover", "mouseenter", "pointermove", "mousemove"]
+                : ["pointerout", "pointerleave", "mouseout", "mouseleave"];
+            for (const n of names) {
+                const E = n.startsWith("pointer") && PE ? PE : ME;
+                el.dispatchEvent(new E(n, { bubbles: !/enter|leave/.test(n), cancelable: true, clientX: x, clientY: y }));
+            }
+        } catch { /* a mark the browser can't hover is still focused and named */ }
+    };
+    const hideTip = () => { const el = tipOn; tipOn = null; if (el) hover(el, false); };
+    const onFocusIn = (e: FocusEvent) => {
+        if (destroyed) return;
+        const mark = (e.target as Element | null)?.closest?.(env.markSelector) as HTMLElement | null;
+        if (!mark || !wired(mark) || !container.contains(mark) || mark === tipOn) return;
+        hideTip();
+        tipOn = mark;
+        hover(mark, true);
+    };
+    const onFocusOut = (e: FocusEvent) => {
+        const to = e.relatedTarget as Element | null;
+        if (tipOn && (!to || !tipOn.contains(to))) hideTip();
+    };
+    container.addEventListener("focusin", onFocusIn);
+    container.addEventListener("focusout", onFocusOut);
 
     return {
         refresh,
         destroy() {
             destroyed = true;
             container.removeEventListener("keydown", onKey);
+            container.removeEventListener("focusin", onFocusIn);
+            container.removeEventListener("focusout", onFocusOut);
+            hideTip();
             try { container.classList?.remove(KEYBOARD_CLASS); } catch { /* frozen element */ }
         },
     };
