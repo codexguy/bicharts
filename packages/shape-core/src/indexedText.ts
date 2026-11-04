@@ -23,6 +23,7 @@ import Papa from 'papaparse';
 import { STR, GET_RANDOM, SIMPLE_STRING_HASH, nameWords, parseDateStable, wholeDayIso, quantileSorted, datesCarryTimeOfDay, datesAreTimeOfDayOnly, utcWallClock } from "./util";
 import { nameLetterRuns, foldName } from "./nameReader";
 import { localizedYearWordIn } from "./vocab/calendarWords";
+import { coordinateAxisOfWords } from "./vocab/coordinates";
 import { readPeriodCode } from "./vocab/periodCodes";
 import { localizedIdentifierWordIn } from "./vocab/identifierWords";
 import { maskSampleText } from "./sampleMask";
@@ -2073,7 +2074,34 @@ export class IndexedText implements IValueCollection {
             if (countryIdx < 0 && !c.isMeasure && typeof c.geoKind === "string"
                 && c.geoKind.indexOf("country") === 0) countryIdx = i;
         });
-        if (latIdx < 0 || lonIdx < 0) return null;
+        // No English pair: another language's words may name one, but only as a PAIR whose values fit their axes
+        // (latitude within +-90, longitude within +-180) - `longitud` means length as often as longitude, so a word alone
+        // never admits a column. The server applies the same rule to the same words.
+        if (latIdx < 0 || lonIdx < 0) {
+            const fits = (i: number, lim: number): boolean => {
+                let n = 0;
+                for (const row of this._rows) {
+                    const v = row[i];
+                    if (v === null || v === undefined || v === "") continue;
+                    const x = Number(v);
+                    if (!Number.isFinite(x) || x < -lim || x > lim) return false;
+                    n++;
+                }
+                return n > 0;
+            };
+            let la = -1, lo = -1;
+            this._cols.forEach((c, i) => {
+                if (!(c.dataType === "Integer" || c.dataType === "Decimal")) return;
+                const t = tok(c.name);
+                const axis = t.some(x => x === "lat" || x === "latitude") ? "lat"
+                    : t.some(x => x === "lon" || x === "lng" || x === "long" || x === "longitude") ? "lon"
+                    : coordinateAxisOfWords(t);
+                if (axis === "lat" && la < 0 && fits(i, 90)) la = i;
+                else if (axis === "lon" && lo < 0 && fits(i, 180)) lo = i;
+            });
+            if (la < 0 || lo < 0) return null;
+            latIdx = la; lonIdx = lo;
+        }
         this._geoExtentLatIdx = latIdx;
 
         const pts: Array<{ lat: number | null, lon: number | null, country?: string | null }> = [];

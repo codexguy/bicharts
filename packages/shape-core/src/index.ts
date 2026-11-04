@@ -196,6 +196,10 @@ export {
 } from "./vocab/calendarWords";
 export type { CycleConcept, CalendarWordHit } from "./vocab/calendarWords";
 
+// COORDINATE WORDS: other languages' words for latitude and longitude. A word only NOMINATES a column; a caller admits a pair
+// only after its values fit (latitude within +-90, longitude within +-180). The server's copy is generated from this block.
+export { LATITUDE_WORDS, LONGITUDE_WORDS, coordinateAxisOfWords } from "./vocab/coordinates";
+
 // PERIOD CODES (2026-09-25): how every language labels a quarter, a half-year and a week (`T1 2024`,
 // `1. Quartal`, `KW 12`, `第1四半期`, `1분기`), read one language per series with English labels joining,
 // and a letter code counted only beside a year. The canonical copy the server's period readers are

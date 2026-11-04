@@ -15,7 +15,7 @@
 // through `paths`, so `tsc -b` failed where the bundler succeeded.
 import {
     buildGeoIsoColumn, isJoinGeoKind, buildGeoPointColumns, resolvePointRoles, type GeoKind,
-    normalizeLocalMidnightDates, anchorLocalWallClockDates, type GeoRegion,
+    normalizeLocalMidnightDates, anchorLocalWallClockDates, type GeoRegion, coordinateAxisOfWords,
 } from "@bicharts/shape-core";
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
@@ -472,9 +472,12 @@ export function buildRenderPayload(
     };
 }
 
-/** The longitude column of a lat/lon pair, read from the names the profile reads them by (lon, lng, long, longitude). */
+/** The longitude column of a lat/lon pair, read from the names the profile reads them by (lon, lng, long, longitude), then by
+ *  another language's longitude word (`longitud`, `Längengrad`). Only reached once the server has resolved the LATITUDE of a
+ *  range-checked pair, so naming its partner by a localized word is safe. */
 function longitudeBeside(names: string[]): string | null {
     const words = (n: string) => n.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-zÀ-ɏ]+/);
-    return names.find(n => words(n).some(w => w === "lon" || w === "lng" || w === "long" || w === "longitude")) ?? null;
+    return names.find(n => words(n).some(w => w === "lon" || w === "lng" || w === "long" || w === "longitude"))
+        ?? names.find(n => coordinateAxisOfWords(words(n)) === "lon") ?? null;
 }
 

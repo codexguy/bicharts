@@ -2,7 +2,7 @@
 // Provinces setting, and the hosted admin-1 lookup for a table that could use it), and build the province binding a
 // render hands buildRenderPayload. Lives on the provinces entry, off the main entry's eager closure.
 
-import { buildProvinceIsoColumn, admin1LookupRegistered } from "@bicharts/shape-core";
+import { buildProvinceIsoColumn, admin1LookupRegistered, coordinateAxisOfWords } from "@bicharts/shape-core";
 import { loadAdmin1Lookup, needsAdmin1Lookup, ADMIN1_LOOKUP_PATH } from "./admin1LookupLoader";
 import { geoKeyFor, provinceLocator } from "./provinceGeo";
 import type { GeoBinding } from "./payload";
@@ -60,12 +60,19 @@ export function provinceBinding(
     const kindOf = (c: { geoKind?: string | null }) => String(c.geoKind ?? "");
     const words = (n: string) => n.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/);
     const named = (re: RegExp) => cols.find(c => words(c.name).some(w => re.test(w)))?.name ?? null;
+    // Another language's pair (`latitud` / `longitud`, `Breitengrad` / `Längengrad`): taken only as a PAIR and only for an axis the
+    // English words left empty - one localized word alone is as often a length as a coordinate.
+    const accentWords = (n: string) => n.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-zÀ-ɏ]+/);
+    const localized = (axis: "lat" | "lon") => cols.find(c => coordinateAxisOfWords(accentWords(c.name)) === axis)?.name ?? null;
+    const lat = named(/^(lat|latitude)$/), lon = named(/^(lon|lng|long|longitude)$/);
+    const localLat = localized("lat"), localLon = localized("lon");
+    const usePair = localLat !== null && localLon !== null;
     return {
         column: res.geoColumn, kind: res.geoKind, grain: "admin1", region: res.geoRegion || null,
         fallback: {
             city: dims.find(c => kindOf(c).startsWith("city"))?.name ?? null,
             country: dims.find(c => kindOf(c).startsWith("country"))?.name ?? null,
-            lat: named(/^(lat|latitude)$/), lon: named(/^(lon|lng|long|longitude)$/),
+            lat: lat ?? (usePair ? localLat : null), lon: lon ?? (usePair ? localLon : null),
         },
         deriveProvinces: opts.deriveProvinces,
         join: buildProvinceIsoColumn,
