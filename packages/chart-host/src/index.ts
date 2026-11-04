@@ -349,6 +349,7 @@ export { censusMarks, isBlankRender, blankRenderFlag, type MarkCensus, type Blan
 // createChartHost routes the throw to `onInvalidSentinel`; these are for a host that runs
 // render() itself or reads the message out of a log.
 export { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
+export { rowGrowthNotice, ROW_GROWTH_MIN_RATIO, ROW_GROWTH_MIN_EXTRA, type RowGrowthNotice } from "./rowGrowth";
 
 // A mark drawn as a thin open stroke can only be clicked if you aim perfectly (2026-09-03). The
 // sibling question to ensureCrossfilterHitTargets, one step further out: that pass heals marks

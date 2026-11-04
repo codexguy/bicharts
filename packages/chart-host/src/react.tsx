@@ -25,6 +25,7 @@ import type { ReactNode, RefObject } from "react";
 import { createChartHost, type ChartHost, type ChartHostConfig } from "./host";
 import type { ResolveOptionsInput } from "./defaults";
 import type { GeoPointBinding } from "./payload";
+import type { RowGrowthNotice } from "./rowGrowth";
 import { geoFromCache, loadGeo } from "./geoLazy";
 import { createChartGroup, syncMemberSelection, toSourceRows, type ChartGroup, type ChartGroupSelection } from "./group";
 import { bindFilter, createFilter, createFilterScope, filterScopeOf, payloadRowReader, viewToken, viewFromToken, type PageView,
@@ -103,6 +104,10 @@ export interface BicChartProps {
      * throw propagates as before. See createChartHost's `onInvalidSentinel`.
      */
     onInvalidSentinel?: ChartHostConfig["onInvalidSentinel"];
+    /** The rows this chart's code was generated on. Every render compares the rows it drew against it (see createChartHost). */
+    builtForRows?: ChartHostConfig["builtForRows"];
+    /** Called when the rows drawn far outnumber builtForRows. Absent: chart-host says it once in the console. */
+    onRowGrowth?: ChartHostConfig["onRowGrowth"];
     /** Identity within a <BicChartGroup> — the key other charts filter by. */
     id?: string;
     /** Take this group member's selection as a filter on THIS chart's rows. */
@@ -240,7 +245,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options: pageOptions, d3, geoKind, viewState, zoomMemory, labelContrast, restoreScroll, onLabelContrast, onSelectionGlyphs, layoutPass,
-            onInvalidSentinel, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
+            onInvalidSentinel, builtForRows, onRowGrowth, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
             className, style, selects, scopedBy, controls, ariaLabel } = props;
 
     // THE FILTERS THIS CHART'S QUERY APPLIES (scopedBy): followed here, so the chart is told when one changes even when the
@@ -336,6 +341,10 @@ export function BicChart(props: BicChartProps) {
     onSelectionGlyphsRef.current = onSelectionGlyphs;
     const onInvalidSentinelRef = useRef(onInvalidSentinel);
     onInvalidSentinelRef.current = onInvalidSentinel;
+    const builtForRowsRef = useRef(builtForRows);
+    builtForRowsRef.current = builtForRows;
+    const onRowGrowthRef = useRef(onRowGrowth);
+    onRowGrowthRef.current = onRowGrowth;
     const onAnnotationClickRef = useRef(onAnnotationClick);
     onAnnotationClickRef.current = onAnnotationClick;
     // By content, so a page that builds the list inline on every render does not redraw the badges each time.
@@ -383,6 +392,12 @@ export function BicChart(props: BicChartProps) {
                                                return onInvalidSentinelRef.current
                                                    ? (info: { reason: string; message: string }) => onInvalidSentinelRef.current?.(info)
                                                    : undefined;
+                                           },
+                                           // Getters, the onInvalidSentinel pattern: read at render time, so a new prop needs no
+                                           // rebuild, and an absent callback stays absent (the console fallback is decided by presence).
+                                           get builtForRows() { return builtForRowsRef.current ?? null; },
+                                           get onRowGrowth() {
+                                               return onRowGrowthRef.current ? (n: RowGrowthNotice) => onRowGrowthRef.current?.(n) : undefined;
                                            },
                                            annotations: annotationsRef.current ?? [],
                                            onAnnotationClick: a => onAnnotationClickRef.current?.(a),

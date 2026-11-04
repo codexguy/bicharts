@@ -61,6 +61,7 @@ import { fitRenderedChart, unpinScrolledAxis, rememberScroll, takeScroll, clipWi
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
+import { rowGrowthNotice, type RowGrowthNotice } from "./rowGrowth";
 import { createAnnotationLayer, ANNOTATION_LAYER_CLASS, type MarkAnnotation, type AnnotationReport } from "./annotations";
 import { rememberFocus, restoreFocus, trackFocus, type FocusMemory, type FocusTracker } from "./focusKeep";
 import { codeHasKeyboardStamp, installKeyboard, rowNameOf, KEYBOARD_CLASS, WIRED_ATTR, type KeyboardHandle } from "./keyboardMarks";
@@ -313,6 +314,14 @@ export interface ChartHostConfig {
      * throws exactly as it always has, so an existing host is untouched.
      */
     onInvalidSentinel?: (info: { reason: string; message: string }) => void;
+    /**
+     * The rows this chart's code was generated on (the request's row count). When set, every render compares the rows it
+     * drew with it and calls onRowGrowth when the chart now draws on far more rows than it was built for (rowGrowthNotice).
+     * Absent or null: no comparison - a chart from before the count was kept, or an example.
+     */
+    builtForRows?: number | null;
+    /** Called after a render that drew on far more rows than builtForRows. Absent: the host says it once in the console. */
+    onRowGrowth?: (notice: RowGrowthNotice) => void;
     /**
      * NOTES ON MARKS. Each annotation names a key - a value in a column of this chart's data, such as a
      * country code - and the host draws a badge on that key's mark after every render, wherever a filter,
@@ -769,6 +778,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     let renderFn: RenderFn | null = config.renderFn ?? null;
     let destroyed = false;
     let warnedGeo = false;
+    let warnedGrowth = false;   // once per host, like warnedBlank
     let warnedBlank = false;   // once per host: a repainting chart must not spam the console
     let warnedIds = false;     // the same, for an id clash the scoping pass prevented
     let warnedLassoNoFilter = false;   // the same, for a filtering lasso whose selection reaches nothing
@@ -1564,6 +1574,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
                 config.onBlankRender?.({ census, rows: data.rows ? data.rows.length : 0 });
             }
         } catch { /* a census must never break a render */ }
+        // DID THE DATA OUTGROW THE CHART? Read at render time, so a getter (the React binding) gives the newest value.
+        try {
+            const growth = rowGrowthNotice(config.builtForRows, data.rows ? data.rows.length : 0);
+            if (growth) {
+                if (config.onRowGrowth) config.onRowGrowth(growth);
+                else if (!warnedGrowth) {
+                    warnedGrowth = true;
+                    try { (win?.console ?? console)?.warn(`[@bicharts/chart-host] ${growth.text}`); } catch { /* advisory only */ }
+                }
+            }
+        } catch { /* a notice must never break a render */ }
         // CAN THE MARKS BE HIT? Counted separately from whether they exist, because a thin
         // open stroke is present, correct, tagged, and still unclickable unless you aim at
         // the hairline. Reported, never repaired: widening a hit band has a real failure
