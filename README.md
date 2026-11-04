@@ -1,6 +1,6 @@
 # @bicharts — RegiaBI for developers
 
-> **Make Generative AI for Charts and Maps *Better*.**
+> **Make Generative AI for Data Apps and Maps *Better*.**
 
 **AI Data Components, running in your page:** a bivariate map with its two-way key, a what-if projection with its
 controls inside the chart, a flow map, and about 90 everyday chart types, with selection, cross-filtering and the legend

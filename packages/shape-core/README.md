@@ -1,6 +1,6 @@
 # @bicharts/shape-core
 
-> **Make Generative AI for Charts and Maps *Better*.**
+> **Make Generative AI for Data Apps and Maps *Better*.**
 
 That is what **RegiaBI** is for; this package is the part that measures your data so the
 rest of it can be honest about what your data will actually support.
