@@ -87,9 +87,14 @@ import { resolve, dirname, join } from "node:path";
 // a scrolled-out row's badge hides, focus and caret survive a redraw, and a stamped chart works from the keyboard
 // (about 13 KB together). Each runs in the synchronous render or click path, so none can sit behind a dynamic import.
 // No geometry is in the closure; closure (~831 KB) + the smallest map asset (223 KB) is ~1054 KB, far above 840.
+//
+// 840 -> 850 KB, deliberately, as ordinary growth, measured first: 839 KB before, 841 KB after. The row-growth notice
+// (the one rule and its sentence in rowGrowth.ts, and the host's check after every render, about 1.5 KB) runs in the
+// synchronous render path of every host, so it cannot sit behind a dynamic import. No geometry is in the closure;
+// closure (~841 KB) + the smallest map asset (223 KB) is ~1064 KB, far above 850.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 840);
+const limitKB = Number(process.argv[3] ?? 850);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //
