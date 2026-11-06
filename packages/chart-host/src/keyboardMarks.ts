@@ -7,6 +7,11 @@
 // clears. A note's badge and a control the chart declares (CONTROL_CLASS) take focus too, and Enter presses them; a
 // control that only wraps other controls, buttons, boxes or a slider takes none, so what it holds is what is reached.
 //
+// A MARK THAT SELECTS NOTHING IS STILL READ. On a chart whose selection reaches nothing (a map, a time series or KPI
+// tiles with no `selects`) the tooltip is the only way to read a mark's figures, so its marks take the same one tab stop,
+// the same arrows and the same name, as an image rather than a button: no pressed state, and Enter or Space is the click
+// the host already turns into nothing.
+//
 // BEHIND A FLAG ON EVERY PATH. The server writes KEYBOARD_STAMP at the head of a chart's code while its
 // keyboard switch is on, and the host wires keys only for a stamped chart. The stamp travels with the
 // code into every host (a React page, the Excel add-in, a saved chart) with nothing for a page or an agent to pass, and
@@ -44,7 +49,7 @@ export interface KeyboardEnv {
     pressSelector: string;
     /** Elements never to treat as marks (the host's own layers). */
     skipSelector: string;
-    /** True while a click on a mark selects nothing (the marks are then not made focusable). */
+    /** True while a click on a mark selects nothing (the marks are then read as images, with no pressed state). */
     inert(): boolean;
     /** Select a mark as a click on it would. */
     select(mark: Element, mods: { ctrl: boolean; shift: boolean }): void;
@@ -114,19 +119,19 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
     // The mark that holds the tab stop, by key, so a redraw (a sort, a filter) keeps it on the same row.
     let rovingKey: string | null = null;
     let destroyed = false;
+    // The elements whose role the host gave (a chart's own role is never changed), so a mark can swap button for image.
+    const ownRole = new WeakSet<Element>();
 
-    const marksNow = (): HTMLElement[] => {
-        if (env.inert()) return [];
-        return Array.from(container.querySelectorAll<HTMLElement>(env.markSelector))
+    const marksNow = (): HTMLElement[] =>
+        Array.from(container.querySelectorAll<HTMLElement>(env.markSelector))
             .filter(m => !m.closest(env.skipSelector) && (m.getAttribute("data-row-idx") ?? "") !== "");
-    };
     const wired = (el: Element) => el.hasAttribute(WIRED_ATTR);
     const wire = (el: HTMLElement, tabindex: string, role: string) => {
         // An element the chart made focusable itself keeps its own tab stop and role.
         if (el.hasAttribute("tabindex") && !wired(el)) return false;
         el.setAttribute(WIRED_ATTR, "");
         el.setAttribute("tabindex", tabindex);
-        if (!el.hasAttribute("role")) el.setAttribute("role", role);
+        if (!el.hasAttribute("role") || ownRole.has(el)) { el.setAttribute("role", role); ownRole.add(el); }
         return true;
     };
     const setRoving = (list: HTMLElement[], to: HTMLElement) => {
@@ -138,19 +143,16 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
         if (destroyed) return;
         try {
             container.classList?.add(KEYBOARD_CLASS);
+            const inert = env.inert();
             const list = marksNow();
             for (const m of list) {
-                if (!wire(m, "-1", "button")) continue;
-                m.setAttribute("aria-pressed", env.isSelected(m) ? "true" : "false");
+                if (!wire(m, "-1", inert ? "img" : "button")) continue;
+                if (inert) m.removeAttribute("aria-pressed");
+                else m.setAttribute("aria-pressed", env.isSelected(m) ? "true" : "false");
                 if (!m.hasAttribute("aria-label") && !m.querySelector(":scope > title")) {
                     const name = env.labelOf(m);
                     if (name) m.setAttribute("aria-label", name);
                 }
-            }
-            // Marks a previous refresh wired that no longer select (the chart went inert) stop being tab stops.
-            if (!list.length) {
-                for (const m of Array.from(container.querySelectorAll<HTMLElement>(`[${WIRED_ATTR}]`)))
-                    if (m.matches(env.markSelector)) { m.removeAttribute("tabindex"); m.removeAttribute(WIRED_ATTR); }
             }
             const own = list.filter(wired);
             if (own.length) {
@@ -176,7 +178,7 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
                 e.preventDefault();
                 const ME = ((container.ownerDocument.defaultView as any)?.MouseEvent ?? MouseEvent) as typeof MouseEvent;
                 press.dispatchEvent(new ME("click", { bubbles: true, cancelable: true }));
-            } else if (k === "Escape" && env.escapeClears !== false) env.clear();
+            } else if (k === "Escape" && env.escapeClears !== false && !env.inert()) env.clear();
             return;
         }
         const mark = t.closest?.(env.markSelector) as HTMLElement | null;
@@ -199,7 +201,8 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
                 rovingKey = env.keyOf(mark);
                 env.select(mark, { ctrl: !!(e.ctrlKey || e.metaKey), shift: !!e.shiftKey });
                 break;
-            case "Escape": hideTip(); if (env.escapeClears !== false) env.clear(); break;
+            // An inert chart's click on empty canvas clears nothing, so neither does its Escape.
+            case "Escape": hideTip(); if (env.escapeClears !== false && !env.inert()) env.clear(); break;
         }
     };
     container.addEventListener("keydown", onKey);

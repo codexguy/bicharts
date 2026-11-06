@@ -35,7 +35,9 @@ where your installed version differs (setup_fabric_app's reply names it), its ow
 - Call `useBicFilter` once in the page and pass it down. Read `filter.value` / `filter.row` / `filter.text`
   (`filter.textOf(key, rows)` names any other key). Filter another chart with `filterBy={{ filter, columns }}` on its
   component, and a query with `filterQuery(dax, treatAs(filter, "Table[Column]"))` from `@bicharts/chart-host/dax` -
-  the query stays in its `.dax` file. `<BicFilterChips />` shows what's filtered with a clear for each.
+  the query stays in its `.dax` file. `<BicFilterChips />` shows what's filtered with a clear for each. A chart over
+  that query names the filter in `scopedBy`, and the key columns its `treatAs` maps when that's fewer than the
+  filter's: `scopedBy={{ filter: cell, takes: ["Region"] }}`.
 - A template `VegaVisual` or `DataGrid` joins the same filter: `onInteraction={e => fromVegaInteraction(filter, e)}`.
 - A link that opens the page as it was: `useBicUrlState()`; linked hover: `useBicFilter(..., { hover: true })`; a query
   filtered to nothing: `onClearFilters={filter.clear}` on its `BicChartPanel`; while building: `<BicDevtools />`.

@@ -89,6 +89,9 @@ function shapeTest(mark: Element | null): (x: number, y: number) => boolean {
 
 const parseIdxs = (s: string | null) => (s || "").split(",").map(x => parseInt(x, 10)).filter(n => Number.isFinite(n));
 
+/** How specific a mark is for a note's key, least first wins: see the placement in createAnnotationLayer. */
+type Rank = [number, number, number, number];
+
 const hits = (a: Box, b: Box) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 
 /** A mark this much wider than tall is a ROW (a table's, a list's): its badge follows the row's label. */
@@ -261,9 +264,14 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
         const marks = Array.from(container.querySelectorAll<Element>(`.${MARK_CLASS}[${ROW_IDX_ATTR}]`))
             .filter(m => !m.closest(`.${ANNOTATION_LAYER_CLASS}`));
         const marksByRow = new Map<number, Element[]>();
-        for (const m of marks) for (const r of parseIdxs(m.getAttribute(ROW_IDX_ATTR))) {
-            const at = marksByRow.get(r);
-            if (at) at.push(m); else marksByRow.set(r, [m]);
+        const rowsOf = new Map<Element, Set<number>>();
+        for (const m of marks) {
+            const own = new Set(parseIdxs(m.getAttribute(ROW_IDX_ATTR)));
+            rowsOf.set(m, own);
+            for (const r of own) {
+                const at = marksByRow.get(r);
+                if (at) at.push(m); else marksByRow.set(r, [m]);
+            }
         }
         const origin = container.getBoundingClientRect();
         const open = origin.width > 0 && origin.height > 0 ? box(origin) : FREE;
@@ -412,19 +420,41 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
                 : a.column != null ? [[a.column, a.value] as [string, unknown]] : []
             ).map(([c, v]) => [names.indexOf(c), text(v)]);
             const want = pairs.map(p => p[1]).join(" / ");
-            const hits = new Set<Element>();
+            const hits = new Set<Element>(), keyRows = new Set<number>();
             if (pairs.length && pairs.every(p => p[0] >= 0)) (data.rows || []).forEach((row, r) => {
-                if (pairs.every(([ci, v]) => text(row?.[ci]) === v)) for (const m of marksByRow.get(r) ?? []) hits.add(m);
+                if (!pairs.every(([ci, v]) => text(row?.[ci]) === v)) return;
+                keyRows.add(r);
+                for (const m of marksByRow.get(r) ?? []) hits.add(m);
             });
             if (!hits.size) continue;
-            // The biggest VISIBLE part of the key's marks carries the badge: a country's mainland, not an island; a
-            // route's arc, not its end dot; and on a zoomed or panned map, the part in view (a box clipped to the
-            // map, the svg, any clip-path) - not the centre of an outline running off the edge.
-            let best: Box | null = null, bestWhole: Box | null = null, bestMark: Element | null = null, laidOut = false;
+            // THE MOST SPECIFIC MARK carries the badge. A group's mark (a grid's subtotal row, a treemap's parent) lists
+            // its members' rows too, so a key matches it as well as its own mark: measured on a variance grid, every
+            // country's note sat on its region's row, the same size and drawn first. Ranked: the fewest rows outside
+            // the key, then a mark whose rows ARE the key's, then the fewest rows, then the deepest aria-level (a group
+            // of one lists the same rows as its member's mark; a tree grid says which is the member). A group's mark
+            // carries a note only where no mark more specific is drawn (the group collapsed); one drawn but out of view
+            // takes its badge with it rather than hand it to the group.
+            const rank = (m: Element): Rank => {
+                const own = rowsOf.get(m)!;
+                let out = 0;
+                for (const r of own) if (!keyRows.has(r)) out++;
+                const level = parseInt(m.getAttribute("aria-level") || "", 10);
+                return [out, out === 0 && own.size === keyRows.size ? 0 : 1, own.size, Number.isFinite(level) ? -level : 0];
+            };
+            const before = (p: Rank, q: Rank) => p[0] - q[0] || p[1] - q[1] || p[2] - q[2] || p[3] - q[3];
+            const drawn: Array<{ m: Element; b: DOMRect; k: Rank }> = [];
             for (const m of hits) {
                 const b = m.getBoundingClientRect();
-                if (!(b.width > 0 && b.height > 0)) continue;
-                laidOut = true;
+                if (b.width > 0 && b.height > 0) drawn.push({ m, b, k: rank(m) });
+            }
+            const laidOut = drawn.length > 0;
+            const most = drawn.reduce<Rank | null>((k, d) => (!k || before(d.k, k) < 0 ? d.k : k), null);
+            // Among marks equally specific, the biggest VISIBLE part carries the badge: a country's mainland, not an
+            // island; a route's arc, not its end dot; and on a zoomed or panned map, the part in view (a box clipped to
+            // the map, the svg, any clip-path) - not the centre of an outline running off the edge.
+            let best: Box | null = null, bestWhole: Box | null = null, bestMark: Element | null = null;
+            for (const { m, b, k } of drawn) {
+                if (before(k, most!) !== 0) continue;
                 const v = cut(box(b), viewOf(m));
                 if (v && (!best || area(v) > area(best))) { best = v; bestWhole = box(b); bestMark = m; }
             }

@@ -173,12 +173,13 @@ describe("a stamped chart works from the keyboard", () => {
         expect(opened).toHaveLength(1);
     });
 
-    it("an inert chart's marks take no focus, but its badges still do", () => {
+    it("an inert chart's marks take one roving tab stop with no pressed state, and its badges keep their own", () => {
         const { el } = mount(STAMPED, {
             marksSelect: () => false,
             annotations: [{ column: "Country", value: "Japan", label: "1" }],
         });
-        expect(marks(el).every(m => !m.hasAttribute("tabindex"))).toBe(true);
+        expect(marks(el).map(m => m.getAttribute("tabindex"))).toEqual(["0", "-1", "-1"]);
+        expect(marks(el).some(m => m.hasAttribute("aria-pressed"))).toBe(false);
         expect((el.querySelector(".bic-annotation") as HTMLElement).getAttribute("tabindex")).toBe("0");
     });
 
@@ -198,6 +199,65 @@ function render(container, data) {
         const { el } = mount(code);
         expect(marks(el)[0].getAttribute("aria-label")).toBe("Brazil, top seller");
         expect(marks(el)[1].getAttribute("tabindex")).toBe("0");
+    });
+});
+
+// AN INERT CHART'S MARKS ARE READ FROM THE KEYBOARD TOO. On a chart whose selection reaches nothing (a map, a time series
+// or KPI tiles with no `selects`) the tooltip is the only way to read a mark's figures, so marks that took no focus left
+// those figures to the mouse. They take the same one roving tab stop and the same name, with no pressed state, and
+// Enter or Space is the click the host already turns into nothing.
+describe("an inert chart's marks are read from the keyboard", () => {
+    const COUNTED = `${KEYBOARD_STAMP}
+function render(container, data) {
+  const doc = container.ownerDocument;
+  for (let i = 0; i < data.rows.length; i++) {
+    const m = doc.createElement("div");
+    m.className = "d3-mark";
+    m.setAttribute("data-row-idx", String(i));
+    m.addEventListener("click", () => { container.__clicks = (container.__clicks || 0) + 1; });
+    container.appendChild(m);
+  }
+}`;
+
+    it("one tab stop, every mark named, none pressable, and arrows move the stop", () => {
+        const { el } = mount(STAMPED, { marksSelect: () => false });
+        const ms = marks(el);
+        expect(ms.map(m => m.getAttribute("tabindex"))).toEqual(["0", "-1", "-1"]);
+        expect(ms.map(m => m.getAttribute("role"))).toEqual(["img", "img", "img"]);
+        expect(ms[1].getAttribute("aria-label")).toBe("Japan, 2");
+        expect(ms.some(m => m.hasAttribute("aria-pressed"))).toBe(false);
+        ms[0].focus();
+        key(ms[0], "ArrowRight");
+        expect(document.activeElement).toBe(marks(el)[1]);
+        expect(marks(el).map(m => m.getAttribute("tabindex"))).toEqual(["-1", "0", "-1"]);
+    });
+
+    it("Enter or Space selects nothing, and Escape clears nothing", () => {
+        const { el, heard } = mount(COUNTED, { marksSelect: () => false });
+        const ev = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+        marks(el)[1].dispatchEvent(ev);
+        expect(ev.defaultPrevented).toBe(true);            // Space doesn't scroll the page
+        key(marks(el)[1], "Enter");
+        key(marks(el)[1], "Escape");
+        expect(heard).toEqual([]);
+        expect(marks(el).some(m => m.classList.contains(MARK_SELECTED_CLASS))).toBe(false);
+        expect(marks(el).some(m => m.hasAttribute("aria-pressed"))).toBe(false);
+        expect((el as any).__clicks).toBe(2);              // the chart's own click runs, as for a pointer
+    });
+
+    it("a chart that stops or starts selecting swaps the role and pressed state the host gave, never the chart's own", () => {
+        let selects = true;
+        const { el, host } = mount(STAMPED, { marksSelect: () => selects });
+        expect(marks(el).map(m => m.getAttribute("role"))).toEqual(["button", "button", "button"]);
+        selects = false;
+        host.render();
+        expect(marks(el).map(m => m.getAttribute("role"))).toEqual(["img", "img", "img"]);
+        expect(marks(el).some(m => m.hasAttribute("aria-pressed"))).toBe(false);
+        expect(marks(el).filter(m => m.getAttribute("tabindex") === "0")).toHaveLength(1);
+        selects = true;
+        host.render();
+        expect(marks(el).map(m => m.getAttribute("role"))).toEqual(["button", "button", "button"]);
+        expect(marks(el).map(m => m.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
     });
 });
 

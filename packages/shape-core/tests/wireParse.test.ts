@@ -186,6 +186,18 @@ describe("parseGenerateResponse", () => {
         expect(parseGenerateResponse({ creditBalanceBefore: "x", creditCost: " " })).toMatchObject({ creditBalanceBefore: null, creditCost: null });
     });
 
+    it("the chart type's minimum size: a positive number when the server sent one, in either casing, else absent", () => {
+        expect(parseGenerateResponse({ chartMinWidth: 480, chartMinHeight: 320 })).toMatchObject({ chartMinWidth: 480, chartMinHeight: 320 });
+        expect(parseGenerateResponse({ ChartMinWidth: 480, ChartMinHeight: "320" })).toMatchObject({ chartMinWidth: 480, chartMinHeight: 320 });
+        for (const v of [null, undefined, 0, -5, "x", Infinity, {}]) {
+            const p = parseGenerateResponse({ chartMinWidth: v, chartMinHeight: v });
+            expect(["chartMinWidth" in p, "chartMinHeight" in p], String(v)).toEqual([false, false]);
+        }
+        // A generation with no chart type sends null for both; a body from an older server sends neither.
+        expect("chartMinWidth" in parseGenerateResponse(POINT_MAP)).toBe(false);
+        expect("chartMinHeight" in parseGenerateResponse(THROTTLED)).toBe(false);
+    });
+
     it("chartName falls back to an older server's chartType", () => {
         expect(parseGenerateResponse({ chartType: "Line chart" }).chartName).toBe("Line chart");
         expect(parseGenerateResponse({ chartName: "Bar", chartType: "Line chart" }).chartName).toBe("Bar");

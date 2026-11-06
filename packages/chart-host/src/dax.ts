@@ -8,7 +8,9 @@
 //   const q = calculateTable(BASE, treatAs(region, "'Geography'[RegionCode]"));
 //   // nothing picked -> BASE unchanged; picked -> CALCULATETABLE(BASE, TREATAS({"JPN"}, 'Geography'[RegionCode]))
 //
-// A filter keyed by several columns names a column reference for each, in the filter's order.
+// A filter keyed by several columns names a column reference for each, in the filter's order. Fewer references map
+// the key's first columns only (treatAs(cell, "Accounts[Region]") on a Region x Stage pick takes the region), so the
+// chart over that query names the same columns in its scopedBy entry: { filter: cell, takes: ["Region"] }.
 
 import type { Filter, FilterKey } from "./filterScope";
 import { isAnyValue } from "./filterScope";

@@ -29,11 +29,11 @@ const DATA = { columns: [{ name: "Country" }, { name: "Revenue" }], rows: [["Bra
 
 let els: HTMLElement[] = [];
 afterEach(() => { els.forEach(e => e.remove()); els = []; });
-function mount(code: string) {
+function mount(code: string, extra: Record<string, unknown> = {}) {
     const el = document.createElement("div");
     document.body.appendChild(el);
     els.push(el);
-    const host = createChartHost(el, { code, d3: {}, data: DATA as any } as any);
+    const host = createChartHost(el, { code, d3: {}, data: DATA as any, ...extra } as any);
     host.render();
     return { el, host };
 }
@@ -55,6 +55,16 @@ describe("a keyboard-focused mark shows its tooltip", () => {
     it("Escape hides it", () => {
         const { el } = mount(`${KEYBOARD_STAMP}\n${BODY}`);
         marks(el)[1].focus();
+        expect(tip(el)).toBe("Japan: 30");
+        key(marks(el)[1], "Escape");
+        expect(tip(el)).toBeNull();
+    });
+    it("on a chart whose marks select nothing too, where the tooltip is the only way to read a figure", () => {
+        const { el } = mount(`${KEYBOARD_STAMP}\n${BODY}`, { marksSelect: () => false });
+        expect(marks(el)[0].getAttribute("tabindex")).toBe("0");
+        marks(el)[0].focus();
+        expect(tip(el)).toBe("Brazil: 12");
+        key(marks(el)[0], "ArrowRight");
         expect(tip(el)).toBe("Japan: 30");
         key(marks(el)[1], "Escape");
         expect(tip(el)).toBeNull();

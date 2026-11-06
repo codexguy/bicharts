@@ -113,6 +113,50 @@ of the affordance, they are re-applied on every render (so a manual `classList` 
 the next data change), and getting row indices right across a filtered payload is the hazard
 above.
 
+### A panel whose query takes the page filter
+
+A chart whose DAX query is filtered by a page filter (`filterQuery(dax, treatAs(filter, "Table[Column]"))` from
+`@bicharts/chart-host/dax`) gets rows that are already narrowed, so it can't see the filter. `scopedBy` tells it,
+and its titles say so ("North America · United States only"):
+
+```tsx
+<BicChart id="kpis" code={kpiCode} d3={d3} data={kpiRows} scopedBy={country} />
+```
+
+`treatAs` maps the key columns it's given, in the filter's order, so a query can take only part of a compound key.
+`treatAs(cell, "Accounts[Region]")` on a Region × Stage pick filters by the region alone, and a stage-label pick
+(any region) doesn't filter that query at all. Name the key columns the query takes, so the scope line names only
+those:
+
+```tsx
+<BicChart id="cases" code={casesCode} d3={d3} data={caseRows} scopedBy={{ filter: cell, takes: ["Region"] }} />
+```
+
+A cell pick then reads "Europe", not "Europe → 3-Propose", and a pick whose taken parts are all "any" adds
+nothing to the line, since that query keeps every row. A bare filter, `{ filter }` or a `takes` that names every
+key column says the whole key. `label` sets what the line calls the filter. Outside React, `filterScopeOf` from
+`@bicharts/chart-host/page` takes the same list and returns `options.filterScope`.
+
+### Several panels that pick the same key
+
+A map, a table and a scatter that each pick a country are ONE pick. Give their filters one `group`, and keep each
+panel's query taking every member but its own:
+
+```tsx
+const fromMap   = useBicFilter("Country", { label: "Country (map)",   group: "country" });
+const fromTable = useBicFilter("Country", { label: "Country (table)", group: "country" });
+const mapQuery   = filterQuery(MAP_DAX,   treatAs(fromTable, "Geo[Country]"));
+const tableQuery = filterQuery(TABLE_DAX, treatAs(fromMap,   "Geo[Country]"));
+// <MapChart selects={fromMap} scopedBy={[fromTable]} />  <TableChart selects={fromTable} scopedBy={[fromMap]} />
+```
+
+A pick in one member clears the others, so the most recent pick is the page's one pick, and only the member holding
+it is active: one chip, one scope line. Every member's chart shows the pick, so clicking the picked mark again in
+whichever panel shows it clears it, and the panel the reader picked in keeps all its marks. A list beside them (the
+open items for the picked countries) reads the members' keys, which are that one pick. Without `group` the filters
+are separate picks, ANDed: a country picked on the map and then in the table is held twice, and clicking it again on
+the map leaves the page filtered by the table's. Outside React, `scope.filter(column, { group })` does the same.
+
 ## Vanilla
 
 ```js
@@ -287,8 +331,34 @@ the host's own write cannot be told apart from it.
 createChartHost(el, { code, data, options: { dimOpacity: 0.15 } });
 ```
 
-**A glyph on each selected mark.** `options.selectionGlyph` (`"dot"` or `"check"`; absent or
-`"none"` draws nothing, the default) puts a small glyph on every selected mark, in a layer the host
+**The selection marker: an outline or a glyph on each selected mark.** The dim alone fails where a
+selected mark's colour sits close to the canvas: a diverging ramp's centre is a neutral just off the
+canvas, and the dim pulls every other mark toward it too, so a selected region near the centre reads
+the same as the dimmed ones. Two options choose what marks the selection beyond the dim:
+
+- `options.selectionGlyph`, the *selection marker* on every chart that isn't a region map (the key
+  keeps its first name): `"auto"` (the default), `"none"`, `"dot"`, `"check"` or `"outline"`.
+  `"auto"` is an outline on a chart that declares a neutral-centre ramp (the shared value ramp's
+  diverging legend, `.llm-value-ramp[data-kind="diverging"]`) and nothing on any other chart, which
+  draws exactly as it did before.
+- `options.mapSelectionGlyph`, the marker on a *region map* (a chart whose rows carry the host's
+  `__geoIso__` join column: a choropleth, a cartogram, a province map): `"outline"` (the default),
+  `"none"`, `"dot"` or `"check"`. A point map places its rows by coordinates and has no join column,
+  so it takes `selectionGlyph`.
+
+An outline (`.lch-sel-outline`, in the same host layer as the glyphs) is each selected AREA mark's own
+shape (a filled path, rect or polygon) stroked 2px in the chart's text colour (`themeFg`, else the
+colour the container's text inherits) over a halo of its canvas (`themeBg`). It's drawn over the chart,
+so a border shared with a neighbour isn't painted over, and the marks themselves are neither restyled
+nor moved: the keyboard's order, a chart's transitions and what a click hits are unchanged. The chart's own
+controls (every element it declares `lch-control`, such as a map's zoom pad) are holes in the outline (`controlBoxesIn`, a mask): a
+region that runs under the pad is outlined up to it, never across the buttons. A line or a
+point keeps its geometry and gets no outline. `resolveOptions` gives the whole choice as
+`selectionMarker` and `mapSelectionMarker`; `selectionMarkerFor` and the traits behind it
+(`isRegionMapData`, `hasNeutralCentreRamp`) and the painter (`collectOutlineMarks`,
+`paintSelectionOutlines`) are exported for a host that draws its own layer.
+
+A glyph (`"dot"` or `"check"`) is a small mark on every selected mark, in a layer the host
 owns inside the container (`.bic-selection-glyphs`, each glyph `.lch-sel-glyph`, never hit-tested).
 It is painted after every selection change and, on a redraw, after the layout pass and the fit, so
 nothing measures it as part of the chart. Only a mark the reader can see gets one: a mark hidden by
@@ -311,13 +381,14 @@ every point. The generate answer says so (`suppressSelectionGlyph`, read by shap
 `parseGenerateResponse`); pass it as `options.suppressSelectionGlyph`, or leave it in the payload's
 `meta` (`data.meta.suppressSelectionGlyph`) and the host promotes it, the way it promotes
 `geoPoint`. Keep it with the chart's code, so a redraw from a cache honors it too.
-`onSelectionGlyphs` reports what each paint did (`{ mode, drawn, total, suppressed }`), and is
-called only when a glyph mode is set:
+The same fact keeps an outline off such a chart. `onSelectionGlyphs` reports what each paint did
+(`{ mode, drawn, total, suppressed }`, `mode` one of `"dot"`, `"check"` or `"outline"`), and is called
+only when the chart's marker is one of those:
 
 ```js
 createChartHost(el, {
   code, data,
-  options: { selectionGlyph: "dot", suppressSelectionGlyph: answer.suppressSelectionGlyph },
+  options: { selectionGlyph: "dot", mapSelectionGlyph: "outline", suppressSelectionGlyph: answer.suppressSelectionGlyph },
   onSelectionGlyphs: r => console.debug("glyphs", r),
 });
 ```

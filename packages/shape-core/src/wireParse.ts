@@ -21,6 +21,11 @@ const numOrNull = (v: unknown): number | null => {
     if (typeof v === "string" && v.trim() !== "") { const n = Number(v); return Number.isFinite(n) ? n : null; }
     return null;
 };
+/** A wire size: a finite number above zero, else null. */
+const positiveOrNull = (v: unknown): number | null => {
+    const n = numOrNull(v);
+    return n !== null && n > 0 ? n : null;
+};
 
 /** The columns a point map resolves a coordinate from, by role. Only roles the server named. */
 export interface WirePointColumns {
@@ -109,6 +114,13 @@ export interface ParsedGenerateResponse {
     /** Which final answer: "cancelled", "failed", "not-received" or "lost-in-restart". Present only when sent. */
     pollOutcome?: string;
     /**
+     * The chart type's own minimum drawing size in pixels: below it the chart must SCROLL, never squash.
+     * Present only when the server sent a positive number; absent when the generation has no type or the
+     * server is older, so a host keeps drawing at whatever size it was given.
+     */
+    chartMinWidth?: number;
+    chartMinHeight?: number;
+    /**
      * The account's thumbnail override - an account-level "include thumbnails" setting, which a
      * host counts as the reader's consent to upload a new chart's first rendering. Unlike the flags
      * above it has THREE states: true or false when the server sent a boolean, and ABSENT when it
@@ -166,6 +178,8 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     if (Object.keys(dest).length) point.dest = dest;
     const retryable = f("retryable");
     const pollFinal = f("isPollFinal");
+    const minWidth = positiveOrNull(f("chartMinWidth"));
+    const minHeight = positiveOrNull(f("chartMinHeight"));
     return {
         errorMessage: str(f("errorMessage")),
         errorCode: str(f("errorCode")),
@@ -202,6 +216,8 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
         servedCorrelationId: str(f("servedCorrelationId")),
         ...(typeof pollFinal === "boolean" ? { isPollFinal: pollFinal } : {}),
         ...(str(f("pollOutcome")) !== "" ? { pollOutcome: str(f("pollOutcome")) } : {}),
+        ...(minWidth !== null ? { chartMinWidth: minWidth } : {}),
+        ...(minHeight !== null ? { chartMinHeight: minHeight } : {}),
         ...(typeof thumbnailOverride === "boolean" ? { overrideThumbnailUpload: thumbnailOverride } : {}),
         ...(typeof thumbnailForced === "boolean" ? { forceThumbnailUpload: thumbnailForced } : {}),
     };

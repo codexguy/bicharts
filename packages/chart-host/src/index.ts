@@ -141,7 +141,7 @@ export { createChartGroup, toSourceRows, syncMemberSelection,
     type ChartGroupMemberOptions, type ChartGroupSourceOptions, type ChartGroupPayload } from "./group";
 // THE PAGE'S FILTERS (2026-10-02): the types; the code is in "./page" and "./react" (see the note above).
 export type { Filter, FilterScope, FilterOptions, FilterKey, FilterChangeReason, FilterBinding, BindFilterOptions,
-    VegaInteractionEvent, PageView } from "./filterScope";
+    VegaInteractionEvent, PageView, ScopedFilter, ScopeSource } from "./filterScope";
 export {
     createMarkResolver, isInsideControl, rowIdxsFromMark, nextSelection,
     DRAG_NOT_CLICK_PX, gestureWasDrag, trackPress, pressOf, clearPress, clickWasDrag, CONTAINER_SLOT_PRESS_AT,
@@ -152,6 +152,18 @@ export {
     collectD3GlyphCenters, clearSelectionGlyphs, paintSelectionGlyphs, SELECTION_GLYPH_CLASS,
     type MarkResolver, type MarkResolverEnv, type GlyphCenter, type SelectionGlyphStyle, type SelectionModifiers,
 } from "./selection";
+// WHAT MARKS A SELECTION BEYOND THE DIM: the choice every host offers (a glyph, an outline, or "auto"), which charts
+// count as region maps and which declare a neutral-centre ramp, and the outline the host draws over its area marks.
+export {
+    readSelectionMarker, readMapSelectionMarker, selectionMarkerFor, SELECTION_MARKER_DEFAULT, MAP_SELECTION_MARKER_DEFAULT,
+    REGION_JOIN_COLUMN, isRegionMapData, NEUTRAL_CENTRE_RAMP_SELECTOR, hasNeutralCentreRamp,
+    isAreaMark, collectOutlineMarks, outlineWindowOf, controlBoxesIn, paintSelectionOutlines, SELECTION_OUTLINE_CLASS,
+    type SelectionMarkerChoice, type MapSelectionMarkerChoice, type SelectionMarker, type SelectionOutlineStyle,
+    type OutlineMarkFilter,
+} from "./selectionMarker";
+// FOLLOWING MARKS THAT MOVE WITHOUT A RENDER (a pan, a zoom, a transition, a resize): the one mechanism a host uses to
+// keep what it paints over the marks (glyphs, outlines) on them.
+export { followMarks, MARK_MOVE_ATTRIBUTES, type MarkFollower, type MarkFollowerOptions } from "./markFollower";
 // THE HOST LASSO: one gesture, owned by the host, for any chart whose server-sent capability says it may.
 export {
     installLasso, clearLasso, lassoVerdict, lassoRowCap, lassoActions, lassoEffect, registerLassoAction, pointInShape,

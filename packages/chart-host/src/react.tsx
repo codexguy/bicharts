@@ -28,8 +28,8 @@ import type { GeoPointBinding } from "./payload";
 import type { RowGrowthNotice } from "./rowGrowth";
 import { geoFromCache, loadGeo } from "./geoLazy";
 import { createChartGroup, syncMemberSelection, toSourceRows, type ChartGroup, type ChartGroupSelection } from "./group";
-import { bindFilter, createFilter, createFilterScope, filterScopeOf, payloadRowReader, viewToken, viewFromToken, type PageView,
-         type Filter, type FilterBinding, type FilterOptions, type FilterScope } from "./filterScope";
+import { bindFilter, createFilter, createFilterScope, filterScopeOf, payloadRowReader, scopeFilterOf, viewToken, viewFromToken, type PageView,
+         type Filter, type FilterBinding, type FilterOptions, type FilterScope, type ScopeSource } from "./filterScope";
 
 export { assembleD3 } from "./host";
 import { attachControls, createControls, type Controls, type ControlsAttachment } from "./controls";
@@ -37,7 +37,7 @@ export { createControls, type Controls, type ControlInfo } from "./controls";
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";
 export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
 export { createFilter, createFilterScope, fromVegaInteraction, filterScopeOf, ANY_VALUE, isAnyValue,
-         type Filter, type FilterOptions, type FilterScope, type FilterChangeReason } from "./filterScope";
+         type Filter, type FilterOptions, type FilterScope, type FilterChangeReason, type ScopedFilter, type ScopeSource } from "./filterScope";
 
 export interface BicChartProps {
     /** Generated render() source (an ES module's `code` export, or the raw string). */
@@ -141,8 +141,11 @@ export interface BicChartProps {
      * chip shows), and its titles and comparisons say so ("North America · United States only", "rank 2 of 3 (United
      * States only)"). Cleared again when the filters clear. Not for the filter this chart `selects` unless its own rows
      * are narrowed by it too. Absent: the page's own options.filterScope, if any, goes through untouched.
+     * A query that maps only some of a compound key's columns names them, `{ filter, takes }`: with
+     * `treatAs(cell, "Accounts[Region]")` on a Region x Stage pick, `scopedBy={{ filter: cell, takes: ["Region"] }}` says
+     * the region alone, and a stage-label pick (any region) says nothing, since that query keeps every row.
      */
-    scopedBy?: Filter | readonly Filter[];
+    scopedBy?: ScopeSource | readonly ScopeSource[];
     /**
      * THE CHART'S OWN CONTROLS AS PAGE STATE - from useBicControls(). For a chart that draws
      * sliders (the What-if projection's rate and horizon): `controls.values` holds every
@@ -252,7 +255,8 @@ export function BicChart(props: BicChartProps) {
     // page component that holds them doesn't re-render this one. While one is active, options.filterScope says what it
     // keeps; otherwise the page's own options.filterScope, if any. Once scopedBy has been given the key is always sent,
     // because an options change MERGES into what the chart was last handed: a fact left out would never clear.
-    const scopeList: readonly Filter[] = scopedBy == null ? [] : Array.isArray(scopedBy) ? scopedBy as readonly Filter[] : [scopedBy as Filter];
+    const scopeSources: readonly ScopeSource[] = scopedBy == null ? [] : Array.isArray(scopedBy) ? scopedBy as readonly ScopeSource[] : [scopedBy as ScopeSource];
+    const scopeList = scopeSources.map(scopeFilterOf).filter((f): f is Filter => !!f);
     const scopeIds = scopeList.map(f => f?.id).join("\u0001");
     const subscribeScope = useCallback((cb: () => void) => {
         const offs = scopeList.map(f => f?.onChange?.(() => cb()));
@@ -263,7 +267,7 @@ export function BicChart(props: BicChartProps) {
     useSyncExternalStore(subscribeScope, scopeSnapshot, scopeSnapshot);
     const [scopeEver, setScopeEver] = useState(scopedBy !== undefined);
     if (scopedBy !== undefined && !scopeEver) setScopeEver(true);
-    const scopeFact = scopedBy === undefined ? undefined : filterScopeOf(scopeList);
+    const scopeFact = scopedBy === undefined ? undefined : filterScopeOf(scopeSources);
     const scopeKey = scopeFact ? JSON.stringify(scopeFact) : "";
     const options = useMemo<ResolveOptionsInput | undefined>(
         () => scopeEver ? { ...(pageOptions ?? {}), filterScope: scopeFact ?? pageOptions?.filterScope } : pageOptions,
@@ -578,6 +582,11 @@ export function BicPage({ children }: { children: ReactNode }) {
  * ["OriginCode", "DestinationCode"]). Pass it to a chart's `selects` and read
  * `value` / `values` / `row` / `active` for the rest of the page; `clear()` clears it and the
  * chart's marks. Re-renders the component on every change. The key columns are read once.
+ *
+ * SEVERAL PANELS PICKING ONE KEY ARE ONE PICK: give their filters one `group` ("country") and the most recent pick is
+ * the page's one pick - a pick in one clears the others, the picked mark shows in every member's chart and a click on it
+ * in any of them clears it, and only the member holding it is active (one chip, one scope line). Each panel's query
+ * still takes every member but its own, so the panel a reader picked in keeps all its marks.
  */
 export function useBicFilter(columns: string | readonly string[], opts?: FilterOptions): Filter {
     const scope = useContext(PageCtx);
@@ -585,7 +594,9 @@ export function useBicFilter(columns: string | readonly string[], opts?: FilterO
     if (!ref.current) ref.current = createFilter(columns, opts);
     const f = ref.current;
     useEffect(() => scope.add(f), [scope, f]);
-    useSyncExternalStore(cb => f.onChange(() => cb()), () => f.version, () => f.version);
+    // A group member re-renders when a sibling takes or drops the pick, too.
+    const snapshot = () => `${f.version}:${f.pick?.id ?? ""}:${f.pick?.version ?? ""}`;
+    useSyncExternalStore(cb => f.onPick ? f.onPick(() => cb()) : f.onChange(() => cb()), snapshot, snapshot);
     return f;
 }
 

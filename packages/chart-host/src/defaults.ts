@@ -28,6 +28,7 @@ import {
 import { toRGBA, compositeOver, relativeLuminance } from "./labelContrast";
 
 import { resolveAutoColorScale } from "./autoRamp";
+import { readSelectionMarker, readMapSelectionMarker } from "./selectionMarker";
 import { exportFormatsFor, exportTableService, type ExportFormat, type ExportTableService, type SaveFileService } from "./exportTable";
 
 // THE EXPORT SERVICE A CHART MAY CALL (contract 1.19.0), from the host's file service: a function or nothing, and the
@@ -176,12 +177,20 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
             const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
             return Number.isFinite(n) ? clamp(n, DIM_OPACITY_MIN, 1) : undefined;
         })(),
-        // A recognised glyph or none: an unknown string must never reach the painter as a live mode, and "none" is
-        // undefined rather than a value, so a host that passes nothing and one that passes "none" resolve alike.
+        // A recognised marker or nothing: an unknown string must never reach the painter as a live mode. "none" and
+        // "auto" read undefined here, as a host that passes nothing does; what tells them apart is selectionMarker.
         selectionGlyph: ((): RenderOptions["selectionGlyph"] => {
             const v = (p.selectionGlyph == null ? "" : String(p.selectionGlyph)).toLowerCase();
-            return v === "dot" || v === "check" ? v : undefined;
+            return v === "dot" || v === "check" || v === "outline" ? v : undefined;
         })(),
+        // THE WHOLE CHOICE: absent, unknown and "auto" are the default ("auto"), and "none" is a reader's None. The map's
+        // choice beside it, its default "outline" when it made none.
+        selectionMarker: readSelectionMarker(p.selectionGlyph),
+        mapSelectionGlyph: ((): RenderOptions["mapSelectionGlyph"] => {
+            const v = (p.mapSelectionGlyph == null ? "" : String(p.mapSelectionGlyph)).toLowerCase();
+            return v === "none" || v === "dot" || v === "check" || v === "outline" ? v : undefined;
+        })(),
+        mapSelectionMarker: readMapSelectionMarker(p.mapSelectionGlyph),
         // A host FACT from the generate answer, true only for a literal true: silence never suppresses anything.
         suppressSelectionGlyph: p.suppressSelectionGlyph === true ? true : undefined,
         // A host FACT (1.22.0): the chart works from the keyboard. True only for a literal true, like the one above.

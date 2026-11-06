@@ -92,9 +92,15 @@ import { resolve, dirname, join } from "node:path";
 // (the one rule and its sentence in rowGrowth.ts, and the host's check after every render, about 1.5 KB) runs in the
 // synchronous render path of every host, so it cannot sit behind a dynamic import. No geometry is in the closure;
 // closure (~841 KB) + the smallest map asset (223 KB) is ~1064 KB, far above 850.
+//
+// 850 -> 860 KB, deliberately, as ordinary growth, measured first: 841 KB before, 850.4 KB after. The selection
+// marker (the outline a selected area mark gets when the dim alone can't show it, the map and neutral-centre-ramp
+// traits that choose it, and the shared follower that keeps it on a mark that pans or zooms; about 9 KB together)
+// paints on every selection change, so it cannot sit behind a dynamic import. No geometry is in the closure;
+// closure (~850 KB) + the smallest map asset (223 KB) is ~1073 KB, far above 860.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 850);
+const limitKB = Number(process.argv[3] ?? 860);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //

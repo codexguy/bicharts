@@ -22,7 +22,14 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.23.0";
+export const HOST_CONTRACT_VERSION = "1.24.0";
+// 1.24.0 (2026-11-05): A SELECTION THE DIM ALONE CAN'T SHOW IS OUTLINED. A diverging ramp's centre is a neutral just off
+// the canvas and the dim pulls every other mark toward the canvas, so a selected region near the centre read the same as
+// the dimmed ones. options.selectionGlyph gains "outline" (a stroke in the text colour around each selected area mark,
+// drawn by the host over the chart) and "auto", now its default: an outline on a chart that declares a neutral-centre
+// ramp, nothing elsewhere. options.mapSelectionGlyph ("outline" by default, or "none", "dot", "check") is the marker on a
+// REGION MAP, a chart whose rows carry the region join column. onSelectionGlyphs can report mode "outline". A chart that
+// is neither a region map nor on a neutral-centre ramp draws exactly as before under the defaults.
 // 1.23.0 (2026-11-02): THE HOST SAYS WHAT FILTER NARROWED THE ROWS. A page filter is often applied to a chart's QUERY
 // (a KPI deck whose query takes the picked country), so the rows arrive already narrowed and the chart cannot tell: it
 // kept its region's title over one country's totals and ranked what the filter left. RenderOptions gains
@@ -681,8 +688,19 @@ export interface RenderOptions {
     /** How far a selection dims the marks outside it, as a share of full opacity (DIM_OPACITY_MIN-1). Absent: the
      *  stylesheet decides - DIM_OPACITY_DEFAULT, or whatever the page sets on --lch-dim-opacity. */
     dimOpacity?: number;
-    /** A small glyph on each selected mark: "dot" or "check". Absent or "none": no glyph (the default). */
-    selectionGlyph?: "none" | "dot" | "check";
+    /** The SELECTION MARKER on every chart that is not a region map (the key keeps its first name, from when the only
+     *  markers were glyphs): "auto" (the default; an outline on a chart whose colour ramp has a neutral centre, nothing
+     *  elsewhere), "none", "dot" or "check" (a small glyph on each selected mark), or "outline" (a stroke in the text
+     *  colour around each selected area mark). Resolved, it reads "dot", "check" or "outline" when one of those was
+     *  chosen and undefined otherwise; `selectionMarker` holds the whole choice. */
+    selectionGlyph?: "auto" | "none" | "dot" | "check" | "outline";
+    /** The selection marker on a REGION MAP (a chart whose rows carry the host's region join column): "outline" (the
+     *  default), "none", "dot" or "check". */
+    mapSelectionGlyph?: "none" | "dot" | "check" | "outline";
+    /** Resolved only: the whole choice `selectionGlyph` made, "auto" when it made none. */
+    selectionMarker?: "auto" | "none" | "dot" | "check" | "outline";
+    /** Resolved only: the whole choice `mapSelectionGlyph` made, "outline" when it made none. */
+    mapSelectionMarker?: "none" | "dot" | "check" | "outline";
     /** A host FACT from the generate answer: this chart's family never takes a selection glyph. */
     suppressSelectionGlyph?: boolean;
     /** A host FACT: this chart works from the keyboard (its code carries the keyboard stamp), so the host has made its

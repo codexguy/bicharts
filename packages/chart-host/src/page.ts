@@ -8,8 +8,8 @@
 // add-in) never loads them: the main entry's eager closure is budgeted (scripts/checkEagerSize.mjs).
 
 export { viewToken, viewFromToken, LINKED_HOVER_CLASS, type PageView } from "./filterScope";
-export { createFilter, createFilterScope, bindFilter, payloadRowReader, fromVegaInteraction, filterScopeOf, ANY_VALUE, isAnyValue,
+export { createFilter, createFilterScope, bindFilter, payloadRowReader, fromVegaInteraction, filterScopeOf, scopeFilterOf, ANY_VALUE, isAnyValue,
     type Filter, type FilterScope, type FilterOptions, type FilterKey, type FilterChangeReason,
-    type FilterBinding, type BindFilterOptions, type VegaInteractionEvent } from "./filterScope";
+    type FilterBinding, type BindFilterOptions, type VegaInteractionEvent, type ScopedFilter, type ScopeSource } from "./filterScope";
 export { createControls, attachControls, readControls, type Controls, type ControlInfo, type ControlsAttachment } from "./controls";
 export { noteBadges, badgeKey, notesFor, type MarkNoteLike, type NoteBadgeOptions } from "./markNotes";

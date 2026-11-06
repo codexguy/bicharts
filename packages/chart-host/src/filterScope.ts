@@ -52,6 +52,15 @@ export interface FilterOptions {
      * chart bound to it (a glow, never a filter). Off by default.
      */
     hover?: boolean;
+    /**
+     * ONE PICK ACROSS SEVERAL PANELS. Filters with the same group name in one scope (one page) are one pick: a map, a
+     * table and a scatter that each pick a country, each with its own filter so each panel's query can leave its own pick
+     * out. A pick in one member clears the others, so the most recent pick is the page's one pick, and only the member
+     * holding it is active: one chip, one scope line, and a side list over the members' keys names that pick alone.
+     * Every member's chart shows the pick, so clicking the picked mark again in whichever panel shows it clears it.
+     * The members share their key columns; a filter keyed differently stays out of the group (said once in the console).
+     */
+    group?: string;
 }
 
 export interface Filter {
@@ -86,9 +95,11 @@ export interface Filter {
     /**
      * The display text for ANY key - a badge's, a key set by value - read from `rows` (a table carrying the display
      * columns, e.g. the chart's own rows) or else from the rows this filter has seen; the key's values when neither
-     * has it.
+     * has it. `parts` names the key columns to say (a query that maps only some of them, see ScopedFilter): a display
+     * column speaks for the key column it is, or for the key column in its place when there is one display column per
+     * key column; a wildcard part says nothing. Absent, or naming every key column: the whole key.
      */
-    textOf(key: FilterKey | unknown, rows?: readonly Record<string, unknown>[]): string;
+    textOf(key: FilterKey | unknown, rows?: readonly Record<string, unknown>[], parts?: readonly string[]): string;
     /** Why the last change happened (null before any). */
     readonly reason: FilterChangeReason | null;
     /** Bumped on every change: a cheap identity for memoising on the filter's state. */
@@ -113,6 +124,15 @@ export interface Filter {
     keep<T extends Record<string, unknown>>(rows: readonly T[], columns?: readonly string[]): T[];
     /** Subscribe to changes. Returns the unsubscribe. */
     onChange(cb: (filter: Filter, reason: FilterChangeReason) => void): () => void;
+    /** Its group's name (FilterOptions.group), or null. */
+    readonly group?: string | null;
+    /**
+     * The filter holding the pick this one shows: the group member a reader last picked in, or this filter itself when it
+     * has no group; null while nothing is picked. A chart bound to a member paints this filter's keys.
+     */
+    readonly pick?: Filter | null;
+    /** Subscribe to the pick changing: this filter's, or any member's of its group. Returns the unsubscribe. */
+    onPick?(cb: () => void): () => void;
 }
 
 /** A page's filters: what a chip bar lists and what clear-all clears. */
@@ -209,6 +229,14 @@ function toKeys(input: unknown, width: number): FilterKey[] {
 
 let nextId = 0;
 
+// A GROUP'S MEMBERS, shared by every member (one Set per group per scope), and who follows each filter's pick. The scope
+// links a member when it is added and unlinks it when removed; a filter outside a scope has no group to join.
+const peersOf = new WeakMap<Filter, Set<Filter>>();
+const pickSubsOf = new WeakMap<Filter, Set<() => void>>();
+const firePick = (f: Filter) => {
+    for (const m of Array.from(peersOf.get(f) ?? [f])) for (const cb of Array.from(pickSubsOf.get(m) ?? [])) cb();
+};
+
 /** Make a filter keyed by `columns` (one name, or several for a compound key such as a route). */
 export function createFilter(columns: string | readonly string[], opts: FilterOptions = {}): Filter {
     const cols = (Array.isArray(columns) ? columns.slice() : [columns as string]) as string[];
@@ -242,7 +270,10 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         rows = nextRows;
         reason = why;
         version++;
+        // ONE PICK PER GROUP: a pick here replaces the one a sibling held, before anyone hears of either.
+        if (nextKeys.length) for (const p of Array.from(peersOf.get(filter) ?? [])) if (p !== filter && p.active) p.clear(why);
         for (const cb of Array.from(subs)) cb(filter, why);
+        firePick(filter);
     };
 
     const dedupe = (ks: FilterKey[]): FilterKey[] => {
@@ -262,6 +293,16 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         const shown = (p: unknown) => p != null && p !== "" && !isAnyValue(p);
         const text = parts.filter(shown).map(String).join(" → ");
         return text || k.filter(shown).map(String).join(" → ");
+    };
+    // The named key parts only (textOf's `parts`).
+    const partsOf = (k: FilterKey, more: readonly Record<string, unknown>[] | undefined, names: readonly string[]): string => {
+        const s = keyString(k);
+        const pos = cols.map((c, i) => (names.includes(c) && !isAnyValue(k[i]) ? i : -1)).filter(i => i >= 0);
+        const row = (more ?? []).find(r => keyString(keyOfRow(r, cols)) === s) ?? seen.get(s);
+        const speaksFor = (d: string, j: number) => (cols.includes(d) ? cols.indexOf(d) : display.length === cols.length ? j : -1);
+        const shown = (p: unknown) => p != null && p !== "" && !isAnyValue(p);
+        const text = row ? display.filter((d, j) => pos.includes(speaksFor(d, j))).map(d => row[d]).filter(shown).map(String).join(" → ") : "";
+        return text || pos.map(i => k[i]).filter(shown).map(String).join(" → ");
     };
     let warnedKeep = false;
 
@@ -289,9 +330,9 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         get value() { return keys.length ? keys[0][0] : null; },
         get values() { return keys.map(k => k[0]); },
         get text() { return keys.map(k => displayOf(k)).join(", "); },
-        textOf(key, more) {
-            const k = Array.isArray(key) ? key as FilterKey : [key];
-            return displayOf(k.slice(0, cols.length), more);
+        textOf(key, more, parts) {
+            const k = (Array.isArray(key) ? key as FilterKey : [key]).slice(0, cols.length);
+            return parts && cols.some(c => !parts.includes(c)) ? partsOf(k, more, parts) : displayOf(k, more);
         },
         get reason() { return reason; },
         get version() { return version; },
@@ -343,7 +384,20 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
             subs.add(cb);
             return () => { subs.delete(cb); };
         },
+        group: opts.group || null,
+        get pick() {
+            const peers = peersOf.get(filter);
+            if (!peers) return keys.length ? filter : null;
+            for (const p of peers) if (p.active) return p;
+            return null;
+        },
+        onPick(cb) {
+            pickSubs.add(cb);
+            return () => { pickSubs.delete(cb); };
+        },
     };
+    const pickSubs = new Set<() => void>();
+    pickSubsOf.set(filter, pickSubs);
     return filter;
 }
 
@@ -355,6 +409,34 @@ export function createFilterScope(): FilterScope {
     const ctlOffs = new Map<string, () => void>();
     const subs = new Set<(s: FilterScope) => void>();
     const notify = () => { for (const cb of Array.from(subs)) cb(scope); };
+    const groups = new Map<string, Set<Filter>>();
+    const join = (f: Filter) => {
+        const name = f.group;
+        if (!name) return;
+        const members = groups.get(name) ?? new Set<Filter>();
+        const first = members.values().next().value as Filter | undefined;
+        if (first && first.columns.join("\u0001") !== f.columns.join("\u0001")) {
+            try { console.warn(`[chart-host] filter "${f.label}" is keyed by ${f.columns.join(", ")} but its group "${name}" by `
+                + `${first.columns.join(", ")}, so it stays out of the group: give one pick's filters the same key columns.`); } catch { /* no console */ }
+            return;
+        }
+        // Joining while a sibling holds the pick: the sibling's stays the one pick.
+        if (f.active && [...members].some(m => m.active)) f.clear("page");
+        members.add(f);
+        groups.set(name, members);
+        peersOf.set(f, members);
+        firePick(f);
+    };
+    const leave = (f: Filter) => {
+        const members = f.group ? groups.get(f.group) : undefined;
+        if (!members?.has(f)) return;
+        members.delete(f);
+        peersOf.delete(f);
+        if (!members.size) groups.delete(f.group!);
+        firePick(f);
+        const rest = members.values().next().value as Filter | undefined;
+        if (rest) firePick(rest);
+    };
     const scope: FilterScope = {
         get filters() { return list.slice(); },
         get active() { return list.filter(f => f.active); },
@@ -367,6 +449,7 @@ export function createFilterScope(): FilterScope {
             if (!offs.has(f)) {
                 list.push(f);
                 offs.set(f, f.onChange(() => notify()));
+                join(f);
                 notify();
             }
             return () => {
@@ -376,6 +459,7 @@ export function createFilterScope(): FilterScope {
                 offs.delete(f);
                 const i = list.indexOf(f);
                 if (i >= 0) list.splice(i, 1);
+                leave(f);
                 notify();
             };
         },
@@ -414,10 +498,17 @@ export function createFilterScope(): FilterScope {
         },
         restore(view) {
             if (!view || view.v !== 1) return;
+            // A group saves only the member holding its pick, so the first member the view names takes it back (members
+            // sharing one key would otherwise each take it in turn, and the last would hold it).
+            const restored = new Set<string>();
             for (const f of list) {
                 const keys = view.filters?.[f.key];
-                if (keys && keys.length) f.set(keys, "page");
-                else f.clear("page");
+                const g = f.group && peersOf.get(f) ? f.group : null;
+                if (g && restored.has(g)) continue;
+                if (keys && keys.length) {
+                    f.set(keys, "page");
+                    if (g) restored.add(g);
+                } else f.clear("page");
             }
             for (const [k, c] of ctl) {
                 const values = view.controls?.[k];
@@ -429,24 +520,72 @@ export function createFilterScope(): FilterScope {
 }
 
 /**
+ * A FILTER AS ONE PANEL'S QUERY TAKES IT, for filterScopeOf and BicChart's scopedBy. A query that maps only some of a
+ * compound key's columns (treatAs(cell, "Accounts[Region]") on a Region x Stage pick) is narrowed by those parts alone,
+ * so its scope line names only them: `{ filter: cell, takes: ["Region"] }` says "Europe", never "Europe → 3-Propose".
+ */
+export interface ScopedFilter {
+    filter: Filter;
+    /** The filter's key columns this panel's query maps (by name, as the filter is keyed). Absent: the whole key. */
+    takes?: readonly string[];
+    /** What the scope line calls it. Default: the filter's label, or the taken columns while the filter has no label of its own. */
+    label?: string;
+}
+
+/** What filterScopeOf and scopedBy take: a filter whose whole key the query maps, or a ScopedFilter. */
+export type ScopeSource = Filter | ScopedFilter;
+
+/** The filter behind a scope source, or null. */
+export function scopeFilterOf(src: ScopeSource | null | undefined): Filter | null {
+    if (!src || typeof src !== "object") return null;
+    if (Array.isArray((src as Filter).keys)) return src as Filter;
+    const f = (src as ScopedFilter).filter;
+    return f && typeof f === "object" ? f : null;
+}
+
+const warnedTakes = new Set<string>();
+
+/**
  * THE PAGE FILTERS THAT NARROWED A CHART'S ROWS, as the fact the chart is told (RenderOptions.filterScope, contract
  * 1.23.0). For filters applied to the chart's QUERY, so its rows arrive already narrowed and it can't see the filter.
  * Only the active ones count. The field is each one's label (its key columns when it has none), joined ", "; the values
  * are what its chip shows for each key, in order, each once. Nothing active, nothing to say: undefined.
+ *
+ * A ScopedFilter whose `takes` leaves key columns out says only the taken parts, as treatAs maps them: a pick whose
+ * taken parts are all wildcards keeps every row of that query, so while one is held the filter narrows nothing there.
  */
-export function filterScopeOf(filters: Filter | readonly Filter[] | null | undefined): FilterScopeFact | undefined {
-    const list = (Array.isArray(filters) ? filters : filters ? [filters] : []) as readonly Filter[];
-    const active = list.filter(f => f && f.active);
+export function filterScopeOf(filters: ScopeSource | readonly ScopeSource[] | null | undefined): FilterScopeFact | undefined {
+    const list = (Array.isArray(filters) ? filters : filters ? [filters] : []) as readonly ScopeSource[];
     const values: string[] = [];
-    for (const f of active) {
+    const fields: string[] = [];
+    for (const src of list) {
+        const f = scopeFilterOf(src);
+        if (!f || !f.active) continue;
+        const entry = src === f ? null : src as ScopedFilter;
+        const takes = entry?.takes;
+        for (const c of takes ?? []) {
+            if (f.columns.includes(c) || warnedTakes.has(`${f.id}\u0001${c}`)) continue;
+            warnedTakes.add(`${f.id}\u0001${c}`);
+            try { console.warn(`[chart-host] scopedBy: filter "${f.label}" isn't keyed by ${c} (its key: ${f.columns.join(", ")}), `
+                + `so its scope line can't take it - name the filter's own key columns in takes.`); } catch { /* no console */ }
+        }
+        const part = takes ? f.columns.filter(c => takes.includes(c)) : f.columns;
+        const whole = part.length === f.columns.length;
+        if (!whole) {
+            const at = part.map(c => f.columns.indexOf(c));
+            if (!at.length || f.keys.some(k => at.every(i => isAnyValue(k[i])))) continue;
+        }
+        let said = false;
         for (const k of f.keys) {
-            const t = f.textOf(k).trim();
+            const t = (whole ? f.textOf(k) : f.textOf(k, undefined, part)).trim();
+            if (t) said = true;
             if (t && !values.includes(t)) values.push(t);
         }
+        if (!whole && !said) continue;
+        const label = entry?.label || (whole || f.label !== f.columns.join(" / ") ? f.label : part.join(" / "));
+        if (label && !fields.includes(label)) fields.push(label);
     }
     if (!values.length) return undefined;
-    const fields: string[] = [];
-    for (const f of active) if (f.label && !fields.includes(f.label)) fields.push(f.label);
     return { field: fields.join(", "), values };
 }
 
@@ -514,13 +653,16 @@ const sortedEq = (a: readonly number[], b: readonly number[]) => {
  * subscribers with source "host", which this binding (and a chart group) never republishes.
  */
 export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOptions): FilterBinding {
+    // THE PICK THIS CHART SHOWS: its filter's, or the group member's that holds the page's one pick (FilterOptions.group).
+    const pickOf = (): Filter => filter.pick ?? filter;
     const wanted = (): number[] => {
-        if (!filter.active) return [];
+        const src = pickOf();
+        if (!src.active) return [];
         const out: number[] = [];
         const n = opts.rowCount();
         for (let i = 0; i < n; i++) {
             const r = opts.rowAt(i);
-            if (r && filter.has(r)) out.push(i);
+            if (r && src.has(r)) out.push(i);
         }
         return out;
     };
@@ -529,7 +671,8 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
     // another filter narrowed the data. The filter goes on holding them, so the chart is told how many (a checkbox column
     // says "2 selected, 2 hidden"), and a selection the chart makes among the rows in view keeps them (keepHidden).
     const hiddenKeys = (): FilterKey[] => {
-        if (!filter.active) return [];
+        const src = pickOf();
+        if (!src.active) return [];
         const carried = new Set<string>();
         const n = opts.rowCount();
         for (let i = 0; i < n; i++) {
@@ -540,7 +683,7 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
             for (let i = 0; i < n; i++) { const r = opts.rowAt(i); if (r && keyMatchesRow(k, r, filter.columns)) return true; }
             return false;
         };
-        return filter.keys.filter(k => k.some(isAnyValue) ? !anyRowMatches(k) : !carried.has(keyString(k)));
+        return src.keys.filter(k => k.some(isAnyValue) ? !anyRowMatches(k) : !carried.has(keyString(k)));
     };
 
     const paint = () => {
@@ -557,7 +700,9 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         if (source === "host") return;
         const keep = meta?.keepHidden ? hiddenKeys() : [];
         if (!idxs.length && !keep.length) {
-            if (filter.active) filter.clear("clear");
+            // The chart's clear gesture clears the pick it shows, whichever group member holds it.
+            const src = pickOf();
+            if (src.active) src.clear("clear");
             return;
         }
         const rows = idxs.map(i => opts.rowAt(i)).filter((r): r is Record<string, unknown> => !!r);
@@ -566,8 +711,20 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         // the rest are left free. A label whose rows share every key column (or none) is an ordinary pick.
         const label = meta?.fromLabel && !keep.length ? labelKey(rows) : null;
         if (label) { filter.set([label], "click"); return; }
+        // A GROUP MARK PICKS WHAT ITS ROWS SHARE: one mark over several rows (a region row over its stages) picks the key
+        // columns they agree on and leaves the rest free, so a stage another filter hid at click time is still in the pick.
+        // Rows that agree on every key column (or none) are an ordinary pick; a lasso or a Ctrl-click names every row's key.
+        const group = meta?.fromMark && !keep.length ? sharedKey(rows) : null;
+        if (group) { filter.set([group], "click"); return; }
         filter.selectRows(rows, "click", keep);
     });
+    const sharedKey = (rows: Record<string, unknown>[]): FilterKey | null => {
+        const key = filter.columns.map(c => {
+            const v = rows[0][c];
+            return rows.every(r => keyString([r[c]]) === keyString([v])) ? v : ANY_VALUE;
+        });
+        return key.some(isAnyValue) && !key.every(isAnyValue) ? key : null;
+    };
     const labelKey = (rows: Record<string, unknown>[]): FilterKey | null => {
         const n = opts.rowCount();
         const key = filter.columns.map(c => {
@@ -581,7 +738,7 @@ export function bindFilter(host: ChartHost, filter: Filter, opts: BindFilterOpti
         });
         return key.some(isAnyValue) && !key.every(isAnyValue) ? key : null;
     };
-    const offFilter = filter.onChange(() => paint());
+    const offFilter = filter.onPick ? filter.onPick(() => paint()) : filter.onChange(() => paint());
 
     // LINKED HOVER: this chart's hovered mark sets the filter's hovered key; any hovered key lights this chart's marks.
     const el = opts.container ?? null;
