@@ -74,6 +74,11 @@
       "import": "./dist/zoom-memory.mjs",
       "default": "./dist/zoom-memory.mjs"
     },
+    "./category-colours": {
+      "types": "./dist/types/categoryColours.d.ts",
+      "import": "./dist/category-colours.mjs",
+      "default": "./dist/category-colours.mjs"
+    },
     "./dax": {
       "types": "./dist/types/dax.d.ts",
       "import": "./dist/dax.mjs",

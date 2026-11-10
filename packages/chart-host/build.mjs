@@ -88,6 +88,9 @@ const result = await build({
         "zoom-memory": join(here, "src/zoomMemory/index.ts"),
         // Province maps (geometry, the admin-1 lookup loader, coordinates to provinces); off the main entry (its eager budget).
         provinces: join(here, "src/provinces.ts"),
+        // The category-colour census, for a host that draws outside createChartHost (whose onCategoryColourCensus loads it
+        // lazily); off the main entry (its eager budget).
+        "category-colours": join(here, "src/categoryColours.ts"),
     },
     bundle: true,
     splitting: true,
