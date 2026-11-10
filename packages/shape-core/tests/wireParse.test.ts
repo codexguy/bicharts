@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     parseGenerateResponse, parseQualifyResponse, parseReviewVerdict, type ParsedGenerateResponse,
+    QUALIFY_KINDS, qualifyKindOf,
 } from "../src/index";
 
 // KNOWN ANSWERS over response bodies shaped exactly as the server serialises them - every
@@ -271,6 +272,21 @@ describe("parseQualifyResponse", () => {
         const p = parseQualifyResponse({ charts: [{ chartTypeName: "Pie", chartDesc: "Slices." }], refused: [{ chartTypeName: "Map", reason: "no geo" }] });
         expect(p.charts![0]).toMatchObject({ name: "Pie", description: "Slices." });
         expect(p.refused[0]).toEqual({ name: "Map", reason: "no geo", reasonCode: "", isVeto: false });
+    });
+
+    it("kind: the four known kinds parse, in either casing; anything else is no kind", () => {
+        const rows = parseQualifyResponse({ charts: [
+            { name: "A", kind: "map" }, { name: "B", kind: "app" }, { name: "C", kind: "table" }, { name: "D", kind: "kpi" },
+            { name: "E", kind: "chart" }, { name: "F", kind: 7 }, { name: "G", kind: null }, { name: "H" }, { name: "I", kind: "Map" },
+        ] }).charts!;
+        expect(rows.map(r => r.kind)).toEqual(["map", "app", "table", "kpi", undefined, undefined, undefined, undefined, undefined]);
+        expect(parseQualifyResponse({ Charts: [{ Name: "A", Kind: "map" }] }).charts![0].kind).toBe("map");
+    });
+
+    it("kind: the accepted list is the four kinds, in the gallery's family order", () => {
+        expect(QUALIFY_KINDS).toEqual(["app", "table", "map", "kpi"]);
+        expect(qualifyKindOf("kpi")).toBe("kpi");
+        expect(qualifyKindOf("mini-app")).toBeUndefined();
     });
 
     it("no list at all is null, not an empty list; a missing refusal list is empty", () => {

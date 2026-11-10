@@ -278,7 +278,11 @@ export {
     type QualifyFilterRow, type QualifyFilterGroup, type QualifyFilterView,
     type QualifyFilterNoteKind,
 } from "./qualifyFilter";
-export { qualifyTableRows, type QualifyTableRow, type QualifyTableSource } from "./qualifyTable";
+export {
+    qualifyTableRows, type QualifyTableRow, type QualifyTableSource,
+    QUALIFY_KIND_BADGES, qualifyKindBadgeStyle, type QualifyKind, type QualifyKindBadge, type QualifyKindBadgeColours,
+    type QualifyKindPane, type QualifyKindBadgeStyle,
+} from "./qualifyTable";
 
 // What a click on a mark AMOUNTS to (2026-08-25). The dimming already tells the reader WHICH
 // marks they picked; in a host with no cross-filter to answer into — Excel, MCP, React — that
@@ -383,6 +387,11 @@ export { censusHitBands, hitBandFlag, MIN_HIT_BAND_PX, type HitBandCensus } from
 export { censusClippedText, clippedTextFlag, CLIP_TOLERANCE_PX, type ClippedTextCensus, type ClippedText } from "./clippedText";
 export { censusColourSpread, colourSpreadFlag, SAME_SHADE_DELTA_E, MIN_RAMP_FILLS,
     type ColourSpreadCensus } from "./colourSpread";
+// CAN THE CATEGORIES BE TOLD APART, IN THE COLOURS ACTUALLY PAINTED? One colour per category (legend first, else the
+// marks), the closest pair by CIEDE2000 at full strength, over the page at each element's opacity, and dimmed. A report
+// for calibration; no threshold, no repaint. Reached through the host's onCategoryColourCensus, which loads it on first
+// use, so only its types are exported here: a value export would put it in every host's eager load.
+export type { CategoryColourCensus, CategoryColourCensusOptions } from "./categoryColours";
 // IS EACH DOT DRAWN AT ITS VALUE? A force layout pushes a beeswarm's dots along both axes, so on a
 // dense column they drift off their values and pile against the band walls while the chart still
 // looks right. This reads each single-row dot back to its row, finds the value axis as the column a

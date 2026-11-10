@@ -223,6 +223,21 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     };
 }
 
+/**
+ * What kind of thing a chart type is, beyond a plain chart, in the gallery's own families: an app
+ * (a type with its own controls or logic), a table, a map or a KPI card. A plain chart has no kind.
+ */
+export type QualifyKind = "app" | "table" | "map" | "kpi";
+
+/** Every kind a qualify row may carry, in the gallery's family order. */
+export const QUALIFY_KINDS: readonly QualifyKind[] = ["app", "table", "map", "kpi"];
+
+/** A wire value as a known kind; anything else (a plain chart, an older server, a kind this
+ *  version does not know) is undefined, so a host never draws a badge it cannot name. */
+export function qualifyKindOf(v: unknown): QualifyKind | undefined {
+    return typeof v === "string" && (QUALIFY_KINDS as readonly string[]).includes(v) ? v as QualifyKind : undefined;
+}
+
 /** One chart type that qualifies, as the server describes it. */
 export interface ParsedQualifyChart {
     /** The wire's `name` (an older server's `chartTypeName`). Never empty: a nameless row is dropped. */
@@ -237,6 +252,9 @@ export interface ParsedQualifyChart {
     language: string | undefined;
     /** True only when the server said so: a newer, less proven type. */
     isPreview: boolean;
+    /** The type's kind when it is an app, a table, a map or a KPI card; undefined for a plain chart,
+     *  from an older server, and for a kind this version does not know. A label, never a gate. */
+    kind?: QualifyKind;
     /** True only when the server said so: one of the "also worth a look" picks below the top fits, drawn for variety. A hint, never a gate. */
     alsoWorthALook: boolean;
     /** False = a required channel is poorly served; undefined = unassessed, never a demotion. */
@@ -295,6 +313,7 @@ export function parseQualifyResponse(data: unknown): ParsedQualifyResponse {
                 renderer: textOrUndefined(f("renderer")),
                 language: textOrUndefined(f("language")),
                 isPreview: flag(f("isPreview")),
+                kind: qualifyKindOf(f("kind")),
                 alsoWorthALook: flag(f("alsoWorthALook")),
                 recommended: typeof recommended === "boolean" ? recommended : undefined,
                 viaProjection: textOrUndefined(f("viaProjection")),

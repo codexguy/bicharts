@@ -299,8 +299,9 @@ export { readGenerateStream, isNdjsonContentType, wireResponseFromFetch } from "
 export type { OnStage } from "./wireStream";
 // WHAT A RESPONSE SAYS (2026-09-24): one field list each for a generate result, a qualify answer
 // and a review verdict, every field in either casing, typed - fields only, the policy stays in the host.
-export { parseGenerateResponse, parseQualifyResponse, parseReviewVerdict } from "./wireParse";
+export { parseGenerateResponse, parseQualifyResponse, parseReviewVerdict, QUALIFY_KINDS, qualifyKindOf } from "./wireParse";
 export type {
+    QualifyKind,
     ParsedGenerateResponse, ParsedQualifyResponse, ParsedQualifyChart, ParsedQualifyRefusal,
     ParsedReviewVerdict, ParsedNotice, WirePointBinding, WirePointColumns,
 } from "./wireParse";

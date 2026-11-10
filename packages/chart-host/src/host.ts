@@ -61,6 +61,7 @@ import { ensureCrossfilterHitTargets } from "./hitTargets";
 import { censusMarks, isBlankRender, type MarkCensus } from "./blankRender";
 import { censusHitBands, type HitBandCensus } from "./hitBands";
 import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
+import type { CategoryColourCensus } from "./categoryColours";
 import { censusClippedText, type ClippedTextCensus } from "./clippedText";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
 import { fitRenderedChart, unpinScrolledAxis, rememberScroll, takeScroll, clipWindowOf, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
@@ -210,6 +211,15 @@ export interface ChartHostConfig {
      * own skew is measured on the raw column while the ramp encodes an aggregate.
      */
     onColourSpreadCensus?: (census: ColourSpreadCensus) => void;
+    /**
+     * HOW CLOSE ARE THE TWO CLOSEST CATEGORY COLOURS, AS PAINTED? Runs after every render, counts only, never repaints;
+     * the census loads on first use, so the report arrives a tick after the render rather than inside it.
+     * One colour per category (the legend's swatches, else the marks' distinct colours), the closest pair by CIEDE2000
+     * at full strength, over the page at each element's own opacity, and at the dim level a selection applies. Generated
+     * code can build its own scale or draw at partial opacity, so the palette that was checked is not always what a
+     * reader compares. Declines on a sequential ramp or a continuous colour channel.
+     */
+    onCategoryColourCensus?: (census: CategoryColourCensus) => void;
     /**
      * IS ANY TEXT CUT OFF BY THE FRAME? Runs after every render, counts only, and never moves anything: a title
      * drawn above its own origin is clipped without anything throwing, so only a measurement against the SVG box
@@ -1591,6 +1601,21 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         if (config.onColourSpreadCensus) {
             try { config.onColourSpreadCensus(censusColourSpread(container, doc)); }
             catch { /* a census must never break a render */ }
+        }
+        // AND CAN THE CATEGORIES BE TOLD APART? Same contract: after every heal, counts only, measured over the page
+        // background the chart was handed and at the dim level this host applies to a selection. Loaded on first use
+        // and reported a tick later, so a host that does not ask for it pays nothing in its eager load; it measures the
+        // container as it is when it runs.
+        if (config.onCategoryColourCensus) {
+            const report = config.onCategoryColourCensus;
+            const bg = (resolved as any).backgroundColor ?? (resolved as any).themeBg;
+            const opts = {
+                pageBg: typeof bg === "string" && bg ? bg : undefined,
+                dimOpacity: typeof resolved.dimOpacity === "number" ? resolved.dimOpacity : undefined,
+            };
+            import("./categoryColours")
+                .then(m => { try { report(m.censusCategoryColours(container, doc, opts)); } catch { /* never breaks a render */ } })
+                .catch(() => { /* a census must never break a render */ });
         }
         if (config.onClippedTextCensus) {
             try { config.onClippedTextCensus(censusClippedText(container)); }
