@@ -137,6 +137,21 @@ nothing to the line, since that query keeps every row. A bare filter, `{ filter 
 key column says the whole key. `label` sets what the line calls the filter. Outside React, `filterScopeOf` from
 `@bicharts/chart-host/page` takes the same list and returns `options.filterScope`.
 
+### A query that feeds no chart
+
+A form's choice list, a lookup or a count beside a chart reads its query's rows by column name. A DAX result names
+its columns `Table[Column]` and its measures `[Measure]`; `queryRows` from `@bicharts/chart-host/dax` returns each row
+keyed by the bare name. Never parse the headers by hand: a pattern written through a shell and a script can lose its
+backslashes on the way to disk and leave every value blank while the app's tests pass.
+
+```tsx
+const owners = queryRows(useSemanticModelQuery({ connection, query: OWNERS_DAX }).data);
+owners.map(r => r["Sales owner"]);   // Owners[Sales owner]
+```
+
+Two columns with one bare name (`Accounts[Name]` and `Owners[Name]`) keep their whole headers. `columnName(header)`
+gives one header's bare name.
+
 ### Several panels that pick the same key
 
 A map, a table and a scatter that each pick a country are ONE pick. Give their filters one `group`, and keep each

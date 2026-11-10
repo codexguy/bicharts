@@ -101,3 +101,47 @@ export function filterQuery(query: string, ...filters: Array<string | null | und
 function isFilter(x: unknown): x is Filter {
     return !!x && typeof x === "object" && Array.isArray((x as Filter).keys) && typeof (x as Filter).has === "function";
 }
+
+// ── a query's rows by column name ───────────────────────────────────────────
+
+/** A DAX query's result as the semantic-model query hooks return it: headers, then rows of values in header order. */
+export interface QueryTable {
+    columns: readonly { name: string }[];
+    rows: readonly (readonly unknown[])[];
+}
+
+/** A header's table (quoted or not, absent for a measure) and its bracketed name, `]]` standing for `]`. */
+const HEADER = /^(?:'(?:[^']|'')*'|[^[\]']*)\[((?:[^\]]|\]\])+)\]$/;
+
+/**
+ * A result header's bare name: "Accounts[Account Number]" and "'Sales Owners'[Owner]" give the column's name,
+ * "[Total Revenue]" the measure's; a header that isn't a reference comes back as it is.
+ */
+export function columnName(header: string): string {
+    const m = HEADER.exec(String(header ?? "").trim());
+    return m ? m[1].replace(/\]\]/g, "]") : String(header ?? "");
+}
+
+/**
+ * A QUERY'S ROWS BY COLUMN NAME, for a query that feeds no chart: a form's choice list, a lookup, a count beside a
+ * chart. A DAX result names its columns "Table[Column]" and its measures "[Measure]"; each row comes back as an object
+ * keyed by the bare name, so `row["Account Number"]` reads Accounts[Account Number]. Two headers with one bare name
+ * (Accounts[Name] beside Owners[Name]) keep their whole headers, so neither hides the other. Takes the table or the
+ * query hook's `data` (a failed or pending result gives no rows):
+ *
+ *   const owners = queryRows(useSemanticModelQuery({ connection, query: OWNERS_DAX }).data);
+ *   owners.map(r => r["Sales owner"])
+ */
+export function queryRows(result: QueryTable | { status?: string; table?: QueryTable } | null | undefined): Record<string, unknown>[] {
+    const table = result && "columns" in result ? result : result && "table" in result ? result.table : undefined;
+    if (!table || !Array.isArray(table.columns) || !Array.isArray(table.rows)) return [];
+    const bare = table.columns.map(c => columnName(c?.name ?? ""));
+    const count = new Map<string, number>();
+    for (const b of bare) count.set(b, (count.get(b) ?? 0) + 1);
+    const names = bare.map((b, i) => ((count.get(b) ?? 0) > 1 ? String(table.columns[i]?.name ?? b) : b));
+    return table.rows.map(r => {
+        const o: Record<string, unknown> = {};
+        names.forEach((n, k) => { o[n] = r?.[k]; });
+        return o;
+    });
+}
