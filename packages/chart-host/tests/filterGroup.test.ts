@@ -38,11 +38,11 @@ describe("filter groups: several filters on one key are one pick", () => {
         const { scope, map, table } = page();
         table.set("Italy", "click");
         const view = scope.save();
-        expect(view.filters).toEqual({ Country: [["Italy"]] });
+        expect(view.filters).toEqual({ "Country-2": [["Italy"]] });
         table.clear();
         scope.restore(view);
-        expect(scope.active).toEqual([map]);
-        expect(map.values).toEqual(["Italy"]);
+        expect(scope.active).toEqual([table]);
+        expect(table.values).toEqual(["Italy"]);
 
         const keyed = createFilterScope();
         const a = keyed.filter("Country", { key: "map", group: "g" });

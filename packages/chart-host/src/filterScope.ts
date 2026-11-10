@@ -45,7 +45,11 @@ export interface FilterOptions {
     display?: string | readonly string[];
     /** A stable id for this filter within its scope. Generated when absent. */
     id?: string;
-    /** Its name in a saved view (scope.save / a link). Defaults to the key columns joined with "+". */
+    /**
+     * Its name in a saved view (scope.save / a link). Defaults to the key columns joined with "+". Two filters in one
+     * scope never share a name there: the second with one name is saved as "<name>-2", the third "<name>-3", in the order
+     * they joined the scope, so each puts back its own pick (FilterScope.keyOf says which name a filter has).
+     */
     key?: string;
     /**
      * LINKED HOVER: hovering a mark on a chart bound to this filter lights the marks with the same key on every other
@@ -156,6 +160,11 @@ export interface FilterScope {
     save(): PageView;
     /** Put a saved view back: each filter set (or cleared when the view doesn't name it), each controls set. */
     restore(view: PageView | null | undefined): void;
+    /**
+     * A filter's name in this scope's saved views: its key, or "<key>-2", "<key>-3"... for the second and later filters
+     * with one key, in the order they joined the scope. Null for a filter not in the scope.
+     */
+    keyOf?(filter: Filter): string | null;
 }
 
 /** A saved page view: what save() returns and restore() takes. */
@@ -410,6 +419,20 @@ export function createFilterScope(): FilterScope {
     const subs = new Set<(s: FilterScope) => void>();
     const notify = () => { for (const cb of Array.from(subs)) cb(scope); };
     const groups = new Map<string, Set<Filter>>();
+    // EACH FILTER'S NAME IN A SAVED VIEW, distinct within the scope. Filters on one column default to one key (three
+    // panels each picking a country are all "Country"), and a view keyed by it can't say which of them held the pick:
+    // a lasso on the scatter, saved in a link, came back as a pick on the map. The first filter with a key keeps it, so
+    // a view saved before names were distinct still opens (its pick goes to that first filter, as it did); a later one
+    // takes the lowest free "<key>-<n>", so a page that mounts its filters in the same order (a reload, React's
+    // StrictMode remount) gives each the same name again.
+    const names = new Map<Filter, string>();
+    const nameFor = (f: Filter) => {
+        const taken = new Set(names.values());
+        let k = f.key, n = 1;
+        while (taken.has(k)) k = `${f.key}-${++n}`;
+        names.set(f, k);
+    };
+    const nameOf = (f: Filter) => names.get(f) ?? f.key;
     const join = (f: Filter) => {
         const name = f.group;
         if (!name) return;
@@ -448,6 +471,7 @@ export function createFilterScope(): FilterScope {
         add(f) {
             if (!offs.has(f)) {
                 list.push(f);
+                nameFor(f);
                 offs.set(f, f.onChange(() => notify()));
                 join(f);
                 notify();
@@ -459,6 +483,7 @@ export function createFilterScope(): FilterScope {
                 offs.delete(f);
                 const i = list.indexOf(f);
                 if (i >= 0) list.splice(i, 1);
+                names.delete(f);
                 leave(f);
                 notify();
             };
@@ -470,6 +495,7 @@ export function createFilterScope(): FilterScope {
             subs.add(cb);
             return () => { subs.delete(cb); };
         },
+        keyOf(f) { return offs.has(f) ? nameOf(f) : null; },
         get controls() { return ctl; },
         addControls(key, c) {
             let k = key, n = 1;
@@ -489,7 +515,7 @@ export function createFilterScope(): FilterScope {
         },
         save() {
             const view: PageView = { v: 1 };
-            for (const f of list) if (f.active) (view.filters ??= {})[f.key] = f.keys.map(k => k.slice());
+            for (const f of list) if (f.active) (view.filters ??= {})[nameOf(f)] = f.keys.map(k => k.slice());
             for (const [k, c] of ctl) {
                 const values = c.values;
                 if (Object.keys(values).length) (view.controls ??= {})[k] = { ...values };
@@ -498,11 +524,11 @@ export function createFilterScope(): FilterScope {
         },
         restore(view) {
             if (!view || view.v !== 1) return;
-            // A group saves only the member holding its pick, so the first member the view names takes it back (members
-            // sharing one key would otherwise each take it in turn, and the last would hold it).
+            // A group saves only the member holding its pick, under that member's own name, so that member takes it back.
+            // A view naming two members of one group (written by hand) gives it to the first of them it names.
             const restored = new Set<string>();
             for (const f of list) {
-                const keys = view.filters?.[f.key];
+                const keys = view.filters?.[nameOf(f)];
                 const g = f.group && peersOf.get(f) ? f.group : null;
                 if (g && restored.has(g)) continue;
                 if (keys && keys.length) {

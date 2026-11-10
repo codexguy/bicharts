@@ -675,7 +675,7 @@ export function BicDevtools({ max = 20 }: { max?: number }) {
             <summary style={{ cursor: "pointer" }}>chart-host: {scope.active.length} filter(s) active</summary>
             {scope.filters.map(f => (
                 <div key={f.id}>
-                    <b>{f.label}</b> [{f.key}] {f.active ? JSON.stringify(f.keys) : "(none)"} {f.text && `"${f.text}"`}
+                    <b>{f.label}</b> [{scope.keyOf?.(f) ?? f.key}] {f.active ? JSON.stringify(f.keys) : "(none)"} {f.text && `"${f.text}"`}
                     {f.reason ? ` - last: ${f.reason}` : ""} v{f.version}
                 </div>
             ))}

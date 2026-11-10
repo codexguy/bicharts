@@ -171,6 +171,9 @@ whichever panel shows it clears it, and the panel the reader picked in keeps all
 open items for the picked countries) reads the members' keys, which are that one pick. Without `group` the filters
 are separate picks, ANDed: a country picked on the map and then in the table is held twice, and clicking it again on
 the map leaves the page filtered by the table's. Outside React, `scope.filter(column, { group })` does the same.
+A saved view or a link (`useBicUrlState`) names each member on its own (`Country`, `Country-2`, `Country-3`, in the
+order the page makes them), so a lasso saved on the scatter comes back on the scatter; give a member `key` for a name
+that doesn't depend on that order.
 
 ## Vanilla
 
