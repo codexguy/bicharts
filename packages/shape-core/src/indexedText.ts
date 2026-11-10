@@ -556,6 +556,12 @@ export function classifyNumericValueNature(i: {
     dataType: string; isMeasure: boolean; name: string;
     distinct: number; nonblank: number; prec: number;
     maxval: number; minval: number;
+    /** The measure-inference (promotion) path sets this. Rule (b) reads a DENSE RUN OF WHOLE NUMBERS as an ordered
+     *  axis; its density test (distinct / (max - min + 1)) means nothing for fractional values, so on this path a
+     *  column holding any fractional value (prec > 0) is not an axis by rule (b) and falls through to rule (d).
+     *  Every other caller leaves it unset, so the nature stamped on every column - and on every bound measure - is
+     *  exactly as before. */
+    ordinalNeedsWholeNumbers?: boolean;
 }): ValueNature {
     const { dataType, isMeasure, name, distinct, nonblank, prec, maxval, minval } = i;
     const span = maxval - minval + 1;
@@ -573,7 +579,7 @@ export function classifyNumericValueNature(i: {
     //     value range that reads as calendar years / a small 0..N level scale,
     //     when the integers are densely consecutive. Only ever yields Ordinal
     //     (continuous-like downstream), so it can't demote a real measure.
-    if (density >= CONTIGUOUS_DENSITY) {
+    if (density >= CONTIGUOUS_DENSITY && !(i.ordinalNeedsWholeNumbers && prec > 0)) {
         if (isOrdinalFriendlyName(name) && distinct <= ORDINAL_AXIS_MAX_DISTINCT) return "Ordinal";
         if (minval >= ORDINAL_YEAR_MIN && maxval <= ORDINAL_YEAR_MAX) return "Ordinal";
         if (minval >= ORDINAL_SMALL_MIN && maxval <= ORDINAL_SMALL_MAX) return "Ordinal";
@@ -607,6 +613,8 @@ export function promotesToMeasure(col: LLMColumnWithValue, declaredDimension: bo
         dataType: col.dataType, isMeasure: false, name: col.name,
         distinct: s.distinct, nonblank: s.nonblank, prec: s.prec,
         maxval: typeof s.maxval === "number" ? s.maxval : 0, minval: typeof s.minval === "number" ? s.minval : 0,
+        // A fractional column is not a consecutive-integer axis (rule (b)), so it can be promoted.
+        ordinalNeedsWholeNumbers: true,
     }) === "Continuous";
 }
 
@@ -1063,6 +1071,10 @@ export class IndexedText implements IValueCollection {
             // arcs by a latitude. A column the caller declared (declareDimensions) is skipped.
             if (promotesToMeasure(col, this._declaredDimensions.has(col), { distinct: vals.size, nonblank, prec, minval, maxval })) {
                 col.isMeasure = true;
+                // updateColumnStats10 stamped this column's nature BEFORE this promotion, with rule (b) still in force,
+                // so a fractional column promoted here would otherwise go out as an Ordinal measure. Stamp what the
+                // promotion measured. Every column promoted before the whole-number test already read Continuous.
+                col.valueNature = "Continuous";
                 // A PROMOTED MEASURE IS NOT A PLACE, AND THE GEO GUARD RAN TOO EARLY TO
                 // KNOW IT. The geo block inside updateColumnStats20 above is guarded by
                 // `!col.isMeasure`, which is exactly right — and it evaluated BEFORE this
