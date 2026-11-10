@@ -22,7 +22,7 @@ import {
     planAxisPin, axisPinPlacement, planScrollRestore,
 } from "./fit";
 import type { ContentExtent, MeasuredBox, AxisPinCandidate, AxisPinEdge, LabelRowBox, ScrollMemory } from "./fit";
-import { SNAPSHOT_SVG_ATTR, CONTAINER_SLOT_SCROLL } from "./contract";
+import { SNAPSHOT_SVG_ATTR, CONTAINER_SLOT_SCROLL, TABLE_SCROLLER_CLASS } from "./contract";
 
 // How many elements the ink walk will measure before giving up. Layout-flushing calls in a loop,
 // so it is a real ceiling and not a formality.
@@ -345,6 +345,8 @@ export function unpinScrolledAxis(container: HTMLElement | null | undefined): vo
  * Remember where the container is scrolled, BEFORE the container is cleared. A memory already waiting is kept: a second render that
  * starts before the first one restored sees an emptied (unscrolled) container, and must not overwrite what the reader really did.
  * A diagram that scrolls inside itself remembers its own position, so it is left alone.
+ * A table scrolls its rows inside its own frame (TABLE_SCROLLER_CLASS) while the container stays at the top, so those offsets
+ * are kept too, in document order, whenever one of them is scrolled; restoreInnerScroll puts them back.
  */
 export function rememberScroll(container: HTMLElement | null | undefined, key: unknown): void {
     if (!container) return;
@@ -353,8 +355,55 @@ export function rememberScroll(container: HTMLElement | null | undefined, key: u
         if (slot[CONTAINER_SLOT_SCROLL]) return;
         if (container.querySelector(".llm-mm-scroll")) return;
         const x = container.scrollLeft, y = container.scrollTop;
-        if (x > 0 || y > 0) slot[CONTAINER_SLOT_SCROLL] = { key, x, y } as ScrollMemory;
+        const inner = innerScrollsOf(container);
+        if (x > 0 || y > 0 || inner) slot[CONTAINER_SLOT_SCROLL] = (inner ? { key, x, y, inner } : { key, x, y }) as ScrollMemory;
     } catch { /* remembering a scroll is a courtesy */ }
+}
+
+// More table scrollers than this in one chart is not a table a reader scrolls; the memory stays small.
+const INNER_SCROLLER_CAP = 16;
+
+const offset = (n: unknown): number => (typeof n === "number" && isFinite(n) && n > 0 ? n : 0);
+
+/** The offsets of the chart's own table scrollers, in document order, or null when none of them is scrolled. */
+function innerScrollsOf(container: HTMLElement): Array<{ x: number; y: number }> | null {
+    const els = container.querySelectorAll("." + TABLE_SCROLLER_CLASS);
+    if (!els.length) return null;
+    const out: Array<{ x: number; y: number }> = [];
+    let any = false;
+    for (let i = 0; i < els.length && i < INNER_SCROLLER_CAP; i++) {
+        const el = els[i] as HTMLElement;
+        const x = offset(el.scrollLeft), y = offset(el.scrollTop);
+        if (x > 0 || y > 0) any = true;
+        out.push({ x, y });
+    }
+    return any ? out : null;
+}
+
+/**
+ * Put a table's own scroll back after the SAME chart has drawn again: each element carrying TABLE_SCROLLER_CLASS gets the
+ * offsets its counterpart (by document order) had in `memory`. Nothing happens for a different chart (another key), a memory
+ * with no inner offsets, or a chart with no such element, so a new chart opens at the top. The browser clamps an offset the new
+ * layout cannot reach. Call it once the chart has drawn, with the memory takeScroll returned. Returns the offsets the scrollers
+ * report afterwards, or null when nothing was restored. Never throws.
+ */
+export function restoreInnerScroll(container: HTMLElement | null | undefined, memory: ScrollMemory | null | undefined,
+                                   key: unknown): Array<{ x: number; y: number }> | null {
+    if (!container || !memory || !memory.inner || !memory.inner.length) return null;
+    if (key === undefined || key === null || memory.key !== key) return null;
+    try {
+        const els = container.querySelectorAll("." + TABLE_SCROLLER_CLASS);
+        if (!els.length) return null;
+        const out: Array<{ x: number; y: number }> = [];
+        for (let i = 0; i < els.length && i < memory.inner.length; i++) {
+            const el = els[i] as HTMLElement, want = memory.inner[i];
+            const x = offset(want && want.x), y = offset(want && want.y);
+            if (x > 0 && el.scrollLeft !== x) el.scrollLeft = x;
+            if (y > 0 && el.scrollTop !== y) el.scrollTop = y;
+            out.push({ x: offset(el.scrollLeft), y: offset(el.scrollTop) });
+        }
+        return out;
+    } catch { return null; }
 }
 
 /** The waiting memory, removed. The one place it is consumed, so a stale memory can never outlive a render. */

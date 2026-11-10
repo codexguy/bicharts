@@ -25,11 +25,11 @@ export {
     SNAPSHOT_SVG_ATTR,
     XFILTER_REFRESH_EVENT,
     CONTAINER_SLOT_ANIM_STOP, CONTAINER_SLOT_XF_CLEAR,
-    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_SCROLL,
+    CONTAINER_SLOT_INITIAL_XF_MARK, CONTAINER_SLOT_UI_STATE, CONTAINER_SLOT_SCROLL, TABLE_SCROLLER_CLASS,
     CONTAINER_SLOT_HOST_SELECTION,
     VIEW_ONLY_UI_STATE_KEYS, withoutViewOnlyKeys,
     HOST_CONTAINER_CLASS, SELECTION_ACTIVE_CLASS, MARK_SELECTED_CLASS, MARKS_INERT_CLASS, ACTIVE_TICK_CLASS,
-    DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, DIM_OPACITY_MIN,
+    DIM_OPACITY_VAR, DIM_OPACITY_DEFAULT, DIM_OPACITY_MIN, CATEGORY_DELTA_E_FLOOR,
     chartOwnsTimeline, periodTickSuppressesFeedback,
     ANIM_PLAY_SPEED_DEFAULT, ANIM_PLAY_SPEED_MIN, ANIM_PLAY_SPEED_MAX,
     ANIM_LOOP_DELAY_DEFAULT, ANIM_LOOP_DELAY_MIN,
@@ -389,7 +389,8 @@ export { censusColourSpread, colourSpreadFlag, SAME_SHADE_DELTA_E, MIN_RAMP_FILL
     type ColourSpreadCensus } from "./colourSpread";
 // CAN THE CATEGORIES BE TOLD APART, IN THE COLOURS ACTUALLY PAINTED? One colour per category (legend first, else the
 // marks), the closest pair by CIEDE2000 at full strength, over the page at each element's opacity, and dimmed. A report
-// for calibration; no threshold, no repaint. Reached through the host's onCategoryColourCensus, which loads it on first
+// with the pairs under CATEGORY_DELTA_E_FLOOR as painted and the red-green simulated distances, as a finding a host logs;
+// no repaint. Reached through the host's onCategoryColourCensus, which loads it on first
 // use, so only its types are exported here: a value export would put it in every host's eager load.
 export type { CategoryColourCensus, CategoryColourCensusOptions } from "./categoryColours";
 // IS EACH DOT DRAWN AT ITS VALUE? A force layout pushes a beeswarm's dots along both axes, so on a
@@ -429,9 +430,10 @@ export {
 export { pinScrolledAxis, unpinScrolledAxis, type AxisPinReport } from "./fitDom";
 // A REDRAW OF THE SAME CHART KEEPS THE READER'S SCROLL. createChartHost does it on its own (the memory is parked on the
 // container, so a host re-created on the same element keeps it too); the pure plan and the two DOM halves are here for a
-// host that clears and fits its container itself.
+// host that clears and fits its container itself. A table scrolls its rows inside its own frame (TABLE_SCROLLER_CLASS):
+// rememberScroll keeps those offsets too, and restoreInnerScroll puts them back once the same chart has drawn.
 export { planScrollRestore, type ScrollMemory, type ScrollMetrics } from "./fit";
-export { rememberScroll, takeScroll } from "./fitDom";
+export { rememberScroll, takeScroll, restoreInnerScroll } from "./fitDom";
 
 // A CATEGORICAL PALETTE FROM THE SURFACE THE CHART SITS ON (2026-09-09). Proven in the Power BI
 // visual against the report theme; none of it was Power-BI-specific, and the hosts without it

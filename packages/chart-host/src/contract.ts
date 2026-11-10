@@ -308,6 +308,13 @@ export const CONTAINER_SLOT_UI_STATE = "__lchUiState";
 // restored only when the same chart is back (a ScrollMemory, see fit.ts).
 export const CONTAINER_SLOT_SCROLL = "__lchScroll";
 
+// The element a table frame scrolls its rows in. A table keeps its header in view by scrolling an
+// element of its OWN, so the container never scrolls and the memory above has nothing to keep: the
+// host also remembers the offsets of every element carrying this class, in document order, and puts
+// them back on the same chart's next draw. It is the class the table frame helper has always given
+// that element, so every table drawn by code written before this existed is covered as it is.
+export const TABLE_SCROLLER_CLASS = "lch-table-body";
+
 // The marks lit under a declared "clicked-marks" rule and the selection they were lit for (a
 // ClickedMarks), parked on the container by the HOST for the same reason as the view-state above:
 // a host that re-creates itself on the same element keeps which word the reader clicked.
@@ -373,6 +380,12 @@ export const ACTIVE_TICK_CLASS = "lch-tick-active";          // on the axis tick
 export const DIM_OPACITY_VAR = "--lch-dim-opacity";          // unselected-mark opacity (visual default 0.25)
 export const DIM_OPACITY_DEFAULT = 0.25;
 export const DIM_OPACITY_MIN = 0.01;                          // the least a host may dim to (options.dimOpacity)
+
+// How far apart (CIEDE2000) two category colours must be, measured on the colour as PAINTED: each blended at its own
+// opacity over the page. Set by eye on small points, thin lines and narrow bars. Marks a selection dims are exempt: the
+// dim encodes the selection, not the category. The category-colour census reports the pairs under it as a finding; it
+// never repaints, since where a chart places its categories on a palette is the chart's own choice.
+export const CATEGORY_DELTA_E_FLOOR = 25;
 
 // ---- PERIOD vs CATEGORY: the two things `.d3-axis-filter` means ----
 //

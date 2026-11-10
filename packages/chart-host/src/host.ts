@@ -64,7 +64,7 @@ import { censusColourSpread, type ColourSpreadCensus } from "./colourSpread";
 import type { CategoryColourCensus } from "./categoryColours";
 import { censusClippedText, type ClippedTextCensus } from "./clippedText";
 import { censusValuePlacement, type ValuePlacementCensus } from "./valuePlacement";
-import { fitRenderedChart, unpinScrolledAxis, rememberScroll, takeScroll, clipWindowOf, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
+import { fitRenderedChart, unpinScrolledAxis, rememberScroll, takeScroll, restoreInnerScroll, clipWindowOf, type FitRenderedChartOptions, type FitRenderedChartResult } from "./fitDom";
 import { applyLabelContrast, type LabelContrastOptions, type LabelContrastReport } from "./labelContrastDom";
 import { newIdScope, scopeChartIds, type IdScopeReport } from "./idScope";
 import { isInvalidSentinelError, invalidSentinelReason } from "./invalidSentinel";
@@ -1634,6 +1634,9 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         // frame is grown to the ink FIRST, and only then does a scrollbar mean anything.
         // Taken on every render, fit or no fit, so a waiting memory never outlives the render it was kept for.
         const scrollMem = takeScroll(container);
+        // A table's own scroller (the container stays at the top while its rows scroll) back where the reader had it, before
+        // the fit and everything after it measure the chart, and whether or not the page asked for a fit.
+        if (keepScroll) restoreInnerScroll(container, scrollMem, scrollKey());
         if (fitOpts !== false) {
             try {
                 const base: FitRenderedChartOptions = fitOpts === true ? {} : fitOpts;

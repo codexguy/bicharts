@@ -6,19 +6,22 @@
 // category, and reports how close the closest two are: at full strength, as painted over the page (the element's own
 // opacity), and at the dim level a selection applies.
 //
-// A REPORT, NOT A VERDICT. No threshold and no repaint: how close is too close on a small point, a line or a bar is a
-// calibration by eye that has not been made, and a cut chosen before it would be a guess wearing a number. This is the
-// instrument the calibration reads.
+// A REPORT, NEVER A REPAINT. The floor (CATEGORY_DELTA_E_FLOOR, set by eye) is applied to the colours as painted, and the
+// pairs under it are reported as a finding a host can log; marks a selection dims are measured but exempt. Nothing is
+// recoloured: where a chart places its categories on a palette is fixed where the chart is written, and a palette the
+// host sends is the author's. The distances under simulated red-green colour vision are reported alongside, for the
+// record only: almost no palette keeps three or more categories apart for those readers, so they carry no verdict.
 
-import { LEGEND_MARK_CLASS, MARK_CLASS, ROW_IDX_ATTR, DIM_OPACITY_DEFAULT } from "./contract";
-import { hexToLab, deltaE2000, type Lab } from "./deltaE";
+import { LEGEND_MARK_CLASS, MARK_CLASS, ROW_IDX_ATTR, DIM_OPACITY_DEFAULT, CATEGORY_DELTA_E_FLOOR } from "./contract";
+import { hexToLab, rgbToLab, deltaE2000, type Lab } from "./deltaE";
 import { MIN_RAMP_FILLS, RAMP_SLACK_MAX } from "./colourSpread";
 
 /** More distinct colours than this is a continuous colour channel, not categories: the census declines. */
 export const MAX_CATEGORY_SLOTS = 24;
 
 /**
- * From this many colours a set lying on one path is declined as a sequential ramp. Below it the shape is reported
+ * From this many colours a set lying on one path, its lightness rising or falling along it (turning at most once, as
+ * a diverging ramp's does at its centre), is declined as a ramp. Below it the shape is reported
  * (`rampLike`) but not declined: four or five categorical colours can sit on one path by chance, and a set of
  * categories that does is exactly the too-close case this census exists to see (two greens and two blue-greys read
  * as a ramp, yet were drawn as four categories).
@@ -27,6 +30,9 @@ export const RAMP_DECLINE_MIN_SLOTS = 6;
 
 /** Beyond this many tagged elements the census is skipped, as the other censuses do. */
 const ELEMENT_CAP = 5000;
+
+/** At most this many pairs under the floor are listed (the closest first); `pairsBelowFloorCount` counts them all. */
+export const MAX_LISTED_PAIRS = 10;
 
 export interface CategoryColourCensusOptions {
     /** The page background the chart is painted on; white when absent or unreadable. */
@@ -56,6 +62,26 @@ export interface CategoryColourCensus {
     rampLike: boolean;
     /** With a legend: true when every legend colour is painted on some mark; null without a legend or marks. */
     legendMatchesMarks: boolean | null;
+    /** The floor the painted colours are held to (CATEGORY_DELTA_E_FLOOR). */
+    floor: number;
+    /** True when the closest pair AS PAINTED is under the floor; false when it clears it; null when not reported. */
+    belowFloor: boolean | null;
+    /** How many pairs, as painted, are under the floor (0 when not reported). */
+    pairsBelowFloorCount: number;
+    /** Those pairs, closest first (at most MAX_LISTED_PAIRS): each colour at full strength and the painted distance. */
+    pairsBelowFloor: CategoryColourPair[];
+    /** The closest pair as painted (the colours at full strength); empty when not reported. */
+    closestPairPainted: string[];
+    /** The closest painted distance under simulated deuteranopia (Machado 2009, severity 1); null when not reported. */
+    closestDeltaEDeutan: number | null;
+    /** The same under simulated protanopia; null when not reported. */
+    closestDeltaEProtan: number | null;
+}
+
+/** Two category colours (at full strength) and their CIEDE2000 distance as painted. */
+export interface CategoryColourPair {
+    colours: [string, string];
+    deltaE: number;
 }
 
 type RGB = [number, number, number];
@@ -69,6 +95,8 @@ function emptyCensus(declined: string, dimOpacity: number, slots = 0, source = "
     return {
         source, declined, slots, closestPair: [], closestDeltaE: null, closestDeltaEPainted: null,
         closestDeltaEDimmed: null, dimOpacity, rampLike: false, legendMatchesMarks: null,
+        floor: CATEGORY_DELTA_E_FLOOR, belowFloor: null, pairsBelowFloorCount: 0, pairsBelowFloor: [], closestPairPainted: [],
+        closestDeltaEDeutan: null, closestDeltaEProtan: null,
     };
 }
 
@@ -172,6 +200,32 @@ function slotsOf(paints: Paint[]): { rgb: RGB; alpha: number }[] {
     }));
 }
 
+// Machado, Oliveira and Fernandes (2009), severity 1.0, applied in linear sRGB: what a reader with no working M (deutan)
+// or L (protan) cones sees. The same matrices the offline painted-colour table uses, so the two agree.
+const MACHADO_DEUTAN = [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]];
+const MACHADO_PROTAN = [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]];
+
+const toLinear = (c: number) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+const toSrgb = (v: number) => { const x = Math.max(0, Math.min(1, v)); return 255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055); };
+
+function simulatedLab(rgb: RGB, m: number[][]): Lab {
+    const lin = rgb.map(toLinear);
+    const out = m.map(row => toSrgb(row[0] * lin[0] + row[1] * lin[1] + row[2] * lin[2]));
+    return rgbToLab(out[0], out[1], out[2]);
+}
+
+/** Every pair whose distance is under `floor`, closest first. */
+function pairsUnder(labs: Lab[], floor: number): { i: number; j: number; d: number }[] {
+    const out: { i: number; j: number; d: number }[] = [];
+    for (let i = 0; i < labs.length; i++) {
+        for (let j = i + 1; j < labs.length; j++) {
+            const d = deltaE2000(labs[i], labs[j]);
+            if (d < floor) out.push({ i, j, d });
+        }
+    }
+    return out.sort((x, y) => x.d - y.d);
+}
+
 function closest(labs: Lab[]): { i: number; j: number; d: number } {
     let best = { i: 0, j: 1, d: Infinity };
     for (let i = 0; i < labs.length; i++) {
@@ -203,6 +257,34 @@ function isRampShaped(labs: Lab[]): boolean {
     return interior >= 2 && slack / interior <= RAMP_SLACK_MAX;
 }
 
+/** A lightness step smaller than this along the path is flat, not a turn. */
+const LIGHTNESS_STEP_MIN = 1.5;
+
+/**
+ * A ramp's lightness follows its path: walked from one end, it rises or falls throughout (sequential) or turns once at the
+ * centre (diverging). A categorical palette's lightness zigzags, even when the slack test above calls the set path-like:
+ * ten Tableau colours measure a mean slack under RAMP_SLACK_MAX, because CIEDE2000 compresses large distances.
+ */
+function lightnessFollowsPath(labs: Lab[]): boolean {
+    let span = -1, lo = 0;
+    for (let i = 0; i < labs.length; i++) {
+        for (let j = i + 1; j < labs.length; j++) {
+            const v = deltaE2000(labs[i], labs[j]);
+            if (v > span) { span = v; lo = i; }
+        }
+    }
+    const order = labs.map(l => ({ L: l.L, d: deltaE2000(labs[lo], l) })).sort((a, b) => a.d - b.d);
+    let turns = 0, dir = 0;
+    for (let k = 1; k < order.length; k++) {
+        const step = order[k].L - order[k - 1].L;
+        if (Math.abs(step) < LIGHTNESS_STEP_MIN) continue;
+        const sign = Math.sign(step);
+        if (dir !== 0 && sign !== dir) turns++;
+        dir = sign;
+    }
+    return turns <= 1;
+}
+
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
@@ -213,7 +295,8 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  * KNOWN LIMITS, stated rather than hidden: a selection's dimming is applied by a stylesheet rule, so "painted" is the
  * resting chart and the dimmed figure is computed from the dim level; colours set only by a stylesheet class are
  * read through computed style, which a headless DOM without layout may not resolve; six or more categorical colours
- * on one path (shades of one hue) are declined as a ramp.
+ * on one path (shades of one hue) are declined as a ramp; a binned diverging ramp, whose two arms do not lie on one
+ * path, is measured as categories, so its neighbouring bins are reported under the floor.
  */
 export function censusCategoryColours(container: any, doc?: any, options: CategoryColourCensusOptions = {}): CategoryColourCensus {
     const dimOpacity = typeof options.dimOpacity === "number" && options.dimOpacity >= 0 && options.dimOpacity <= 1
@@ -239,7 +322,7 @@ export function censusCategoryColours(container: any, doc?: any, options: Catego
         const labs = slots.map(s => hexToLab(hexOf(s.rgb))).filter((l): l is Lab => l !== null);
         if (labs.length !== slots.length) return emptyCensus("none", dimOpacity, slots.length, source);
         const rampLike = isRampShaped(labs);
-        if (rampLike && slots.length >= RAMP_DECLINE_MIN_SLOTS) return { ...emptyCensus("ramp", dimOpacity, slots.length, source), rampLike };
+        if (rampLike && slots.length >= RAMP_DECLINE_MIN_SLOTS && lightnessFollowsPath(labs)) return { ...emptyCensus("ramp", dimOpacity, slots.length, source), rampLike };
 
         const bgPaint = parsePaint(options.pageBg);
         const bg: RGB = bgPaint ? blend(bgPaint.rgb, bgPaint.alpha, [255, 255, 255]) : [255, 255, 255];
@@ -247,8 +330,13 @@ export function censusCategoryColours(container: any, doc?: any, options: Catego
             slots.map(s => hexToLab(hexOf(blend(s.rgb, alphaOf(s), bg)))!);
 
         const full = closest(labs);
-        const painted = closest(labsAt(s => s.alpha));
+        const paintedLabs = labsAt(s => s.alpha);
+        const painted = closest(paintedLabs);
         const dimmed = closest(labsAt(s => s.alpha * dimOpacity));
+        const under = pairsUnder(paintedLabs, CATEGORY_DELTA_E_FLOOR);
+        const paintedRgb = slots.map(s => blend(s.rgb, s.alpha, bg));
+        const deutan = closest(paintedRgb.map(c => simulatedLab(c, MACHADO_DEUTAN)));
+        const protan = closest(paintedRgb.map(c => simulatedLab(c, MACHADO_PROTAN)));
 
         let legendMatchesMarks: boolean | null = null;
         if (useLegend && markSlots.length > 0) {
@@ -267,6 +355,15 @@ export function censusCategoryColours(container: any, doc?: any, options: Catego
             dimOpacity,
             rampLike,
             legendMatchesMarks,
+            floor: CATEGORY_DELTA_E_FLOOR,
+            belowFloor: painted.d < CATEGORY_DELTA_E_FLOOR,
+            pairsBelowFloorCount: under.length,
+            pairsBelowFloor: under.slice(0, MAX_LISTED_PAIRS).map(p => ({
+                colours: [hexOf(slots[p.i].rgb), hexOf(slots[p.j].rgb)] as [string, string], deltaE: round1(p.d),
+            })),
+            closestPairPainted: [hexOf(slots[painted.i].rgb), hexOf(slots[painted.j].rgb)],
+            closestDeltaEDeutan: round1(deutan.d),
+            closestDeltaEProtan: round1(protan.d),
         };
     } catch {
         return emptyCensus("none", dimOpacity);

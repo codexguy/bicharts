@@ -358,8 +358,9 @@ export function axisPinPlacement(band: AxisBand, scrollTop: number, viewportH: n
     return null;
 }
 
-/** A reader's scroll offsets and the identity of the chart they were made on. */
-export interface ScrollMemory { key: unknown; x: number; y: number }
+/** A reader's scroll offsets and the identity of the chart they were made on. `inner` holds the offsets of the chart's own
+ *  scrollers (TABLE_SCROLLER_CLASS), in document order, when any of them was scrolled; absent otherwise. */
+export interface ScrollMemory { key: unknown; x: number; y: number; inner?: ReadonlyArray<{ x: number; y: number }> }
 
 /** What the container reports once the overflow is decided. */
 export interface ScrollMetrics {
