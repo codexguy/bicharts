@@ -641,6 +641,7 @@ export interface IValueCollection {
     aliasesForCode?(code: string | null | undefined): ColumnNameAlias[];
     armAliasesForCode?(code: string | null | undefined): ColumnNameAlias[];
     getArmedAliases?(): ColumnNameAlias[];
+    setGenerationColumns?(cols: ReadonlyArray<{ n: string; q: string }> | null | undefined): void;
 }
 
 /**
@@ -653,13 +654,17 @@ export interface IValueCollection {
  *  - `english-implicit-agg`: the host named an automatic aggregation in the viewer's language
  *    (`Suma de Volume`) and the code, generated in an English session, reads `Sum of Volume`. The
  *    English name is recomposed from the column's query name (englishImplicitAggNames).
+ *  - `stored-query-name`: the host named the column differently for the session that generated the code (any language), and
+ *    the host kept, with the saved chart, the name and query name each column had then (setGenerationColumns). A stored name
+ *    whose query name is a live column's query name answers for that column. Excel and MCP hosts never rename a column per
+ *    viewer and send no query names, so they never arm one.
  */
 export interface ColumnNameAlias {
     /** The column's name as the dataset carries it now. */
     name: string;
     /** The other name the code reads it by. */
     alias: string;
-    reason: "doubled-agg-prefix" | "english-implicit-agg";
+    reason: "doubled-agg-prefix" | "english-implicit-agg" | "stored-query-name";
 }
 
 /**
@@ -687,6 +692,10 @@ export function trimmedCells(colvals: any[]): any[] {
     return out || colvals;
 }
 
+// A second name armed for one column: the live name it was armed for, the alias, whether the alias takes the column's CSV
+// header slot, and which source proposed it (see ColumnNameAlias).
+type ArmedNameAlias = { name: string; alias: string; headerName: boolean; reason: "english-implicit-agg" | "stored-query-name" };
+
 export class IndexedText implements IValueCollection {
     private _computedStatsForLevel: string = null;
     private _cols: LLMColumnWithValue[] = [];
@@ -700,7 +709,10 @@ export class IndexedText implements IValueCollection {
     // English aliases armed for the code about to render: column index -> the live name it was
     // armed for and the alias. `headerName` is false when the same code ALSO reads the column's
     // live name, so the one positional CSV header slot keeps the live name.
-    private _englishAliases: Map<number, { name: string; alias: string; headerName: boolean }> = new Map();
+    private _englishAliases: Map<number, ArmedNameAlias> = new Map();
+    // The name and query name each column had when the code about to render was generated (GenerationColumns.c), from the host.
+    private _generationColumns: { n: string; q: string }[] = [];
+    private _generationColumnsSig = "[]";
     // Columns whose dimension role the CALLER stated (see declareDimensions). Keyed by the column
     // object, not its name or position: setColumns may rename a column (the doubled-prefix
     // collapse) and a later setColumns brings new objects, which are rightly not declared.
@@ -2238,6 +2250,25 @@ export class IndexedText implements IValueCollection {
     }
 
     /**
+     * The name and query name each column had when the saved code was generated, as the host stored them with the chart. A
+     * stored name whose query name equals a live column's query name becomes a candidate second name for that column, under
+     * the same rules as the English one (aliasesForCode). Entries without a query name are ignored. A host passes null when it
+     * has none, or when the stored names must not answer (generationColumnsAnswerInLocale).
+     *
+     * The same list again changes nothing, so a host may call this before every render; a different list drops what was armed.
+     */
+    public setGenerationColumns(cols: ReadonlyArray<{ n: string; q: string }> | null | undefined): void {
+        const next = (cols ?? [])
+            .filter(c => !!c && typeof c.n === "string" && c.n !== "" && typeof c.q === "string" && c.q !== "")
+            .map(c => ({ n: c.n, q: c.q }));
+        const sig = JSON.stringify(next);
+        if (sig === this._generationColumnsSig) return;
+        this._generationColumns = next;
+        this._generationColumnsSig = sig;
+        this._englishAliases = new Map();
+    }
+
+    /**
      * Every second name a column would answer to for THIS code, without arming anything - the
      * question a host's pre-render guard asks before it decides whether cached code can find its
      * columns. See ColumnNameAlias for the two causes.
@@ -2252,7 +2283,7 @@ export class IndexedText implements IValueCollection {
     public aliasesForCode(code: string | null | undefined): ColumnNameAlias[] {
         const out: ColumnNameAlias[] = codeNeedsLegacyAggNames(code, this._cols) ? this.legacyAliases() : [];
         for (const a of this.englishAliasesFor(code).values()) {
-            out.push({ name: a.name, alias: a.alias, reason: "english-implicit-agg" });
+            out.push({ name: a.name, alias: a.alias, reason: a.reason });
         }
         return out;
     }
@@ -2274,7 +2305,7 @@ export class IndexedText implements IValueCollection {
     public getArmedAliases(): ColumnNameAlias[] {
         const out: ColumnNameAlias[] = this.emitLegacyAggAliases ? this.legacyAliases() : [];
         for (const a of this.liveEnglishAliases().values()) {
-            out.push({ name: a.name, alias: a.alias, reason: "english-implicit-agg" });
+            out.push({ name: a.name, alias: a.alias, reason: a.reason });
         }
         return out;
     }
@@ -2289,8 +2320,8 @@ export class IndexedText implements IValueCollection {
         return out;
     }
 
-    private englishAliasesFor(code: string | null | undefined): Map<number, { name: string; alias: string; headerName: boolean }> {
-        const armed = new Map<number, { name: string; alias: string; headerName: boolean }>();
+    private englishAliasesFor(code: string | null | undefined): Map<number, ArmedNameAlias> {
+        const armed = new Map<number, ArmedNameAlias>();
         if (!code || this._hostQueryNames.length === 0 || !this._cols || this._cols.length === 0) return armed;
         const text = String(code);
         // Every name a column already answers to is off limits, the host's pre-collapse names
@@ -2303,27 +2334,45 @@ export class IndexedText implements IValueCollection {
             if (c.hostName) taken.add(this.STR(c.hostName));
         }
         const claims = new Map<string, number[]>();
+        const storedOnly = new Set<string>();
         for (let i = 0; i < this._cols.length; i++) {
             if (!this._cols[i]) continue;
+            const q = this._hostQueryNames[i];
             // A field re-aggregated since the query name was minted keeps that name: the name or type gives it away.
-            if (englishAggAliasContradicted(this._hostQueryNames[i], this._cols[i].name, this._cols[i].dataType)) continue;
-            const read = englishImplicitAggNames(this._hostQueryNames[i])
-                .filter(n => !taken.has(n) && codeReadsColumn(text, n));
+            const english = englishAggAliasContradicted(q, this._cols[i].name, this._cols[i].dataType)
+                ? [] : englishImplicitAggNames(q);
+            // The names this field had when the code was generated. No contradiction test here: a query name often spells a
+            // function the column no longer holds (Average of X on Sum(T.X)), and the stored name was true when stored. The
+            // host withholds a query name it saw re-aggregated in this session, and withholds the whole list in the locale the
+            // code was generated in.
+            const live = this.STR(this._cols[i].name);
+            const stored: string[] = [];
+            if (q) {
+                for (const g of this._generationColumns) {
+                    if (g.q !== q) continue;
+                    for (const n of [g.n, collapseRepeatedAggPrefix(g.n)]) {
+                        if (n && n !== live && !english.includes(n) && !stored.includes(n)) stored.push(n);
+                    }
+                }
+            }
+            const read = [...english, ...stored].filter(n => !taken.has(n) && codeReadsColumn(text, n));
             if (read.length !== 1) continue;
             claims.set(read[0], [...(claims.get(read[0]) ?? []), i]);
+            if (stored.includes(read[0])) storedOnly.add(read[0]);
         }
         for (const [alias, indexes] of claims) {
             if (indexes.length !== 1) continue;
             const name = this.STR(this._cols[indexes[0]].name);
-            armed.set(indexes[0], { name, alias, headerName: !codeReadsColumn(text, name) });
+            armed.set(indexes[0], { name, alias, headerName: !codeReadsColumn(text, name),
+                reason: storedOnly.has(alias) ? "stored-query-name" : "english-implicit-agg" });
         }
         return armed;
     }
 
     // An armed English alias applies only while its column still carries the name it was armed
     // for, so columns replaced after arming can never inherit another column's alias.
-    private liveEnglishAliases(): Map<number, { name: string; alias: string; headerName: boolean }> {
-        const live = new Map<number, { name: string; alias: string; headerName: boolean }>();
+    private liveEnglishAliases(): Map<number, ArmedNameAlias> {
+        const live = new Map<number, ArmedNameAlias>();
         for (const [index, a] of this._englishAliases) {
             const col = this._cols ? this._cols[index] : null;
             if (col && this.STR(col.name) === a.name) live.set(index, a);
@@ -2389,6 +2438,8 @@ export class IndexedText implements IValueCollection {
         this._leafCardinality = null;
         this._hostQueryNames = [];
         this._englishAliases = new Map();
+        this._generationColumns = [];
+        this._generationColumnsSig = "[]";
     }
 
     /**

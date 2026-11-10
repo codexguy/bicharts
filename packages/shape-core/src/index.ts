@@ -257,6 +257,13 @@ export type { PayloadPreviewOptions } from "./payloadPreview";
 // the reader removed. Both hosts share the one rule so they agree on what counts as a use. See
 // codeColumnReads.ts for why code that picks columns by role or position keeps every name.
 export { codeReadsColumn, codeReadsColumnsByRoleOrPosition, columnsTheCodeReads } from "./codeColumnReads";
+// THE COLUMNS A CHART WAS GENERATED ON - stored by a host beside saved chart code and read back with it, so a later session
+// can tell a field renamed in another language, and a field added after generation, from a real field change. See
+// generationColumns.ts.
+export {
+    serializeGenerationColumns, parseGenerationColumns, generationColumnsAnswerInLocale, columnsNeverGeneratedOn,
+    GENERATION_COLUMNS_MAX_CHARS, type GenerationColumn, type GenerationColumns,
+} from "./generationColumns";
 // WHICH COLUMNS MUST THIS CHART'S CODE FIND? - the hard name lookups in cached chart code whose
 // column is gone, asked by a host before it draws that code against changed fields. See
 // columnRefScan.ts for the optional probes and data-value comparisons it deliberately does not count.

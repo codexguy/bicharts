@@ -184,6 +184,131 @@ describe("a localized implicit aggregation answers to its English name", () => {
     });
 });
 
+// A CHART GENERATED IN ONE LANGUAGE, OPENED IN ANOTHER. The code was written in a Spanish session and reads
+// `Suma de Actividades`; the English viewer's host calls the same field `Sum of Actividades`. The English recomposition
+// cannot help in that direction, so the host keeps the names and query names the columns had at generation and hands them
+// back (setGenerationColumns).
+const STORED_CODE = "const mi = ci('Suma de Actividades');";
+function englishViewerOfSpanishChart(): IndexedText {
+    const idx = new IndexedText();
+    idx.setColumns([
+        { name: "Riesgo", dataType: "String", isMeasure: false },
+        { name: "Sum of Actividades", dataType: "Integer", isMeasure: true },
+    ]);
+    idx.setHostQueryNames(["Sheet1.Riesgo", "Sum(Sheet1.Actividades)"]);
+    idx.addRow(["Alto", 7], 0);
+    idx.addRow(["Bajo", 3], 1);
+    return idx;
+}
+const STORED_SPANISH = [
+    { n: "Riesgo", q: "Sheet1.Riesgo" },
+    { n: "Suma de Actividades", q: "Sum(Sheet1.Actividades)" },
+];
+
+describe("a name stored at generation answers through its query name", () => {
+    it("without the stored names nothing answers - the chart is refused", () => {
+        expect(englishViewerOfSpanishChart().aliasesForCode(STORED_CODE)).toEqual([]);
+    });
+
+    it("with them the live column answers to the stored name, in the rows and the CSV header", () => {
+        const idx = englishViewerOfSpanishChart();
+        idx.setGenerationColumns(STORED_SPANISH);
+        const expected = [{ name: "Sum of Actividades", alias: "Suma de Actividades", reason: "stored-query-name" }];
+        expect(idx.aliasesForCode(STORED_CODE)).toEqual(expected);
+        expect(idx.armAliasesForCode(STORED_CODE)).toEqual(expected);
+        expect(idx.getArmedAliases()).toEqual(expected);
+        const row = idx.toObjectArray()[0];
+        expect(row["Sum of Actividades"]).toBe(7);
+        expect(row["Suma de Actividades"]).toBe(7);
+        expect(idx.getCSVHeaderLine()).toBe("Riesgo,Suma de Actividades");
+    });
+
+    it("a query name that no longer spells the column's function still answers - the stored name was true when stored", () => {
+        const idx = new IndexedText();
+        idx.setColumns([{ name: "Promedio de Precio", dataType: "Decimal", isMeasure: true }]);
+        idx.setHostQueryNames(["Sum(T.Precio)"]);
+        idx.addRow([12.5], 0);
+        idx.setGenerationColumns([{ n: "Average of Precio", q: "Sum(T.Precio)" }]);
+        expect(idx.armAliasesForCode("ci('Average of Precio')")).toEqual([
+            { name: "Promedio de Precio", alias: "Average of Precio", reason: "stored-query-name" },
+        ]);
+    });
+
+    it("a stored query name that matches no live column arms nothing", () => {
+        const idx = englishViewerOfSpanishChart();
+        idx.setGenerationColumns([{ n: "Suma de Actividades", q: "Sum(Sheet2.Actividades)" }]);
+        expect(idx.armAliasesForCode(STORED_CODE)).toEqual([]);
+    });
+
+    it("a live column whose query name the host withheld arms nothing", () => {
+        const idx = englishViewerOfSpanishChart();
+        idx.setHostQueryNames(["Sheet1.Riesgo", null]);
+        idx.setGenerationColumns(STORED_SPANISH);
+        expect(idx.armAliasesForCode(STORED_CODE)).toEqual([]);
+    });
+
+    it("two live columns with the same query name arm nothing - never guess", () => {
+        const idx = new IndexedText();
+        idx.setColumns([
+            { name: "Sum of Actividades", dataType: "Integer", isMeasure: true },
+            { name: "Sum of Actividades (2)", dataType: "Integer", isMeasure: true },
+        ]);
+        idx.setHostQueryNames(["Sum(Sheet1.Actividades)", "Sum(Sheet1.Actividades)"]);
+        idx.addRow([1, 2], 0);
+        idx.setGenerationColumns(STORED_SPANISH);
+        expect(idx.armAliasesForCode(STORED_CODE)).toEqual([]);
+    });
+
+    it("a stored name that is another live column's name arms nothing - the alias never shadows a real column", () => {
+        const idx = new IndexedText();
+        idx.setColumns([
+            { name: "Suma de Actividades", dataType: "Integer", isMeasure: false },
+            { name: "Sum of Actividades", dataType: "Integer", isMeasure: true },
+        ]);
+        idx.setHostQueryNames(["Sheet1.Suma de Actividades", "Sum(Sheet1.Actividades)"]);
+        idx.addRow([1, 7], 0);
+        idx.setGenerationColumns(STORED_SPANISH);
+        expect(idx.armAliasesForCode(STORED_CODE)).toEqual([]);
+        expect(idx.toObjectArray()[0]["Suma de Actividades"]).toBe(1);
+    });
+
+    it("handing back null disarms", () => {
+        const idx = englishViewerOfSpanishChart();
+        idx.setGenerationColumns(STORED_SPANISH);
+        idx.armAliasesForCode(STORED_CODE);
+        idx.setGenerationColumns(null);
+        expect(idx.getArmedAliases()).toEqual([]);
+        expect(idx.aliasesForCode(STORED_CODE)).toEqual([]);
+        expect(Object.keys(idx.toObjectArray()[0])).toEqual(["Riesgo", "Sum of Actividades"]);
+    });
+
+    it("the same list again keeps what is armed", () => {
+        const idx = englishViewerOfSpanishChart();
+        idx.setGenerationColumns(STORED_SPANISH);
+        idx.armAliasesForCode(STORED_CODE);
+        idx.setGenerationColumns(STORED_SPANISH.map(c => ({ ...c })));
+        expect(idx.getArmedAliases()).toHaveLength(1);
+    });
+
+    it("the English recomposition still reports its own reason beside a stored list", () => {
+        const idx = spanishSankey();
+        idx.setGenerationColumns([{ n: "Year", q: "Leads.Year" }]);
+        expect(idx.armAliasesForCode(ENGLISH_CODE)).toEqual([
+            { name: "Suma de Volume", alias: "Sum of Volume", reason: "english-implicit-agg" },
+        ]);
+    });
+
+    it("reset forgets the stored names", () => {
+        const idx = englishViewerOfSpanishChart();
+        idx.setGenerationColumns(STORED_SPANISH);
+        idx.reset();
+        idx.setColumns([{ name: "Sum of Actividades", dataType: "Integer", isMeasure: true }]);
+        idx.setHostQueryNames(["Sum(Sheet1.Actividades)"]);
+        idx.addRow([7], 0);
+        expect(idx.aliasesForCode(STORED_CODE)).toEqual([]);
+    });
+});
+
 describe("the doubled-prefix rename reports itself as an alias too", () => {
     const build = () => {
         const idx = new IndexedText();
