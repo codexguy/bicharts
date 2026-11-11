@@ -187,6 +187,11 @@ export type LLMColumnWithValue =
         // model measure). Fed into classifyAdditivity as an authoritative intensive
         // signal (after the part-of-whole data test). Closes the explicit-DAX gap.
         discourageAggregationAcrossGroups?: boolean,
+        // The aggregation the HOST applied to this measure before the rows arrived
+        // (for example "Sum"), when the host knows it. The server reads only whether
+        // it is present on a measure: then a refusal for too few raw rows also says
+        // to set the measures to Don't summarize. Hosts that never aggregate omit it.
+        hostAggregation?: string,
         skewness?: number,
         // Tier 1 statistical-shape additions (2026-05-21). Aggregates over
         // the WHOLE column — describe shape, never reveal raw values.
