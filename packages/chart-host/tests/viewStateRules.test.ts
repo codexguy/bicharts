@@ -833,7 +833,7 @@ describe("the rules are pure", () => {
     });
 });
 
-// ---- 4. the personal store (item 1081): the reader's own copy, read before the shared one ----
+// ---- 4. the personal store: the reader's own copy, read before the shared one ----
 
 describe("a personal store: the reader's own view over the shared one", () => {
     const KEPT_TO_VIEWING: ViewStateKeyPolicy = { lifetime: "viewing", dropOnNewVersion: false, dropOnFreshViewing: false };
