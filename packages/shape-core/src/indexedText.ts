@@ -589,6 +589,20 @@ export function classifyNumericValueNature(i: {
     //     signal when PRESENT; its absence must NOT force categorical.
     if (isMeasure) return "Continuous";
 
+    // (c2) A CONTIGUOUS RUN OF WHOLE NUMBERS, EACH VALUE ONCE, is a list of codes, not a measured quantity: a supplier or
+    //      store numbered 1..N bound as a field arrives one row per code, so its uniqueness ratio is 1.0 and rule (d) below
+    //      would call it Continuous - and the measure inference would turn the only category into a second measure,
+    //      leaving no category to chart by. Names and ranges that read as an ordered axis (Year, Rank, Age, 0..20) were
+    //      answered by rule (b) above, identifier names by rule (a), a bound measure by rule (c). Whole numbers only: a
+    //      Decimal-typed column is left to rule (d).
+    if (!fractional
+        && Number.isFinite(span)
+        && distinct > DISCRETE_NUMERIC_MAX_DISTINCT
+        && distinct === nonblank
+        && span === distinct) {
+        return "Categorical";
+    }
+
     // (d) NON-measure numeric → classify by DATA SHAPE (never range-density):
     //     more than a handful of distinct values AND (fractional, OR large in
     //     absolute count, OR mostly-unique) → a measured quantity.
