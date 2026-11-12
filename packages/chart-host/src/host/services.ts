@@ -196,6 +196,14 @@ export interface ViewStateService {
     viewing: ViewStateProvider;
     /** Survives close and reopen (a report file, a workbook). Absent or null: this host cannot. */
     durable?: ViewStateProvider | null;
+    /**
+     * The reader's OWN copy, kept for this person only (a browser store on their machine, an app's
+     * per-user record). It is written with the durable store's rules (lifetime, `durableWhen`, the size
+     * cap), and on a fresh viewing it is read BEFORE the durable store: the person sees their own view, and
+     * anyone without one sees the shared one. "Reset view" needs nothing of its own: the chart's cleared
+     * bag is written to every store. Absent or null: this host keeps no per-person view.
+     */
+    personal?: ViewStateProvider | null;
     /** The keys the HOST writes or scopes, by name. */
     policy: Readonly<Record<string, ViewStateKeyPolicy>>;
     /**

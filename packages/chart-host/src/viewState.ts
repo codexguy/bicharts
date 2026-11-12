@@ -32,6 +32,14 @@ export function viewStateIsDurable(service: ViewStateService | null | undefined)
     return !!service && !!service.durable;
 }
 
+/**
+ * Whether this host keeps a view for each person apart from the shared one. Derived from the service,
+ * like `viewStateIsDurable`: a host has a personal view exactly when it supplies a personal store.
+ */
+export function viewStateIsPersonal(service: ViewStateService | null | undefined): boolean {
+    return !!service && !!service.personal;
+}
+
 // ---- The rules ----
 //
 // Two pure functions, one for each direction through the stores, and a third for a host that learns of
@@ -70,8 +78,8 @@ export interface ResolveViewStateOptions {
 export interface ResolvedViewState {
     /** The bag to hand the chart as `options.uiState`. The caller's own copy: nothing in a store aliases it. */
     bag: Record<string, unknown>;
-    /** Where the bag was read from. `"none"`: neither store held anything. */
-    source: "viewing" | "durable" | "none";
+    /** Where the bag was read from. `"none"`: no store held anything. */
+    source: "viewing" | "personal" | "durable" | "none";
     /** Every key a rule took out, in the order the rules ran, so a host can log what it did. */
     dropped: ViewStateDrop[];
 }
@@ -122,10 +130,11 @@ function policyFor(service: ViewStateService, key: string): ViewStateKeyPolicy {
  * BUILD THE BAG A CHART IS HANDED.
  *
  * Read order: the viewing store when it holds anything (or when the viewing has already written, see
- * `freshViewing`), otherwise the durable store, otherwise nothing. The viewing store is the newer of
- * the two within a viewing: a durable store can lag its own writes by a round trip, and a redraw in
- * that window must see the write, not the state before it. A key whose lifetime is `"viewing"` is
- * never believed from the durable store.
+ * `freshViewing`), otherwise the personal store, otherwise the durable store, otherwise nothing. The
+ * viewing store is the newest within a viewing: a stored copy can lag its own writes by a round trip,
+ * and a redraw in that window must see the write, not the state before it. The personal store comes
+ * before the durable one because it is this reader's own view, and the durable one is everyone's. A key
+ * whose lifetime is `"viewing"` is never believed from either stored copy.
  *
  * Then two rules run, in this order, each over the keys a service's policy names (and, for the keys
  * it doesn't, over `chartKeys`):
@@ -153,8 +162,9 @@ export function resolveViewState(
         source = "viewing";
         raw = holds(viewed) ? viewed : {};
     } else {
-        const stored = loadOrEmpty(service.durable);
-        source = holds(stored) ? "durable" : "none";
+        const mine = loadOrEmpty(service.personal);
+        const stored = holds(mine) ? mine : loadOrEmpty(service.durable);
+        source = holds(mine) ? "personal" : holds(stored) ? "durable" : "none";
         raw = holds(stored) ? stored : {};
         if (isBag(raw)) {
             const believed: Record<string, unknown> = {};
@@ -223,12 +233,14 @@ export interface CommitViewStateResult {
     viewingSaved: boolean;
     /** The durable store's `save` ran without throwing. False too when the service has no durable store. */
     durableSaved: boolean;
-    /** Keys kept out of the durable store because their `durableWhen` preference is off, in policy order. */
+    /** The personal store's `save` ran without throwing. False too when the service has no personal store. */
+    personalSaved: boolean;
+    /** Keys kept out of the stored copies (durable and personal) because their `durableWhen` preference is off, in policy order. */
     withheld: string[];
-    /** Characters of JSON in the durable payload, measured only when the service sets a limit. */
+    /** Characters of JSON in the stored payload (durable and personal), measured only when the service sets a limit. */
     durableChars: number | null;
-    /** A store that threw. The other store is still written, and the write never throws out of the chart. */
-    errors: Array<{ store: "viewing" | "durable"; error: unknown }>;
+    /** A store that threw. The other stores are still written, and the write never throws out of the chart. */
+    errors: Array<{ store: "viewing" | "durable" | "personal"; error: unknown }>;
 }
 
 /**
@@ -262,7 +274,11 @@ function preferenceOn(prefs: ViewStatePreferences | null | undefined, name: stri
  * session the new pose. The one case where neither store is written is a refusal: a durable payload
  * over `durableMaxChars` is dropped whole, so the next read sees the state before it.
  *
- * Never throws. A store that throws is reported in `errors` and the other store is still written.
+ * A personal store gets exactly what the durable store gets, and is written after it: a reader's own
+ * copy and the shared copy hold the same thing after every write, so "Reset view" (the chart writing
+ * its cleared bag) clears both, and the size cap covers both.
+ *
+ * Never throws. A store that throws is reported in `errors` and the other stores are still written.
  */
 export function commitViewState(
     next: unknown,
@@ -270,14 +286,16 @@ export function commitViewState(
     prefs?: ViewStatePreferences | null,
 ): CommitViewStateResult {
     const result: CommitViewStateResult = {
-        outcome: "saved", viewingSaved: false, durableSaved: false, withheld: [], durableChars: null, errors: [],
+        outcome: "saved", viewingSaved: false, durableSaved: false, personalSaved: false, withheld: [], durableChars: null, errors: [],
     };
     if (next == null || typeof next !== "object") return { ...result, outcome: "ignored" };
     const bag = next as Record<string, unknown>;
 
     const durable = service.durable || null;
+    const personal = service.personal || null;
+    const kept = !!(durable || personal);
     let forFile: Record<string, unknown> = bag;
-    if (durable && isBag(bag)) {
+    if (kept && isBag(bag)) {
         let trimmed: Record<string, unknown> | null = null;
         const withheld = new Set<string>();
         for (const key of Object.keys(bag)) {
@@ -294,11 +312,11 @@ export function commitViewState(
         result.withheld = [...declared.filter(k => withheld.has(k)), ...[...withheld].filter(k => !declared.includes(k))];
     }
 
-    if (durable && service.durableMaxChars) {
+    if (kept && service.durableMaxChars) {
         try {
             result.durableChars = JSON.stringify(forFile).length;
         } catch (error) {
-            result.errors.push({ store: "durable", error });
+            result.errors.push({ store: durable ? "durable" : "personal", error });
             return { ...result, outcome: "ignored" };
         }
         if (result.durableChars > service.durableMaxChars) return { ...result, outcome: "too-large" };
@@ -316,6 +334,14 @@ export function commitViewState(
             result.durableSaved = true;
         } catch (error) {
             result.errors.push({ store: "durable", error });
+        }
+    }
+    if (personal) {
+        try {
+            personal.save(forFile);
+            result.personalSaved = true;
+        } catch (error) {
+            result.errors.push({ store: "personal", error });
         }
     }
     return result;

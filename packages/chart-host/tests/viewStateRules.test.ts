@@ -832,3 +832,99 @@ describe("the rules are pure", () => {
         }
     });
 });
+
+// ---- 4. the personal store (item 1081): the reader's own copy, read before the shared one ----
+
+describe("a personal store: the reader's own view over the shared one", () => {
+    const KEPT_TO_VIEWING: ViewStateKeyPolicy = { lifetime: "viewing", dropOnNewVersion: false, dropOnFreshViewing: false };
+
+    it("a fresh viewing reads the personal copy before the durable one", () => {
+        const service: ViewStateService = {
+            viewing: memoryStore(), durable: memoryStore({ sort: "shared" }), personal: memoryStore({ sort: "mine" }), policy: {},
+        };
+        expect(resolveViewState(service)).toEqual({ bag: { sort: "mine" }, source: "personal", dropped: [] });
+    });
+
+    it("a reader without a copy of their own sees the shared one", () => {
+        const service: ViewStateService = {
+            viewing: memoryStore(), durable: memoryStore({ sort: "shared" }), personal: memoryStore(), policy: {},
+        };
+        expect(resolveViewState(service)).toEqual({ bag: { sort: "shared" }, source: "durable", dropped: [] });
+    });
+
+    it("within a viewing, the viewing store still wins over both copies", () => {
+        const service: ViewStateService = {
+            viewing: memoryStore({ sort: "now" }), durable: memoryStore({ sort: "shared" }), personal: memoryStore({ sort: "mine" }), policy: {},
+        };
+        expect(resolveViewState(service).bag).toEqual({ sort: "now" });
+        expect(resolveViewState({ ...service, viewing: memoryStore() }, { freshViewing: false }).bag).toEqual({});
+    });
+
+    it("a viewing-only key is never believed from the personal copy", () => {
+        const service: ViewStateService = {
+            viewing: memoryStore(), personal: memoryStore({ sort: "mine", cam: 3 }), policy: { cam: KEPT_TO_VIEWING },
+        };
+        expect(resolveViewState(service)).toEqual({ bag: { sort: "mine" }, source: "personal", dropped: [] });
+    });
+
+    it("the fresh-viewing and new-version rules run on a personal bag as on a durable one", () => {
+        const service: ViewStateService = {
+            viewing: memoryStore(), personal: memoryStore({ sort: "mine", stopped: true, v: 1 }),
+            policy: { stopped: { lifetime: "durable", dropOnNewVersion: false, dropOnFreshViewing: true } },
+            chartKeys: { lifetime: "durable", dropOnNewVersion: true, dropOnFreshViewing: false }, versionKey: "v",
+        };
+        const r = resolveViewState(service, { codeVersion: 2 });
+        expect(r.bag).toEqual({ v: 2 });
+        expect(r.dropped).toEqual([{ key: "stopped", reason: "fresh-viewing" }, { key: "sort", reason: "new-version" }]);
+    });
+
+    it("a write reaches the personal copy with the durable copy's rules, and both hold the same", () => {
+        const durable = memoryStore(), personal = memoryStore();
+        const service: ViewStateService = {
+            viewing: memoryStore(), durable, personal,
+            policy: { cam: KEPT_TO_VIEWING, shared: { lifetime: "durable", dropOnNewVersion: false, dropOnFreshViewing: false, durableWhen: "remember" } },
+        };
+        const r = commitViewState({ sort: "mine", cam: 3, shared: 1 }, service, prefs({ remember: false }));
+        expect(r).toMatchObject({ outcome: "saved", viewingSaved: true, durableSaved: true, personalSaved: true, withheld: ["shared"] });
+        expect(personal.bag).toEqual({ sort: "mine" });
+        expect(durable.bag).toEqual(personal.bag);
+    });
+
+    it("Reset view: the chart's cleared bag clears both copies, so the next open is clean for everyone", () => {
+        const durable = memoryStore({ sort: "x" }), personal = memoryStore({ sort: "x" });
+        const service: ViewStateService = { viewing: memoryStore(), durable, personal, policy: {} };
+        commitViewState({}, service);
+        expect(durable.bag).toEqual({});
+        expect(personal.bag).toEqual({});
+        expect(resolveViewState(service).source).toBe("none");
+    });
+
+    it("a host with a personal store and no durable one (an app keyed by its user) still trims and caps", () => {
+        const personal = memoryStore();
+        const service: ViewStateService = { viewing: memoryStore(), personal, policy: { cam: KEPT_TO_VIEWING }, durableMaxChars: 20 };
+        expect(commitViewState({ sort: "mine", cam: 3 }, service)).toMatchObject({ outcome: "saved", durableSaved: false, personalSaved: true });
+        expect(personal.bag).toEqual({ sort: "mine" });
+        const over = commitViewState({ sort: "a much longer value than twenty" }, service);
+        expect(over).toMatchObject({ outcome: "too-large", personalSaved: false, viewingSaved: false });
+        expect(personal.bag).toEqual({ sort: "mine" });
+    });
+
+    it("a personal store that throws is reported, and the other stores are still written", () => {
+        const boom = new Error("quota");
+        const durable = memoryStore();
+        const throws: ViewStateProvider = { load: () => { throw boom; }, save: () => { throw boom; } };
+        const service: ViewStateService = { viewing: memoryStore(), durable: memoryStore({ sort: "shared" }), personal: throws, policy: {} };
+        expect(resolveViewState(service).bag).toEqual({ sort: "shared" });
+        const r = commitViewState({ sort: "mine" }, { ...service, durable });
+        expect(r).toMatchObject({ viewingSaved: true, durableSaved: true, personalSaved: false, errors: [{ store: "personal", error: boom }] });
+        expect(durable.bag).toEqual({ sort: "mine" });
+    });
+
+    it("viewStateIsPersonal is derived from the store, never declared", async () => {
+        const { viewStateIsPersonal } = await import("../src/viewState");
+        expect(viewStateIsPersonal({ viewing: memoryStore(), personal: memoryStore(), policy: {} })).toBe(true);
+        expect(viewStateIsPersonal({ viewing: memoryStore(), personal: null, policy: {} })).toBe(false);
+        expect(viewStateIsPersonal({ viewing: memoryStore(), durable: memoryStore(), policy: {} })).toBe(false);
+        expect(viewStateIsPersonal(null)).toBe(false);
+    });
+});

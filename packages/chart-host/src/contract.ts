@@ -22,7 +22,14 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.24.0";
+export const HOST_CONTRACT_VERSION = "1.25.0";
+// 1.25.0 (2026-11-12): A READER CAN KEEP A VIEW OF THEIR OWN. ViewStateService gains an optional `personal` store: the
+// reader's own copy (a browser store on their machine, an app's per-user record). resolveViewState reads it before the
+// durable store on a fresh viewing, so a person sees their own view and anyone without one sees the shared one;
+// commitViewState writes it with exactly what the durable store gets, so "Reset view" clears both. viewStateIsPersonal
+// derives the capability from the store. ResolvedViewState.source gains "personal", CommitViewStateResult gains
+// `personalSaved`, and an error's `store` can read "personal": additive, but a host switching exhaustively on either
+// union has a new case. A host that supplies no personal store behaves exactly as before.
 // 1.24.0 (2026-11-05): A SELECTION THE DIM ALONE CAN'T SHOW IS OUTLINED. A diverging ramp's centre is a neutral just off
 // the canvas and the dim pulls every other mark toward the canvas, so a selected region near the centre read the same as
 // the dimmed ones. options.selectionGlyph gains "outline" (a stroke in the text colour around each selected area mark,
