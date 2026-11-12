@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses a commit whose message carries an attribution trailer or an outside tracker id (see the script).
+# Enable once per clone: git config core.hooksPath .githooks
+exec node scripts/checkCommitMessages.mjs --file "$1"

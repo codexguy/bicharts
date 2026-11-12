@@ -10,6 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  # A pushed commit message cannot be cleaned without rewriting history, so every commit a push or pull
+  # request brings is checked: no attribution trailer, no id from a tracker outside this repo. The same
+  # check runs locally as .githooks/commit-msg (git config core.hooksPath .githooks).
+  commit-messages:
+    name: commit messages carry nothing internal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: check every commit in the push or pull request
+        env:
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}..{1}', github.event.before, github.sha) }}
+        run: node scripts/checkCommitMessages.mjs --range "$RANGE"
+
   verify:
     name: verify (node ${{ matrix.node }})
     runs-on: ubuntu-latest

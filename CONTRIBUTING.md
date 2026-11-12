@@ -42,6 +42,12 @@ geo asset is the easy way to undo that, and it looks harmless in review, so
   package and being done is a promise the README makes, and every dependency added here
   lands in every consumer's bundle and licence audit.
 
+## Commit messages
+
+Say what changed and why. No attribution trailers and no ids from another tracker: CI checks every
+pushed commit with `scripts/checkCommitMessages.mjs`. To be told before the commit exists, run
+`git config core.hooksPath .githooks` once in your clone.
+
 ## Licensing
 
 Contributions are accepted under [Apache-2.0](LICENSE), the licence of this repository.
