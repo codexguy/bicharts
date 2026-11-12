@@ -55,7 +55,7 @@
       "builtForRows": 40,
       "codeSha256": "49ef2248639953c08a4dfa547d17d4ec9d71e4434f82087f24fe0160f07e26e2",
       "componentSha256": "b1b2d79cf2f31319eafda9652329e21f72e9d5be05abf871490f20ca3424db11",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     },
     {
       "id": "country-map",
@@ -118,7 +118,7 @@
       "builtForRows": 40,
       "codeSha256": "e08cd67f43192f9adb6584464b89fe43469895b8e5e87142957a03545131129f",
       "componentSha256": "148ad0830d384dcafd09862f2095d469ed8e0b3317ab82f821b18fd6ae450558",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     },
     {
       "id": "trend",
@@ -159,7 +159,7 @@
       "builtForRows": 84,
       "codeSha256": "ea155421446d7593f7e99f428fdbc8a52e0c54c00bd1171abc46f76c6351967e",
       "componentSha256": "cc08c9b9bd6ede6fa8f46f6f72da1dd6a4c200825001861ff225eb61542a6b9b",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     },
     {
       "id": "actual-vs-target",
@@ -196,7 +196,7 @@
       "builtForRows": 12,
       "codeSha256": "a27c5448f69f876e0d88a4e6b20971c535b0d6c5e7ee3cac7a3dd065a00cb3f4",
       "componentSha256": "eca8352387bf6dd69ce36fedf8bc3cae17137e779cb7070563b44a7620b9df75",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     },
     {
       "id": "what-if-projection",
@@ -228,7 +228,7 @@
       "codeSha256": "766ef13411df143aaf707c472e1e35ca0791d3819e35f8fd370b7965ac0d5983",
       "componentSha256": "caa7f49954f1233ab3e163aa2b6ca8aa398640c2b68c42d51bb55e28c871d480",
       "hostContract": "1.13.0",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     },
     {
       "id": "what-if-scenarios",
@@ -266,7 +266,7 @@
       "codeSha256": "a72466cab3689bfb49b709fd2018fb7f1262073fd179986576405b7a8d7b3a3d",
       "componentSha256": "dc119401cf57020d19ed982791efe9ce32e7f8ae27ec1daf94050d2a385151c6",
       "control": "knobs",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     },
     {
       "id": "selection-explainer",
@@ -324,7 +324,7 @@
       "codeSha256": "b9ebfa0f7b0f5c8ae3a0f54cf7a89e85c44e484649308a94dfb961199fa9ee77",
       "componentSha256": "ef8f96ac675f26370db1e5359b5218ab39227dd92eef7baa2e23340f59ba6019",
       "control": "selection",
-      "chartHost": "0.6.117",
+      "chartHost": "0.6.118",
       "knownDefects": [
         {
           "check": "duplicate-ticks",
@@ -382,7 +382,7 @@
       "codeSha256": "5d253179cfd412457bdfde7f9689aee91d76bd51739d8a0477030e1dd6570cf2",
       "componentSha256": "71c1a06a23fd02bf1e0567207ab991a0b05faf47c4e3e7b7adf4f28579dd95bc",
       "control": "knobs",
-      "chartHost": "0.6.117"
+      "chartHost": "0.6.118"
     }
   ]
 }

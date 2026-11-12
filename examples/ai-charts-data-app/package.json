@@ -28,7 +28,7 @@
     "validate:visual": "node scripts/validate-visual.mjs"
   },
   "dependencies": {
-    "@bicharts/chart-host": "^0.6.117",
+    "@bicharts/chart-host": "^0.6.118",
     "@microsoft/fabric-datagrid": "5.2.0",
     "@microsoft/fabric-interaction-manager": "1.1.0",
     "@microsoft/fabric-slicers": "4.2.0",
