@@ -1836,7 +1836,11 @@ export class IndexedText implements IValueCollection {
                 col.numericPrecision = prec;
             }
             if (sorted.length > 0) {
-                const mean = col.avgValue ?? 0;
+                // THE MOMENTS ARE TAKEN ABOUT THE TRUE MEAN. avgValue is ROUNDED for an Integer column (a display value), and a
+                // rounded mean inflates the spread and the skew of a small-mean integer: 229 weights of 0, 1 and 4 (mean 1.057)
+                // reported skewness 1.351 about 1, against 1.242 about the true mean. sumval / nonblank is that mean: sumval sums
+                // exactly the values in arr. A Decimal column's avgValue is already this number, so only Integer columns move.
+                const mean = (nonblank > 0 && sumval != null) ? sumval / nonblank : (col.avgValue ?? 0);
                 const n = sorted.length;
                 let m2 = 0, m3 = 0;
                 for (const v of sorted) {
