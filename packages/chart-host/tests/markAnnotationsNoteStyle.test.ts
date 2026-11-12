@@ -136,6 +136,52 @@ describe("a chart that declares data-bic-note-style=\"dot\"", () => {
     });
 });
 
+// A DOT THAT COUNTS SHOWS ITS COUNT WHERE IT FITS. Measured on a tile map whose page said "a number on a country counts
+// its open items": the map drew bare dots while the table and the other map drew numbers, so a country with 3 items
+// looked like one with 1 everywhere but in the hover text. A dot whose label is a whole number (1 or more) draws that
+// number, at the same corner, where the tile holds it clear of the tile's own text; anywhere else it stays a dot.
+// The count stays in the title and the accessible name either way.
+describe("a dot whose label is a count", () => {
+    // A big tile, its code centred well clear of the top-right corner; POL to its right, SWE above it.
+    const BIG = "100,100,80,80", BIG_POL = "180,100,80,80", BIG_SWE = "180,20,80,80";
+    const BIG_GRID = [["DEU", BIG, "124,134,32,12"], ["POL", BIG_POL, "204,134,32,12"], ["SWE", BIG_SWE, "204,54,32,12"]];
+    const drawnBox = (g: HTMLElement): Box => {
+        const [x, y] = at(g), hw = parseFloat(g.style.width) / 2 + 1.5, hh = parseFloat(g.style.height) / 2 + 1.5;
+        return { l: x - hw, t: y - hh, r: x + hw, b: y + hh };
+    };
+
+    it("draws the number inside its own tile's top-right corner, clear of the tile's code and of every neighbour", () => {
+        const { el } = mount(tiles("dot"), BIG_GRID, [{ column: "Country", value: "DEU", label: "3", title: "Three open items" }]);
+        const g = notes(el);
+        expect(g).toHaveLength(1);
+        expect(g[0].textContent).toBe("3");
+        expect(inside(drawnBox(g[0]), boxOf(BIG))).toBe(true);
+        expect(overlaps(drawnBox(g[0]), boxOf("124,134,32,12"))).toBe(false);
+        for (const other of [BIG_POL, BIG_SWE]) expect(overlaps(drawnBox(g[0]), boxOf(other))).toBe(false);
+        const [x, y] = at(g[0]);
+        expect(x).toBeGreaterThan(160);                            // the top-right corner, where the dot would be
+        expect(y).toBeLessThan(120);
+        expect(g[0].getAttribute("title")).toBe("(3) Three open items");
+        expect(g[0].getAttribute("aria-label")).toBe("Note on DEU: 3. Three open items");
+    });
+
+    it("a two-digit count is drawn whole", () => {
+        const { el } = mount(tiles("dot"), BIG_GRID, [{ column: "Country", value: "DEU", label: "12" }]);
+        expect(notes(el)[0].textContent).toBe("12");
+        expect(inside(drawnBox(notes(el)[0]), boxOf(BIG))).toBe(true);
+    });
+
+    it("a count of 1 shows its number; a label that is not a count, and a tile whose code sits under the corner, stay a dot", () => {
+        const { el } = mount(tiles("dot"), BIG_GRID,
+            [{ column: "Country", value: "DEU", label: "1" }, { column: "Country", value: "POL", label: "A" }]);
+        // Joel's ruling: a count of 1 shows its number too (it was a plain dot), so every count on the map reads alike.
+        expect(notes(el).map(n => [n.textContent, n.style.width])).toEqual([["1", "14px"], ["", "8px"]]);
+        const { el: e2 } = mount(tiles("dot"), [["DEU", BIG, "100,100,80,30"]], [{ column: "Country", value: "DEU", label: "3" }]);
+        expect(notes(e2).map(n => [n.textContent, n.style.width])).toEqual([["", "8px"]]);
+        expect(notes(e2)[0].getAttribute("aria-label")).toBe("Note on DEU: 3");
+    });
+});
+
 describe("a chart that declares nothing keeps the badge", () => {
     it("an undeclared tile keeps the numbered badge and its search (the pre-dot placement)", () => {
         const { el } = mount(tiles(), GRID, ON_DEU);

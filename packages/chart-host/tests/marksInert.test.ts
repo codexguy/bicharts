@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from "vitest";
 import { createChartHost } from "../src/host";
-import { MARKS_INERT_CLASS, MARK_SELECTED_CLASS, SELECTION_ACTIVE_CLASS } from "../src/contract";
+import { MARKS_INERT_CLASS, MARK_SELECTED_CLASS, SELECTION_ACTIVE_CLASS, MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS } from "../src/contract";
 
 // ONLY A MARK THAT SELECTS SOMETHING LOOKS OR ACTS CLICKABLE. A KPI deck and a monthly chart
 // drew their panels and columns as marks, with a pointer cursor and sibling dimming on click, but the page gave them
@@ -83,5 +83,33 @@ describe("marks that select nothing are drawn inert", () => {
         const css = Array.from(document.querySelectorAll("style")).map(s => s.textContent || "").join("\n");
         expect(css).toMatch(new RegExp(`\\.${MARKS_INERT_CLASS} \\.d3-mark[^{]*\\{[^}]*cursor:\\s*default\\s*!important`));
         expect(css).toMatch(new RegExp(`:not\\(\\.${MARKS_INERT_CLASS}\\):has\\(\\.d3-mark`));
+    });
+
+    // EVERY CLASS A CLICK RESOLVES LOOKS INERT TOGETHER. A monthly chart drew its month labels as axis filters with an
+    // inline pointer; the page gave the chart nothing to select, so a click on a label did nothing while the pointer
+    // still promised one. The host's click handler drops a legend swatch's and an axis filter's click on an inert
+    // chart exactly as it drops a mark's, so the stylesheet takes the pointer off all three - and only there.
+    const PICKABLE = [MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS];
+    const defaultCursorRules = () => Array.from(document.querySelectorAll("style"))
+        .flatMap(s => Array.from(((s as HTMLStyleElement).sheet?.cssRules ?? []) as ArrayLike<CSSRule>))
+        .filter((r): r is CSSStyleRule => !!(r as CSSStyleRule).selectorText && /cursor:\s*default\s*!important/.test(r.cssText))
+        .flatMap(r => r.selectorText.split(",").map(s => s.trim()));
+    const pickables = (el: HTMLElement) => PICKABLE.map(cls => {
+        const p = document.createElement("span");
+        p.className = cls;
+        p.setAttribute("data-row-idx", "0");
+        p.style.cursor = "pointer";
+        el.appendChild(p);
+        return p;
+    });
+    const resetBy = (p: Element) => defaultCursorRules().some(sel => { try { return p.matches(sel); } catch { return false; } });
+
+    it("an inert chart's legend swatches and axis filters lose their pointer too, not only its marks", () => {
+        const { el } = mount(() => false);
+        expect(pickables(el).map(resetBy)).toEqual([true, true, true]);
+    });
+
+    it("a chart that selects keeps the pointer on every mark, swatch and axis filter", () => {
+        for (const m of [mount(() => true), mount()]) expect(pickables(m.el).map(resetBy)).toEqual([false, false, false]);
     });
 });

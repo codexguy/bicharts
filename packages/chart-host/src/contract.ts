@@ -215,7 +215,9 @@ export const ROW_IDX_ATTR = "data-row-idx";
 // HOW A NOTE ON A MARK LOOKS. By default a host's note (ChartHostConfig.annotations) is a badge carrying its label,
 // moved clear of the chart's text. A chart whose marks sit edge to edge (a tile grid) stamps NOTE_STYLE_ATTR="dot" on
 // the element holding them, or on a mark: each note there is one small dot at a fixed spot inside the mark's top-right
-// corner, never moved onto a neighbour, its label read in the tooltip. The nearest declaring element decides.
+// corner, never moved onto a neighbour, its label read in the tooltip. A note whose label is a count (1 or more) draws
+// that number in the same corner where the mark holds it clear of the mark's text, and stays a dot elsewhere.
+// The nearest declaring element decides.
 export const NOTE_STYLE_ATTR = "data-bic-note-style";
 
 // HOW A SELECTION LIGHTS THE CHART'S OWN MARKS. By default a mark is drawn selected when ANY of the

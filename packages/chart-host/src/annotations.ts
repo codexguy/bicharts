@@ -20,7 +20,9 @@
 // and read as that country's. A chart whose marks are like that declares NOTE_STYLE_ATTR="dot" on the element holding
 // them (or on a mark), and each note there draws as one small dot at one place a reader learns once, inside the
 // visible part's top-right corner, with no search; its label and title are read in the tooltip and by a screen
-// reader. Every other chart keeps the badge.
+// reader. A dot that COUNTS (its label a whole number, 1 or more) draws the number there instead, where the mark holds
+// it clear of the mark's own text: a page that says "a number counts the items" would otherwise show a bare dot on
+// the very map it describes. Every other chart keeps the badge.
 //
 // A NOTE SCROLLS WITH ITS MARK. A table that scrolls inside its own box moves its rows without a render, so notes
 // redraw on the next frame after a scroll inside the container (or of the container, or of a box around it), an HTML
@@ -184,6 +186,12 @@ const RING = 1.5;
 const DOT_HALF = DOT / 2 + RING;
 /** From a mark's top-right corner to the dot's centre, on both axes: the dot sits inside, clear of the mark's edges. */
 const DOT_IN = 8;
+/** A dot that COUNTS (its label a whole number, 1 or more) draws the number in a disc this tall, where it fits. */
+const COUNT_H = 14;
+/** The count's width: a disc for one digit, a pill for more. */
+const countW = (digits: number) => Math.max(COUNT_H, digits * 6 + 6);
+/** A dot's label that is a count to draw: a whole number, 1 or more, so every count on a map reads alike. */
+const countOf = (label: string): string | null => (/^\d{1,3}$/.test(label) && Number(label) >= 1 ? label : null);
 
 export interface AnnotationLayer {
     set(list: MarkAnnotation[]): void;
@@ -409,6 +417,21 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
             placed.push(g);
             return [x, y];
         };
+        // THE spot for a dot that COUNTS: the same corner, moved in just enough to hold the number inside the visible
+        // part. Only where the mark is at least twice the number's size each way and the number covers none of the
+        // chart's text (the tile's own code), no control and no other note; else null, and the plain dot is drawn.
+        const countSpot = (v: Box, whole: Box, digits: number): [number, number] | null => {
+            const w = countW(digits), hw = w / 2 + RING, hh = COUNT_H / 2 + RING;
+            const roomy = (b: Box) => b.r - b.l >= 2 * w && b.b - b.t >= 2 * COUNT_H;
+            if (!roomy(whole) || !roomy(v)) return null;
+            const x = clampX(v.r - Math.max(DOT_IN, w / 2 + 2), Math.ceil(hw));
+            const y = clampY(v.t + Math.max(DOT_IN, COUNT_H / 2 + 2), Math.ceil(hh));
+            const g: Box = { l: x - hw, t: y - hh, r: x + hw, b: y + hh };
+            if (g.l < v.l || g.r > v.r || g.t < v.t || g.b > v.b) return null;
+            if (controls.some(c => hits(g, c)) || placed.some(p => hits(g, p)) || textsNow().some(t => hits(g, t.b))) return null;
+            placed.push(g);
+            return [x, y];
+        };
         // Notes are placed in the container's coordinates: a container that scrolls carries them with its content.
         const offX = -origin.left - (container.clientLeft || 0) + (container.scrollLeft || 0);
         const offY = -origin.top - (container.clientTop || 0) + (container.scrollTop || 0);
@@ -459,17 +482,22 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
                 if (v && (!best || area(v) > area(best))) { best = v; bestWhole = box(b); bestMark = m; }
             }
             const dot = wantsDot(bestMark ?? hits.values().next().value ?? null);
+            // A dot whose label is a count shows the count where its mark holds it (countSpot).
+            const count = dot && best ? countOf(text(a.label)) : null;
+            const countPt = count ? countSpot(best!, bestWhole!, count.length) : null;
             // Nothing of it in view: no badge (counted below as not shown). A mark with no box yet keeps the old way.
             const pt: [number, number] | null = !best ? null
-                : dot ? dotSpot(best, bestWhole!) : clear(best, (a.label ?? "•").length, bestMark, bestWhole ?? best);
+                : countPt ?? (dot ? dotSpot(best, bestWhole!) : clear(best, (a.label ?? "•").length, bestMark, bestWhole ?? best));
             if (laidOut && !pt) continue;
             shown++;
             const badge = doc.createElement("div");
             badge.className = ANNOTATION_CLASS;
             badge.setAttribute("role", "button");
             if (dot) {
-                // A dot draws no text: its label leads the tooltip and the name a screen reader gives it.
+                // A dot draws no text, except a count it has room for: its label leads the tooltip and the name a
+                // screen reader gives it either way.
                 const label = text(a.label), title = text(a.title);
+                if (countPt) badge.textContent = count!;
                 badge.setAttribute("title", title ? (label ? `(${label}) ${title}` : title) : `Note on ${want}${label ? `: ${label}` : ""}`);
                 badge.setAttribute("aria-label", `Note on ${want}${label ? `: ${label}` : ""}${title ? `. ${title}` : ""}`);
             } else {
@@ -482,7 +510,11 @@ export function createAnnotationLayer(container: HTMLElement, onClick?: (a: Mark
                 left: `${Math.round(pt ? pt[0] + offX : 0)}px`,
                 top: `${Math.round(pt ? pt[1] + offY : 0)}px`,
                 transform: "translate(-50%, -50%)",
-                ...(dot
+                ...(countPt
+                    ? { width: `${countW(count!.length)}px`, height: `${COUNT_H}px`, boxSizing: "border-box",
+                        borderRadius: `${COUNT_H / 2}px`, font: `600 9px/${COUNT_H}px system-ui, sans-serif`,
+                        textAlign: "center", color: theme.bg || "#ffffff" }
+                    : dot
                     ? { width: `${DOT}px`, height: `${DOT}px`, boxSizing: "border-box", borderRadius: "50%" }
                     : { minWidth: "16px", height: "16px", padding: "0 4px", boxSizing: "border-box",
                         borderRadius: "8px", font: "600 10px/16px system-ui, sans-serif", textAlign: "center",

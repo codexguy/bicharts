@@ -920,8 +920,12 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
 .${HOST_CONTAINER_CLASS} .${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover { filter: brightness(1.1) drop-shadow(0 0 1.5px rgba(0,0,0,0.5)) !important; }
 .${HOST_CONTAINER_CLASS}:not(.${MARKS_INERT_CLASS}):has(.${MARK_CLASS}:not([${ROW_IDX_ATTR}=""]):hover) .${MARK_CLASS}:not(:hover):not([${ROW_IDX_ATTR}=""]) { opacity: 0.55; }
 /* A MARK THAT SELECTS NOTHING DOESN'T LOOK CLICKABLE: no pointer, over the inline cursor generated code
-   sets on its marks, and no dimming of the others on hover (the rule above). A control the chart draws keeps its own. */
-.${HOST_CONTAINER_CLASS}.${MARKS_INERT_CLASS} .${MARK_CLASS} { cursor: default !important; }
+   sets on its marks, and no dimming of the others on hover (the rule above). A control the chart draws keeps its own.
+   The same for a legend swatch and an axis filter: on an inert chart the click handler drops their clicks too, so a
+   month label drawn with a pointer promised a filter that never came. */
+.${HOST_CONTAINER_CLASS}.${MARKS_INERT_CLASS} .${MARK_CLASS},
+.${HOST_CONTAINER_CLASS}.${MARKS_INERT_CLASS} .${LEGEND_MARK_CLASS},
+.${HOST_CONTAINER_CLASS}.${MARKS_INERT_CLASS} .${AXIS_FILTER_CLASS} { cursor: default !important; }
 /* THE KEYBOARD'S FOCUS: a ring on the mark, control or badge that holds keyboard focus, in the colour the
    chart's text is drawn in, so it reads in either theme. A pointer's focus shows none. */
 .${HOST_CONTAINER_CLASS}.${KEYBOARD_CLASS} [${WIRED_ATTR}]:focus:not(:focus-visible) { outline: none; }
