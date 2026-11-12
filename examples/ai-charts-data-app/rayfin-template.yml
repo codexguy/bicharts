@@ -1,0 +1,8 @@
+apiVersion: v1
+metadata:
+  name: ai-charts-data-app
+  displayName: AI Charts Data App
+  description: A Fabric data app with prebuilt RegiaBI charts and mini-apps that you point at your own semantic model through one field map.
+entries:
+  - path: .
+    name: AI Charts Data App

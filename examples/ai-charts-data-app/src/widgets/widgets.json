@@ -1,0 +1,388 @@
+{
+  "widgets": [
+    {
+      "id": "ranking",
+      "kind": "chart",
+      "renderer": "d3",
+      "chartType": "Lollipop chart",
+      "title": "Ranking",
+      "subtitle": "Each category's growth, colored by its group. Click one to filter the page.",
+      "selects": "Category",
+      "columns": [
+        {
+          "name": "Country",
+          "role": "Category"
+        },
+        {
+          "name": "CountryCode",
+          "role": "CountryCode"
+        },
+        {
+          "name": "Region",
+          "role": "Group"
+        },
+        {
+          "name": "Revenue",
+          "role": "Value"
+        },
+        {
+          "name": "RevenueYoY",
+          "role": "Growth"
+        },
+        {
+          "name": "TargetAttainment",
+          "role": "Attainment"
+        },
+        {
+          "name": "ReturnRate",
+          "role": "ReturnRate"
+        },
+        {
+          "name": "CSAT",
+          "role": "Satisfaction"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "f54abd97b431"
+      },
+      "catalog": {
+        "chartTypeId": "b8e7d0f9-c2b8-4e47-9b87-8d9e0f1a2b08",
+        "entrySha256": "0770f38ee43ddd54e1bb92ef930028d067afb82fee33c4291cd6043a0d3046b5",
+        "preview": false
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 40,
+      "codeSha256": "49ef2248639953c08a4dfa547d17d4ec9d71e4434f82087f24fe0160f07e26e2",
+      "componentSha256": "b1b2d79cf2f31319eafda9652329e21f72e9d5be05abf871490f20ca3424db11",
+      "chartHost": "0.6.117"
+    },
+    {
+      "id": "country-map",
+      "kind": "chart",
+      "renderer": "d3",
+      "chartType": "World Choropleth",
+      "title": "Country map",
+      "subtitle": "The value by country. Click a country to filter the page.",
+      "selects": "Category",
+      "binding": {
+        "geo": {
+          "column": "CountryCode",
+          "kind": "country-iso3"
+        }
+      },
+      "columns": [
+        {
+          "name": "Country",
+          "role": "Category"
+        },
+        {
+          "name": "CountryCode",
+          "role": "CountryCode"
+        },
+        {
+          "name": "Region",
+          "role": "Group"
+        },
+        {
+          "name": "Revenue",
+          "role": "Value"
+        },
+        {
+          "name": "RevenueYoY",
+          "role": "Growth"
+        },
+        {
+          "name": "TargetAttainment",
+          "role": "Attainment"
+        },
+        {
+          "name": "ReturnRate",
+          "role": "ReturnRate"
+        },
+        {
+          "name": "CSAT",
+          "role": "Satisfaction"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "26cdf5aaa1a4"
+      },
+      "catalog": {
+        "chartTypeId": "2b9f4e17-8c3a-4d6e-a1f0-5e7c9b2d40a6",
+        "entrySha256": "034255f08774c024dddd076b90b7643b0bece959f815921af3a51e98851d3805",
+        "preview": false
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 40,
+      "codeSha256": "e08cd67f43192f9adb6584464b89fe43469895b8e5e87142957a03545131129f",
+      "componentSha256": "148ad0830d384dcafd09862f2095d469ed8e0b3317ab82f821b18fd6ae450558",
+      "chartHost": "0.6.117"
+    },
+    {
+      "id": "trend",
+      "kind": "chart",
+      "renderer": "d3",
+      "chartType": "Time series plot",
+      "title": "Trend",
+      "subtitle": "The value and its target by month. Click a month to filter the page.",
+      "selects": "Date",
+      "columns": [
+        {
+          "name": "MonthStart",
+          "role": "Date"
+        },
+        {
+          "name": "YearMonth",
+          "role": "Period"
+        },
+        {
+          "name": "Revenue",
+          "role": "Value"
+        },
+        {
+          "name": "RevenueTarget",
+          "role": "Target"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "4a4c30819fb1"
+      },
+      "catalog": {
+        "chartTypeId": "c0c2d7ab-2100-4234-8f4f-071992285dc4",
+        "entrySha256": "b2ace6c153b5384f4a30b1f029e4ef7a3689f720322e6271cf86b8464f28b836",
+        "preview": false
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 84,
+      "codeSha256": "ea155421446d7593f7e99f428fdbc8a52e0c54c00bd1171abc46f76c6351967e",
+      "componentSha256": "cc08c9b9bd6ede6fa8f46f6f72da1dd6a4c200825001861ff225eb61542a6b9b",
+      "chartHost": "0.6.117"
+    },
+    {
+      "id": "actual-vs-target",
+      "kind": "chart",
+      "renderer": "d3",
+      "chartType": "Variance chart (budget vs actual)",
+      "title": "Actual against target",
+      "subtitle": "How far each month landed above or below its target.",
+      "selects": "Date",
+      "columns": [
+        {
+          "name": "MonthStart",
+          "role": "Date"
+        },
+        {
+          "name": "Revenue",
+          "role": "Value"
+        },
+        {
+          "name": "Target",
+          "role": "Target"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "d82cea95ea66"
+      },
+      "catalog": {
+        "chartTypeId": "73229a68-9858-44f6-9f2a-dd6fa1c783fa",
+        "entrySha256": "8d240bce7b51845ff9b8a6630776c2e78805991edb7e510ec1c7d504b9e51016",
+        "preview": true
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 12,
+      "codeSha256": "a27c5448f69f876e0d88a4e6b20971c535b0d6c5e7ee3cac7a3dd065a00cb3f4",
+      "componentSha256": "eca8352387bf6dd69ce36fedf8bc3cae17137e779cb7070563b44a7620b9df75",
+      "chartHost": "0.6.117"
+    },
+    {
+      "id": "what-if-projection",
+      "kind": "mini-app",
+      "renderer": "d3",
+      "chartType": "What-if projection",
+      "title": "What-if projection",
+      "subtitle": "Steer the growth rate inside the chart and see where the line lands against the goal.",
+      "selects": "Date",
+      "columns": [
+        {
+          "name": "MonthStart",
+          "role": "Date"
+        },
+        {
+          "name": "Revenue",
+          "role": "Baseline"
+        },
+        {
+          "name": "RevenueTarget",
+          "role": "Goal"
+        }
+      ],
+      "source": {
+        "kind": "file",
+        "path": "examples/fabric-app-template/src/charts/revenue-projection"
+      },
+      "control": "knobs",
+      "codeSha256": "766ef13411df143aaf707c472e1e35ca0791d3819e35f8fd370b7965ac0d5983",
+      "componentSha256": "caa7f49954f1233ab3e163aa2b6ca8aa398640c2b68c42d51bb55e28c871d480",
+      "hostContract": "1.13.0",
+      "chartHost": "0.6.117"
+    },
+    {
+      "id": "what-if-scenarios",
+      "kind": "mini-app",
+      "renderer": "d3",
+      "chartType": "What-if scenarios",
+      "title": "What-if scenarios",
+      "subtitle": "Compare growth scenarios side by side against the goal.",
+      "selects": "Date",
+      "columns": [
+        {
+          "name": "MonthStart",
+          "role": "Date"
+        },
+        {
+          "name": "Revenue",
+          "role": "Baseline"
+        },
+        {
+          "name": "RevenueTarget",
+          "role": "Goal"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "1b7afffdac7d"
+      },
+      "catalog": {
+        "chartTypeId": "6b0e2c47-93a1-4f5d-b8e6-2d7c41a90f35",
+        "entrySha256": "c1829cc2d22d76ad9fe660ff25ebe45ab945788e4cf63ecf383a289915c16b17",
+        "preview": true
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 84,
+      "codeSha256": "a72466cab3689bfb49b709fd2018fb7f1262073fd179986576405b7a8d7b3a3d",
+      "componentSha256": "dc119401cf57020d19ed982791efe9ce32e7f8ae27ec1daf94050d2a385151c6",
+      "control": "knobs",
+      "chartHost": "0.6.117"
+    },
+    {
+      "id": "selection-explainer",
+      "kind": "mini-app",
+      "renderer": "d3",
+      "chartType": "Selection explainer",
+      "title": "Selection explainer",
+      "subtitle": "Circle a group of points and see what sets it apart from the rest.",
+      "selects": "Category",
+      "columns": [
+        {
+          "name": "Country",
+          "role": "Category"
+        },
+        {
+          "name": "CountryCode",
+          "role": "CountryCode"
+        },
+        {
+          "name": "Region",
+          "role": "Group"
+        },
+        {
+          "name": "Revenue",
+          "role": "Value"
+        },
+        {
+          "name": "RevenueYoY",
+          "role": "Growth"
+        },
+        {
+          "name": "TargetAttainment",
+          "role": "Attainment"
+        },
+        {
+          "name": "ReturnRate",
+          "role": "ReturnRate"
+        },
+        {
+          "name": "CSAT",
+          "role": "Satisfaction"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "e1fbd4a2715d"
+      },
+      "catalog": {
+        "chartTypeId": "2b7d4e1c-5a93-4f68-8c0e-71d3a9b5e602",
+        "entrySha256": "6d05dadf6902af2a7896d15ae132e7a7abf4800c452401cb1ea7eb02aec9d421",
+        "preview": true
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 40,
+      "codeSha256": "b9ebfa0f7b0f5c8ae3a0f54cf7a89e85c44e484649308a94dfb961199fa9ee77",
+      "componentSha256": "ef8f96ac675f26370db1e5359b5218ab39227dd92eef7baa2e23340f59ba6019",
+      "control": "selection",
+      "chartHost": "0.6.117",
+      "knownDefects": [
+        {
+          "check": "duplicate-ticks",
+          "what": "The y axis repeats tick labels (0.3, 0.3, 0.2, 0.2) for a growth rate between about 0.1 and 0.35.",
+          "why": "The saved generation carries no number format for RevenueYoY, so the code prints axis ticks to one significant digit. No newer saved generation of this type reads these columns.",
+          "fix": "Regenerate the Selection explainer on these roles with the column's format (0.0%). Generating costs model calls, so it needs approval."
+        }
+      ]
+    },
+    {
+      "id": "budget-allocator",
+      "kind": "mini-app",
+      "renderer": "d3",
+      "chartType": "Budget allocator",
+      "title": "Budget allocator",
+      "subtitle": "Set a total budget and see how to split it where it earns the most.",
+      "selects": "Category",
+      "columns": [
+        {
+          "name": "Region",
+          "role": "Group"
+        },
+        {
+          "name": "CountryCode",
+          "role": "CountryCode"
+        },
+        {
+          "name": "Country",
+          "role": "Category"
+        },
+        {
+          "name": "Year",
+          "role": "Year"
+        },
+        {
+          "name": "MarketingSpend",
+          "role": "Spend"
+        },
+        {
+          "name": "Revenue",
+          "role": "Response"
+        }
+      ],
+      "source": {
+        "kind": "saved-generation",
+        "ref": "f0b96f48be13"
+      },
+      "catalog": {
+        "chartTypeId": "fa685750-18a8-4e88-ad18-f8ae11256997",
+        "entrySha256": "a4ba07254cee69c417445d7ede6416ac9a27fe47c00b604c1f1eaccec0640217",
+        "preview": true
+      },
+      "hostContract": "1.24.0",
+      "builtForRows": 280,
+      "codeSha256": "5d253179cfd412457bdfde7f9689aee91d76bd51739d8a0477030e1dd6570cf2",
+      "componentSha256": "71c1a06a23fd02bf1e0567207ab991a0b05faf47c4e3e7b7adf4f28579dd95bc",
+      "control": "knobs",
+      "chartHost": "0.6.117"
+    }
+  ]
+}

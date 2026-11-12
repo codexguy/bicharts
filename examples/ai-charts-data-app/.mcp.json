@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "rayfin": {
+      "args": [
+        "-y",
+        "@microsoft/rayfin-mcp",
+        "start"
+      ],
+      "command": "npx",
+      "type": "stdio"
+    },
+    "bic-chart": {
+      "command": "npx",
+      "args": ["-y", "@bicharts/chart-mcp"]
+    }
+  }
+}

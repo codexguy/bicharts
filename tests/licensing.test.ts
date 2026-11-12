@@ -33,9 +33,9 @@ const FORBIDDEN: Array<[RegExp, string]> = [
 const ALL_RIGHTS = FORBIDDEN[0][0];
 
 // Folders that hold a third party's template under its own licence rather than this repo's: the
-// Fabric Apps example is Microsoft's MIT-licensed Rayfin data app template with charts added. Its
-// LICENSE says so, and the README says which files are whose.
-const THIRD_PARTY_MIT = ["examples/fabric-app-template"].map(d => d.split("/").join(sep));
+// Fabric Apps examples are Microsoft's MIT-licensed Rayfin data app template with charts added. Each
+// one's LICENSE says so, and its README says which files are whose.
+const THIRD_PARTY_MIT = ["examples/fabric-app-template", "examples/ai-charts-data-app"].map(d => d.split("/").join(sep));
 const MIT_HEADER = /Copyright \(c\) Microsoft Corporation\.\s+All rights reserved\.\s*\n\s*\/\/\s*Licensed under the MIT license/;
 
 const TEXT_EXT = new Set([".ts", ".tsx", ".mjs", ".js", ".json", ".md", ".yml", ".yaml"]);
