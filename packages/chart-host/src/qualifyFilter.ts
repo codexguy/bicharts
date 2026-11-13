@@ -19,7 +19,7 @@
 // of drift nobody notices from inside any one of them. There is no host or renderer specificity
 // in string matching, so there is no reason for it to live anywhere else.
 
-import { looseNameKey } from "@bicharts/shape-core";
+import { looseNameKey, localizedChartNames } from "@bicharts/shape-core";
 
 /**
  * HOW A TERM MATCHES A NAME - a reader's setting on every host, and "loose" unless they choose
@@ -125,6 +125,20 @@ function startsAWord(name: string, t: string): boolean {
     return false;
 }
 
+/** Where the term falls in any language's name for the chart type `englishName`: "start" when it starts a word of one,
+ *  "mid" when it only sits inside a word, "" when no name holds it (or the type has no localized names). */
+function localizedTier(englishName: string | null | undefined, t: string): "start" | "mid" | "" {
+    if (!englishName) return "";
+    let mid = false;
+    for (const { name } of localizedChartNames(englishName)) {
+        const n = normalizeFilterTerm(name);
+        if (n.indexOf(t) < 0) continue;
+        if (startsAWord(n, t)) return "start";
+        mid = true;
+    }
+    return mid ? "mid" : "";
+}
+
 /** A letter or digit of ANY script. A name in Cyrillic, Greek or Arabic letters breaks words where
  *  those letters stop, exactly as a Latin name does; an ASCII-only test read every such letter as a
  *  break, so a term buried inside a word ranked as a name match. */
@@ -202,6 +216,9 @@ export function filterQualifyRows<T>(
     term: string | null | undefined,
     read: QualifyFilterRead<T>,
     style: FilterMatchStyle = DEFAULT_FILTER_MATCH_STYLE,
+    /** Try the types' names in other languages when nothing shown answers (default). A caller filtering several lists
+     *  as ONE answer turns it off until none of them answers in English - see computeQualifyFilterView. */
+    localizedNames = true,
 ): QualifyFilterResult<T> {
     const all = Array.isArray(rows) ? rows.slice() : [];
     const t = normalizeFilterTerm(term);
@@ -238,6 +255,20 @@ export function filterQualifyRows<T>(
     if (atWordStart.length > 0) return { rows: atWordStart, tier: "name", term: t };
     if (midWord.length > 0) return { rows: midWord, tier: "namePart", term: t };
     if (byDesc.length > 0) return { rows: byDesc, tier: "desc", term: t };
+    // THE TYPE'S NAME IN ANOTHER LANGUAGE ("Balken", "barras", "棒グラフ"): a reader types the name they know, and the
+    // language they type is not the one the host reports, so every language's name is tried. LAST, and only when nothing
+    // shown answered: across twenty-nine languages a short English term starts some word in dozens of names ("per" is in
+    // 48), so a term that finds anything as shown is answered exactly as before. Same two tiers as the shown name.
+    if (!localizedNames) return { rows: [], tier: "none", term: t };
+    const locStart: T[] = [];
+    const locMid: T[] = [];
+    for (const row of all) {
+        const tier = localizedTier(read(row).name, t);
+        if (tier === "start") locStart.push(row);
+        else if (tier === "mid") locMid.push(row);
+    }
+    if (locStart.length > 0) return { rows: locStart, tier: "name", term: t };
+    if (locMid.length > 0) return { rows: locMid, tier: "namePart", term: t };
     return { rows: [], tier: "none", term: t };
 }
 
@@ -498,8 +529,15 @@ export function computeQualifyFilterView<E>(
         return out;
     };
     const fitRows = collect("fits");
-    const fit = filterQualifyRows(fitRows, term, read, style);
-    const ref = filterQualifyRows(collect("refused"), term, read, style);
+    const refRows = collect("refused");
+    // The fitting and refused lists are ONE answer: a name in another language answers only when neither list answers as
+    // shown, so a weak cross-language hit in one list never stands in for a real hit in the other ("gan" is Gantt below).
+    let fit = filterQualifyRows(fitRows, term, read, style, false);
+    let ref = filterQualifyRows(refRows, term, read, style, false);
+    if (fit.tier === "none" && ref.tier === "none") {
+        fit = filterQualifyRows(fitRows, term, read, style, true);
+        ref = filterQualifyRows(refRows, term, read, style, true);
+    }
 
     const visible = new Set<E>();
     for (const r of fit.rows) visible.add(r.el);

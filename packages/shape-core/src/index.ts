@@ -196,6 +196,12 @@ export {
 } from "./vocab/calendarWords";
 export type { CycleConcept, CalendarWordHit } from "./vocab/calendarWords";
 
+// CHART-TYPE NAMES in the other Tier 1 languages: displayed to a reader, read from a typed request, matched by the chooser's
+// filter. The server's copy is generated from this block.
+export {
+    CHART_NAME_LANGUAGES, LOCALIZED_CHART_NAMES, foldChartName, localizedChartName, localizedChartNames, chartNameFromLocalized,
+} from "./vocab/chartNames";
+
 // COORDINATE WORDS: other languages' words for latitude and longitude. A word only NOMINATES a column; a caller admits a pair
 // only after its values fit (latitude within +-90, longitude within +-180). The server's copy is generated from this block.
 export { LATITUDE_WORDS, LONGITUDE_WORDS, coordinateAxisOfWords } from "./vocab/coordinates";
