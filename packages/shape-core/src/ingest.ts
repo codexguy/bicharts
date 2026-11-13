@@ -31,6 +31,7 @@ import { parseDateStable } from "./util";
 import { readTextDateColumn, type TextDateColumn } from "./textDate";
 import { detectDecimalSeparator, foldNumerals, isNumberText, parseNumberText, type DecimalSeparator } from "./numberText";
 import type { LLMColumnWithValue } from "./models";
+import { isSpreadsheetErrorText } from "./vocab/spreadsheetErrors";
 
 /** Engine value types. Anything a decoder cannot map confidently becomes "String". */
 export type EngineDataType = "String" | "Integer" | "Decimal" | "DateTime";
@@ -190,6 +191,13 @@ function inferDataType(samples: any[], decimal: DecimalSeparator = ".", textDate
     return "String";
 }
 
+/** `rows` with every spreadsheet error cell in an `inferred` column made null; the same array when there is none. */
+function blankSpreadsheetErrors(rows: any[][], inferred: boolean[]): any[][] {
+    const hit = (r: any[] | undefined) => !!r && inferred.some((on, c) => on && isSpreadsheetErrorText(r[c]));
+    if (!rows.some(hit)) return rows;
+    return rows.map(r => hit(r) ? r.map((v, c) => (inferred[c] && isSpreadsheetErrorText(v) ? null : v)) : r);
+}
+
 function convert(v: any, dataType: string, decimal: DecimalSeparator = ".", textDate: TextDateColumn | null = null): any {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") return dataType === "String" ? String(v) : v;
@@ -258,6 +266,12 @@ function buildProfile(
     }
 
     const n = descriptors.length;
+
+    // 0. A cell holding a spreadsheet's formula error (`#N/A`, `#DIV/0!`, a German `#NV`, a Spanish `#¡VALOR!`) is not
+    //    data: it is a blank, decided here once, before anything below types a column by its values.
+    //    Only in a column whose type is INFERRED - a source that declares its types holds typed values - and the rows
+    //    are copied only when such a cell is found.
+    rows = blankSpreadsheetErrors(rows, descriptors.map(d => d.dataType === undefined));
 
     // 1. Types — the descriptor's own, else inferred from a bounded sample. Each column's decimal
     //    separator is read from the same sample first, because it decides what counts as a number.

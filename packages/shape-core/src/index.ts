@@ -216,6 +216,8 @@ export {
     IDENTIFIER_WORDS, IDENTIFIER_HEAD_INITIAL, IDENTIFIER_UNFOLDED, localizedIdentifierWordIn,
 } from "./vocab/identifierWords";
 export type { IdentifierWordHit } from "./vocab/identifierWords";
+// SPREADSHEET ERROR CELLS: a formula error saved as text, in any language, read as a blank by ingest.
+export { NOT_AVAILABLE, isSpreadsheetErrorText } from "./vocab/spreadsheetErrors";
 
 // THE NAME READER (2026-09-24): one reading of a column name in every script - the words (any
 // script's letters, marks and digits; camelCase on any cased script), one length-preserving fold,
