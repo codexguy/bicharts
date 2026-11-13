@@ -741,6 +741,12 @@ export class IndexedText implements IValueCollection {
     private _declaredDimensions: WeakSet<LLMColumnWithValue> = new WeakSet();
     // inferredMeasureFlags() result; null until asked and again whenever rows, columns or declarations change.
     private _inferredMeasureFlags: readonly boolean[] | null = null;
+    // Each column's own fields as the host set them, taken just before the first stats pass wrote to it, and the keys
+    // that pass added. A re-measure (rows appended, or invalidateStats) puts the column back to the first and drops the
+    // second before measuring again, so a flag the earlier pass set on fewer rows cannot survive into the new profile.
+    // Keys a host adds AFTER the stats pass (ingest's modelFormat / modelDesc) are in neither list and are kept.
+    private _preStatsFields: (Record<string, unknown> | null)[] | null = null;
+    private _statsAddedKeys: string[][] | null = null;
 
     /**
      * Collapse value-identical rows on addRow. DEFAULT TRUE — the long-standing behaviour,
@@ -898,6 +904,19 @@ export class IndexedText implements IValueCollection {
         if (this._computedStatsForLevel == privacyLevel) {
             return this._cols;
         }
+        // A RE-MEASURE STARTS FROM THE HOST'S COLUMNS, not from what the last pass wrote (see _preStatsFields).
+        if (this._preStatsFields && this._statsAddedKeys && this._preStatsFields.length === this._cols.length) {
+            this._cols.forEach((col, i) => {
+                const before = this._preStatsFields![i];
+                if (!col || !before) return;
+                for (const k of this._statsAddedKeys![i] ?? []) delete (col as any)[k];
+                for (const k of Object.keys(before)) (col as any)[k] = before[k];
+            });
+        } else {
+            this._preStatsFields = this._cols.map(c => (c ? { ...(c as any) } : null));
+        }
+        // The keys each column holds as this pass starts: whatever the pass adds beyond them is the pass's own.
+        const keysAtStart = this._cols.map(c => new Set(c ? Object.keys(c) : []));
         // `locale` (host.locale) is stable per session, so it isn't part of the cache key —
         // it only steers classifyTemporal's localized month-name matching below.
 
@@ -1645,6 +1664,7 @@ export class IndexedText implements IValueCollection {
 
         this.applyMeasurePersistence(locale, colValueSets);
 
+        this._statsAddedKeys = this._cols.map((c, i) => (c ? Object.keys(c).filter(k => !keysAtStart[i].has(k)) : []));
         this._computedStatsForLevel = privacyLevel;
         return this._cols;
     }
@@ -2437,7 +2457,9 @@ export class IndexedText implements IValueCollection {
         }
 
         this._rows.push(trimmedCells(colvals));
-        this._inferredMeasureFlags = null;
+        // A kept row changes every count the profile reports (distinct values, leaf cardinality, the measure verdict), so a
+        // profile taken before it - What Fits on a load Power BI was still delivering - must be measured again.
+        this.invalidateStats();
         this._origIndices.push(originalIdx === undefined || originalIdx === null ? -1 : originalIdx);
         return true;
     }
@@ -2450,16 +2472,21 @@ export class IndexedText implements IValueCollection {
     /**
      * Forget the computed column statistics, keeping the rows, so the next getColumnsWithStats measures again. For a host
      * whose profile changed inputs after the first measurement - the admin-1 lookup arrived, or the reader toggled
-     * deriveProvinces - without re-adding every row.
+     * deriveProvinces - without re-adding every row. addRow calls it for every row it keeps: a profile taken before the
+     * last rows arrived describes a table that no longer exists.
      */
     public invalidateStats(): void {
         this._computedStatsForLevel = null;
         this._geoExtentComputed = false;
         this._geoExtent = null;
         this._geoExtentLatIdx = -1;
+        // Both read isMeasure, which the stats pass may promote, and both count rows.
+        this._leafCardinality = null;
+        this._inferredMeasureFlags = null;
     }
 
     public reset(): void {
+        this.invalidateStats(); this._preStatsFields = null; this._statsAddedKeys = null;
         this._inferredMeasureFlags = null;
         this._cols = [];
         this._rows = [];
@@ -2493,6 +2520,7 @@ export class IndexedText implements IValueCollection {
      * repeated setColumns calls are safe.
      */
     public setColumns(cols: LLMColumnWithValue[]): void {
+        this.invalidateStats(); this._preStatsFields = null; this._statsAddedKeys = null;
         this._inferredMeasureFlags = null;
         this._cols = cols;
         if (!cols || cols.length === 0) return;
