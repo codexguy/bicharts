@@ -45,7 +45,9 @@ export function composeSummaryText(
     if (String(warningMsg ?? "").trim() !== "") {
         sumText = sumText.replace(/\s+$/, "");
         if (sumText !== "") {
-            sumText += /[.!?:;]$/.test(sumText) ? " " : ". ";
+            // A sentence end in any script: the full-width CJK marks, the Arabic and Urdu question and full
+            // stop, the Devanagari danda and an ellipsis, beside the ASCII ones.
+            sumText += /[.!?:;。！？：；…؟۔।॥]$/u.test(sumText) ? " " : ". ";
         }
         sumText += "Warning: " + warningMsg;
     }

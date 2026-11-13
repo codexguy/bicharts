@@ -753,14 +753,33 @@ export const LABEL_ROW_MIN_TEXTS = 3;
 export const LABEL_ROW_Y_TOLERANCE = 2;
 
 /**
+ * The scale words and currency names a number format writes as LETTERS, in the locales a chart
+ * is drawn for: German "Mio." / "Mrd." / "Tsd.", French "Md", Russian "\u0442\u044b\u0441." / "\u043c\u043b\u043d" / "\u043c\u043b\u0440\u0434",
+ * Indian lakh / crore, and currencies such as "z\u0142", "kr", "K\u010d", "Ft". Removed as whole words
+ * (with an optional abbreviation point) before the furniture test; the CJK myriad units are
+ * removed wherever they sit, since those scripts glue them to the number.
+ */
+const SCALE_WORDS = [
+    "mio", "mrd", "md", "mds", "tsd", "bn", "mn", "mln", "mld", "bln", "mil", "mill", "milj", "tys", "ty\u015b",
+    "\u0442\u044b\u0441", "\u043c\u043b\u043d", "\u043c\u043b\u0440\u0434", "\u0442\u0440\u043b\u043d", "lakh", "lac", "cr", "crore",
+    "z\u0142", "kr", "k\u010d", "ft", "lei", "r", "rs", "tl", "rp", "kn", "\u043b\u0432", "\u0433\u0440\u043d",
+];
+const SCALE_WORD_RX = new RegExp("(?<!\\p{L})(?:" + SCALE_WORDS.join("|") + ")\\.?(?!\\p{L})", "giu");
+const CJK_UNIT_RX = /[\u4e07\u842c\u5104\u4ebf\u5343\u767e\u5146\ub9cc\uc5b5\ucc9c\uc870]/gu;
+
+/**
  * A tick-like label: at least one digit, and nothing but digits and the furniture a number
  * format adds - separators, sign, decimal point, currency, percent, a K/M/B suffix, a
- * time colon. "Jan 2026" and "1 region unmatched" are not numeric; "$1.2M" and "-3.5%" are.
+ * time colon - in any locale: any script's digits, any currency sign, a no-break or
+ * apostrophe group separator, the Arabic decimal and group marks, and the scale words above.
+ * "Jan 2026", "1 region unmatched" and "3 Mio. Kunden" are not numeric; "$1.2M", "-3.5%",
+ * "1,2 Mio. \u20ac" and "12\u4e07" are.
  */
 export function isNumericLabelText(s: string): boolean {
     const t = (s || "").trim();
-    if (!t || !/\d/.test(t)) return false;
-    return /^[\s$\u20ac\u00a3\u00a5%+\-\u2013\u2212.,0-9kKmMbB:]+$/.test(t);
+    if (!t || !/\p{Nd}/u.test(t)) return false;
+    const rest = t.replace(SCALE_WORD_RX, " ").replace(CJK_UNIT_RX, " ");
+    return /^[\s\p{Sc}%\u2030+\-\u2013\u2212.,'\u2019\u066b\u066c\p{Nd}kKmMbB:]+$/u.test(rest);
 }
 
 // A NOMINAL AXIS IS NEVER THINNED. The axis-thin pass rests on the premise that a hidden tick

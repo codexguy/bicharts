@@ -120,11 +120,22 @@ export type QualifyFilterRead<T> = (row: T) => { name?: string | null; descripti
 function startsAWord(name: string, t: string): boolean {
     for (let i = name.indexOf(t); i >= 0; i = name.indexOf(t, i + 1)) {
         if (i === 0) return true;
-        const prev = name.charCodeAt(i - 1);
-        const alnum = (prev >= 97 && prev <= 122) || (prev >= 48 && prev <= 57);
-        if (!alnum) return true;
+        if (!isWordChar(charBefore(name, i))) return true;
     }
     return false;
+}
+
+/** A letter or digit of ANY script. A name in Cyrillic, Greek or Arabic letters breaks words where
+ *  those letters stop, exactly as a Latin name does; an ASCII-only test read every such letter as a
+ *  break, so a term buried inside a word ranked as a name match. */
+const WORD_CHAR_RX = /^[\p{L}\p{M}\p{N}]$/u;
+function isWordChar(ch: string): boolean {
+    return ch !== "" && WORD_CHAR_RX.test(ch);
+}
+/** The whole character (one code point, surrogate pairs kept together) before offset `i`. */
+function charBefore(s: string, i: number): string {
+    const lo = s.charCodeAt(i - 1);
+    return lo >= 0xdc00 && lo <= 0xdfff && i >= 2 ? s.slice(i - 2, i) : s.charAt(i - 1);
 }
 
 /**
@@ -140,8 +151,7 @@ function looseFormWithWordStarts(name: string): { form: string; starts: Set<numb
     let prevAlnum = false;
     for (const ch of name) {
         const piece = looseNameKey(ch);
-        const code = ch.charCodeAt(0);
-        const alnum = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+        const alnum = isWordChar(ch);
         if (piece) {
             if (!prevAlnum) starts.add(form.length);
             form += piece;
