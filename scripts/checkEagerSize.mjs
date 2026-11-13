@@ -98,9 +98,15 @@ import { resolve, dirname, join } from "node:path";
 // traits that choose it, and the shared follower that keeps it on a mark that pans or zooms; about 9 KB together)
 // paints on every selection change, so it cannot sit behind a dynamic import. No geometry is in the closure;
 // closure (~850 KB) + the smallest map asset (223 KB) is ~1073 KB, far above 860.
+//
+// 860 -> 870 KB, deliberately, as ordinary growth, measured first: 859.7 KB before, 860.2 KB after. The paint yield
+// (one frame between a host raising its busy indicator and a synchronous render, about 0.5 KB, compacted before the
+// line was moved) runs before every render, so it cannot sit behind a dynamic import. The closure had 0.3 KB of
+// headroom left, so any addition would have crossed. No geometry is in the closure; closure (~860 KB) + the smallest
+// map asset (223 KB) is ~1083 KB, far above 870.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 860);
+const limitKB = Number(process.argv[3] ?? 870);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //

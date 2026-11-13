@@ -94,6 +94,57 @@ describe("codeReadsOption - a host shows a control only for a chart that respond
         expect(codeReadsOption("myoptions.hoverDropLines", "hoverDropLines")).toBe(false);
     });
 
+    it("reads optional chaining", () => {
+        expect(codeReadsOption("const on = options?.hoverDropLines === true;", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("if (options ?. hoverDropLines) draw();", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("const on = options?.hoverDropLinesColor;", "hoverDropLines")).toBe(false);
+    });
+
+    it("reads through a one-hop alias of options", () => {
+        expect(codeReadsOption("const o = options;\nconst on = o.hoverDropLines;", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("let opts = options || {}; if (opts?.hoverDropLines) draw();", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("const opt = options ?? {};\nopt.hoverDropLines && draw();", "hoverDropLines")).toBe(true);
+        // an alias that never reads the key, and a name that is not the alias
+        expect(codeReadsOption("const o = options;\nconst w = o.width;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const o = options;\nconst on = foo.hoverDropLines;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const o = options;\nconst on = so.hoverDropLines;", "hoverDropLines")).toBe(false);
+        // a variable taken from a member of options is not an alias of options
+        expect(codeReadsOption("const o = options.theme;\nconst on = o.hoverDropLines;", "hoverDropLines")).toBe(false);
+    });
+
+    it("reads destructuring of options", () => {
+        expect(codeReadsOption("const { width, hoverDropLines } = options;", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("const { hoverDropLines: drop = false, height } = options || {};", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("let {\n  hoverDropLines\n} = options;", "hoverDropLines")).toBe(true);
+        // the key as a binding name, not a property read, and another object destructured
+        expect(codeReadsOption("const { other: hoverDropLines } = options;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const { hoverDropLines } = settings;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const { hoverDropLines } = options.theme;", "hoverDropLines")).toBe(false);
+    });
+
+    it("reads destructuring in render's parameter list", () => {
+        expect(codeReadsOption("function render(container, data, { hoverDropLines, width }) {}", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("async function render(el, d, { width, hoverDropLines = true } = {}) {}", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("const render = (container, data, { hoverDropLines }) => {};", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("function render(container, data, {\n  hoverDropLines: drop,\n}) {}", "hoverDropLines")).toBe(true);
+        // another function's parameters, and the key as a binding name
+        expect(codeReadsOption("function draw(container, data, { hoverDropLines }) {}", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("function render(container, data, { other: hoverDropLines }) {}", "hoverDropLines")).toBe(false);
+    });
+
+    it("stays false for a comment, a string, or another object's property", () => {
+        expect(codeReadsOption("// options.hoverDropLines is not read here\nconst w = options.width;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("/* options?.hoverDropLines */ const w = options.width;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const s = \"options.hoverDropLines\";", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const s = 'options.hoverDropLines';", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const s = `options.hoverDropLines`;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const on = settings.hoverDropLines;", "hoverDropLines")).toBe(false);
+        expect(codeReadsOption("const on = cfg?.hoverDropLines;", "hoverDropLines")).toBe(false);
+        // a read inside a template's substitution is still a read, and a URL in a string is not a comment
+        expect(codeReadsOption("const s = `on: ${options.hoverDropLines}`;", "hoverDropLines")).toBe(true);
+        expect(codeReadsOption("const u = \"https://x.test\"; const on = options.hoverDropLines;", "hoverDropLines")).toBe(true);
+    });
+
     it("answers only for keys in the vocabulary", () => {
         expect(codeReadsOption("options.notAnOption", "notAnOption" as OptionKey)).toBe(false);
         for (const k of KEYS) expect(codeReadsOption(`x = options.${k};`, k), k).toBe(true);

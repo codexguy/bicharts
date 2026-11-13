@@ -144,7 +144,14 @@ export const LIVE_OPTION_KEYS: readonly OptionKey[] = Object.freeze(
  * A host uses it to show a control only for a chart that
  * will respond to it - a switch on a chart that ignores it
  * does nothing. Generated code reads options as
- * `options.<key>`, so the property access is the test.
+ * `options.<key>` or `options?.<key>`, through a one-hop
+ * alias (`const o = options; o.<key>`), by destructuring
+ * (`const { <key> } = options`) or in render's own
+ * parameter list (`function render(c, d, { <key> })`).
+ * Comments and string literals are blanked first, so a
+ * note or a message naming the option is not a read. A
+ * string test, not a parse: it reads the forms above and
+ * nothing cleverer.
  */
 export function codeReadsOption(
     code: string | null | undefined,
@@ -152,7 +159,50 @@ export function codeReadsOption(
 ): boolean {
     if (!code || !Object.prototype.hasOwnProperty
             .call(OPTIONS_VOCABULARY, key)) return false;
-    return new RegExp(`\\boptions\\.${key}\\b`).test(code);
+    const src = blankCommentsAndStrings(code);
+    const member = (obj: string) =>
+        new RegExp(`(?<![\\w$])${obj}\\s*\\??\\.\\s*${key}(?![\\w$])`);
+    // `options.<key>` / `options?.<key>`. A member reached THROUGH
+    // another object (`this.options.<key>`) counts, as it always has.
+    if (member("options").test(src)) return true;
+    // `options` itself on the right of a declaration - not a member of it.
+    const whole = "options(?![\\w$])(?!\\s*\\??\\.)(?!\\s*\\[)";
+    // A one-hop alias: `const o = options` (or `options || {}`).
+    const alias = new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${whole}`, "g");
+    for (let m; (m = alias.exec(src));) {
+        if (member(m[1].replace(/\$/g, "\\$")).test(src)) return true;
+    }
+    // `const { <key> } = options` - the key as a property of the pattern.
+    const destructure = new RegExp(`\\b(?:const|let|var)\\s*\\{([^{}]*)\\}\\s*=\\s*${whole}`, "g");
+    for (let m; (m = destructure.exec(src));) {
+        if (patternNamesKey(m[1], key)) return true;
+    }
+    // render's third parameter destructured: `function render(c, d, { <key> })`,
+    // `render = function (c, d, { <key> })` or `render = (c, d, { <key> }) =>`.
+    const params = /(?:\bfunction\s+render\s*|\brender\s*=\s*(?:async\s+)?(?:function\b\s*[\w$]*\s*)?)\(\s*[\w$]+\s*,\s*[\w$]+\s*,\s*\{([^{}]*)\}/g;
+    for (let m; (m = params.exec(src));) {
+        if (patternNamesKey(m[1], key)) return true;
+    }
+    return false;
+}
+
+/** Does an object pattern's body (`a, b: c, d = 1`) take the property `key`? */
+function patternNamesKey(body: string, key: string): boolean {
+    return new RegExp(`(?:^|,)\\s*${key}\\s*(?:[:=,]|$)`).test(body);
+}
+
+/**
+ * The code with every comment and string literal blanked to a space, so
+ * nothing they name reads as code. A template literal keeps its `${...}`
+ * substitutions, which ARE code. A regex literal is not recognised; one
+ * holding a quote can leave the rest of its line read as a string.
+ */
+function blankCommentsAndStrings(code: string): string {
+    return code.replace(
+        /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\[\s\S]|\$\{[^}]*\}|[^`\\])*`/g,
+        lit => lit[0] === "`"
+            ? " " + (lit.match(/\$\{[^}]*\}/g) ?? []).map(s => s.slice(2, -1)).join(" ") + " "
+            : " ");
 }
 
 /**

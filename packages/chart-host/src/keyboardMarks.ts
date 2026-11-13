@@ -228,11 +228,26 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
         } catch { /* a mark the browser can't hover is still focused and named */ }
     };
     const hideTip = () => { const el = tipOn; tipOn = null; if (el) hover(el, false); };
+    // A POINTER THAT FOCUSES A MARK IS ALREADY ON IT. The browser focuses a tabindex element on mousedown, so a mouse
+    // press on a mark lands here too, while the button is still down. The pointer has already played the chart's real
+    // hover where it is, and the played one would put the tooltip at the mark's centre and move the pointer there: the
+    // host's press tracker reads that move as the reader's pointer travelling, and a press 5px or more from the centre
+    // (anywhere along a long line, on a tall hit box, at a bubble's rim) became a drag whose click selected nothing.
+    let pointerDown = false;
+    const doc = container.ownerDocument;
+    const onPointerDown = () => { pointerDown = true; };
+    const onPointerUp = () => { pointerDown = false; };
+    container.addEventListener("pointerdown", onPointerDown, true);
+    container.addEventListener("mousedown", onPointerDown, true);
+    doc?.addEventListener("pointerup", onPointerUp, true);
+    doc?.addEventListener("pointercancel", onPointerUp, true);
+    doc?.addEventListener("mouseup", onPointerUp, true);
     const onFocusIn = (e: FocusEvent) => {
         if (destroyed) return;
         const mark = (e.target as Element | null)?.closest?.(env.markSelector) as HTMLElement | null;
         if (!mark || !wired(mark) || !container.contains(mark) || mark === tipOn) return;
         hideTip();
+        if (pointerDown) return;
         tipOn = mark;
         hover(mark, true);
     };
@@ -250,6 +265,11 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
             container.removeEventListener("keydown", onKey);
             container.removeEventListener("focusin", onFocusIn);
             container.removeEventListener("focusout", onFocusOut);
+            container.removeEventListener("pointerdown", onPointerDown, true);
+            container.removeEventListener("mousedown", onPointerDown, true);
+            doc?.removeEventListener("pointerup", onPointerUp, true);
+            doc?.removeEventListener("pointercancel", onPointerUp, true);
+            doc?.removeEventListener("mouseup", onPointerUp, true);
             hideTip();
             try { container.classList?.remove(KEYBOARD_CLASS); } catch { /* frozen element */ }
         },

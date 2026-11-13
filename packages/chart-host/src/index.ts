@@ -128,6 +128,8 @@ export { KEYBOARD_STAMP, KEYBOARD_CLASS, WIRED_ATTR as KEYBOARD_WIRED_ATTR, code
     type KeyboardEnv, type KeyboardHandle } from "./keyboardMarks";
 // What the reader was typing in, kept across a redraw that clears the container (createChartHost does this itself).
 export { rememberFocus, restoreFocus, trackFocus, type FocusMemory, type FocusTracker } from "./focusKeep";
+// One painted frame between raising a busy indicator and a synchronous render, so the indicator is on screen while it runs.
+export { yieldForPaint, PAINT_YIELD_FALLBACK_MS } from "./paintYield";
 // READERS' NOTES, IN-CHART CONTROLS AS PAGE STATE, PAGE FILTERS (2026-10-02): their TYPES here, so a generated
 // component can name them; their code in "./page" (and "./react"), so this entry's eager closure - every host loads it -
 // stays within its budget (scripts/checkEagerSize.mjs). A host that only draws charts never loads them.

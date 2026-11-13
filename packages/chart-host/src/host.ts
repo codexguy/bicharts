@@ -806,6 +806,10 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
     // passes would land on the SECOND one's DOM and the older draw would win by finishing last.
     // Every render takes a ticket; a continuation that no longer holds the current one stops.
     let renderSeq = 0;
+    // The in-flight async render's give-up timer, as a function that stands it down: clears the timer
+    // and settles that render's promise quietly. A newer render and destroy() both call it, so a draw
+    // that is no longer the one on screen can never reject later for not having finished.
+    let standDownPending: (() => void) | null = null;
     // Notes on marks (annotations.ts): drawn by the host after every settled render, keyed by a
     // column value in THIS chart's data, so a filter or a group member's own payload never moves one.
     // WORKED FROM THE KEYBOARD when the server stamped this chart's code; the handle is installed with the
@@ -1744,7 +1748,8 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // an earlier async render can see that it has been superseded the moment this line
             // runs — which is also the moment the old chart's DOM stops existing.
             const seq = ++renderSeq;
-            stopAnim();                          // contract: stop the old timer before repaint
+            standDownPending?.();                // an earlier draw still in flight no longer owns the container
+            stopAnim();                        // contract: stop the old timer before repaint
             followGlyphs(false);                 // the draw's own writes are not marks moving; the paint after it reconnects
             // What the reader was typing in, before anything below takes it. BEFORE the lasso goes: a finished lasso
             // focuses its surface, and removing it first left nothing to remember, so a redraw (a page that re-sends the
@@ -1849,13 +1854,28 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             // at least a host that can tell its reader something.
             settle(new Promise<void>((resolve, reject) => {
                 const timer: any = setTimeout(() => {
+                    if (standDownPending === standDown) standDownPending = null;
+                    // The same rule as the superseded branches below: a draw a newer render or a
+                    // destroy() has replaced resolves quietly instead of reporting a failure that
+                    // would be read as the current chart's.
+                    if (destroyed || seq !== renderSeq) { resolve(); return; }
                     reject(new Error(
                         "[@bicharts/chart-host] the chart did not finish drawing within " +
                         `${Math.round(ASYNC_RENDER_TIMEOUT_MS / 1000)}s, so the host stopped waiting ` +
                         "for it. Nothing past that point ran: no label-contrast pass, no hit-target " +
                         "heal, no census, no fit. A render() that returns a promise has to settle it."));
                 }, ASYNC_RENDER_TIMEOUT_MS);
-                const done = (fn: () => void) => { clearTimeout(timer); fn(); };
+                const standDown = () => {
+                    clearTimeout(timer);
+                    if (standDownPending === standDown) standDownPending = null;
+                    resolve();
+                };
+                standDownPending = standDown;
+                const done = (fn: () => void) => {
+                    clearTimeout(timer);
+                    if (standDownPending === standDown) standDownPending = null;
+                    fn();
+                };
                 Promise.resolve(outcome).then(
                     () => done(() => {
                         // SUPERSEDED, SO STOP. A later render has already cleared this chart's DOM
@@ -1956,6 +1976,7 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
         destroy() {
             if (destroyed) return;
             destroyed = true;
+            standDownPending?.();                // a draw still in flight is nobody's failure now
             stopAnim();
             if (selfRedraw) { selfRedraw.disconnect(); selfRedraw = null; }
             focusTrack?.dispose();

@@ -437,4 +437,103 @@ describe("createChartHost — a render() that returns a promise", () => {
             vi.useRealTimers();
         }
     });
+
+    // How a promise ended, read without awaiting it: a promise that never settles stays "pending".
+    const track = (p: Promise<void>) => {
+        const state: { v: "pending" | "resolved" | "rejected"; err?: unknown } = { v: "pending" };
+        p.then(() => { state.v = "resolved"; }, err => { state.v = "rejected"; state.err = err; });
+        return state;
+    };
+
+    it("a hanging render that a newer render superseded never rejects at the timeout", async () => {
+        vi.useFakeTimers();
+        try {
+            let call = 0;
+            const host = createChartHost(container, {
+                data: DATA,
+                renderFn: c => {
+                    if (++call === 1) return new Promise<void>(() => { /* hangs */ });
+                    drawMarks(c, DATA.rows.length);             // the one that supersedes it draws fine
+                },
+            });
+            host.render();
+            const stale = track(host.rendered);
+            await vi.advanceTimersByTimeAsync(1000);
+            host.setOptions({ aggregation: "average" });        // a newer render owns the container now
+            const current = track(host.rendered);
+            await vi.advanceTimersByTimeAsync(30000);
+            expect(stale.v).not.toBe("rejected");
+            expect(current.v).toBe("resolved");
+            expect(container.querySelectorAll(".d3-mark").length).toBe(DATA.rows.length);
+            host.destroy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a superseded hanging render does not hold its timer, and the newer hanging render still gets its full wait", async () => {
+        vi.useFakeTimers();
+        try {
+            const host = createChartHost(container, {
+                data: DATA,
+                renderFn: () => new Promise<void>(() => { /* every draw hangs */ }),
+            });
+            host.render();
+            const first = track(host.rendered);
+            await vi.advanceTimersByTimeAsync(10000);
+            host.render();
+            const second = track(host.rendered);
+            await vi.advanceTimersByTimeAsync(14999);
+            expect(first.v).not.toBe("rejected");
+            expect(second.v).toBe("pending");
+            await vi.advanceTimersByTimeAsync(1);
+            expect(second.v).toBe("rejected");
+            expect((second.err as Error).message).toMatch(/did not finish drawing within 15s/);
+            expect(first.v).not.toBe("rejected");
+            host.destroy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a destroyed host's pending render never rejects", async () => {
+        vi.useFakeTimers();
+        try {
+            const host = createChartHost(container, {
+                data: DATA,
+                renderFn: () => new Promise<void>(() => { /* hangs */ }),
+            });
+            host.render();
+            const pending = track(host.rendered);
+            await vi.advanceTimersByTimeAsync(1000);
+            host.destroy();
+            await vi.advanceTimersByTimeAsync(30000);
+            expect(pending.v).not.toBe("rejected");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a lone hanging render still rejects at exactly 15s with the same message", async () => {
+        vi.useFakeTimers();
+        try {
+            const host = createChartHost(container, {
+                data: DATA,
+                renderFn: () => new Promise<void>(() => { /* settles never */ }),
+            });
+            host.render();
+            const lone = track(host.rendered);
+            await vi.advanceTimersByTimeAsync(14999);
+            expect(lone.v).toBe("pending");
+            await vi.advanceTimersByTimeAsync(1);
+            expect(lone.v).toBe("rejected");
+            expect((lone.err as Error).message).toBe(
+                "[@bicharts/chart-host] the chart did not finish drawing within 15s, so the host stopped waiting " +
+                "for it. Nothing past that point ran: no label-contrast pass, no hit-target " +
+                "heal, no census, no fit. A render() that returns a promise has to settle it.");
+            host.destroy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
