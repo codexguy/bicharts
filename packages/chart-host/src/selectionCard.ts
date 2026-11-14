@@ -35,6 +35,8 @@ import {
 // header's own job is to say what was clicked "in their own data's words"; that string is the
 // machine's. See sourceDateFormat.ts for why the SOURCE's format is what gets matched.
 import { formatSourceDate, type SourceFormats } from "./sourceDateFormat";
+// The card's words in the reader's language when the host passes a text source; English, as before, when it does not.
+import { hostText, isLocalized, type StringSource } from "./hostText";
 
 /** Columns the payload appends for its own plumbing. Never a measure, never a dimension, never
  *  shown: `__rowIdx__` IS the row position, and the geo trio is host metadata. A card that
@@ -64,6 +66,9 @@ export interface SelectionCardOptions {
      *  it is rather than a silent override. */
     aggregation?: string;
     cultureCode?: string;
+    /** The card's words in the reader's language (HostServices.strings, or `chartHostStrings(cultureCode)`). Absent, the
+     *  card reads English exactly as before. */
+    strings?: StringSource | null;
     /** Cards are capped at roughly a third of the tile, so the measure list is capped too.
      *  `hiddenMeasures` reports what was dropped rather than truncating silently. */
     maxMeasures?: number;
@@ -179,10 +184,32 @@ function aggLabel(agg: Agg): string {
  *  1.0.0.47, a click on the order-fulfilment chart). Only the SAME aggregation's words are
  *  dropped: "Average of Sum of Orders" is a true statement - it averages per-row sums - and
  *  stays composed. */
-export function measureLineLabel(agg: Agg, name: string): string {
+export function measureLineLabel(agg: Agg, name: string, strings?: StringSource | null): string {
     const col = String(name ?? "");
     const prefix = aggLabel(agg) + " of ";
-    return col.trim().toLowerCase().startsWith(prefix.toLowerCase()) ? col.trim() : prefix + col;
+    // The whole label is one sentence per aggregation, so a language puts the column where its grammar wants it
+    // ("Xの合計"). The name already saying it is checked in English (a pivot's own column) and in the reader's words.
+    const template = hostText(strings, `card.measure.${agg}`, prefix + "{column}");
+    const localPrefix = template.split("{column}")[0];
+    const said = (p: string) => p.trim().length > 0 && col.trim().toLowerCase().startsWith(p.toLowerCase());
+    if (said(prefix) || (localPrefix !== prefix && said(localPrefix))) return col.trim();
+    return hostText(strings, `card.measure.${agg}`, prefix + "{column}", { column: col });
+}
+
+/** A count as the reader writes it: digits as before in English, grouped in the reader's own form otherwise. */
+function countText(n: number, strings: StringSource | null | undefined): string {
+    if (!isLocalized(strings)) return String(n);
+    try { return new Intl.NumberFormat(strings.lang).format(n); } catch { return String(n); }
+}
+
+/** "12.3% of total": one decimal, "<0.1" below it; the reader's decimal mark when the card is localized. */
+function shareText(pct: number, strings: StringSource | null | undefined): string {
+    const v = pct < 0.1 ? 0.1 : pct;
+    let num = pct < 0.1 ? "0.1" : pct.toFixed(1);
+    if (isLocalized(strings)) {
+        try { num = new Intl.NumberFormat(strings.lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v); } catch { /* digits as before */ }
+    }
+    return hostText(strings, "card.share", "{pct}% of total", { pct: (pct < 0.1 ? "<" : "") + num });
 }
 
 function isSynthetic(name: string): boolean {
@@ -222,7 +249,7 @@ function isSerialisedDateColumn(col: any): boolean {
 /** What a reader sees for one raw cell. Dates route through the source formatter; everything
  *  else is the string it always was, blanks included. */
 function displayText(col: any, raw: any, opts: SelectionCardOptions): string {
-    if (raw == null || raw === "") return "(blank)";
+    if (raw == null || raw === "") return hostText(opts.strings, "card.blank", "(blank)");
     if (isSerialisedDateColumn(col)) {
         const shown = formatSourceDate(raw, {
             format: opts.sourceFormats?.byColumn?.[String(col?.name ?? "")] ?? null,
@@ -358,10 +385,11 @@ export function computeSelectionCard(
             if (seen.length > maxHeaderValues) break;
         }
         header = seen.length > maxHeaderValues
-            ? `${positions.length} marks`
-            : seen.join(", ");
+            ? hostText(opts.strings, "card.header.marks", "{n} marks", { n: countText(positions.length, opts.strings) }, positions.length)
+            : seen.join(hostText(opts.strings, "card.list.separator", ", "));
     } else {
-        header = `${positions.length} mark${positions.length === 1 ? "" : "s"}`;
+        header = hostText(opts.strings, "card.marks", { one: "{n} mark", other: "{n} marks" },
+                          { n: countText(positions.length, opts.strings) }, positions.length);
     }
 
     // ---- one line per measure --------------------------------------------------------------
@@ -409,11 +437,11 @@ export function computeSelectionCard(
 
         lines.push({
             column: String(col?.name ?? ""),
-            label: measureLineLabel(colAgg, String(col?.name ?? "")),
+            label: measureLineLabel(colAgg, String(col?.name ?? ""), opts.strings),
             value,
             valueText: value == null ? "—" : fmtNumber(value, opts.cultureCode),
             sharePct,
-            shareText: sharePct == null ? "" : `${sharePct < 0.1 ? "<0.1" : sharePct.toFixed(1)}% of total`,
+            shareText: sharePct == null ? "" : shareText(sharePct, opts.strings),
             aggregation: colAgg,
         });
     }
@@ -445,7 +473,7 @@ export function computeSelectionCard(
         const single = distinct.size === 1;
         dimensionLines.push({
             column: name,
-            label: single ? name : `Distinct ${name}`,
+            label: single ? name : hostText(opts.strings, "card.distinct", "Distinct {column}", { column: name }),
             value: single ? null : distinct.size,
             valueText: single ? firstText : fmtNumber(distinct.size, opts.cultureCode),
             sharePct: null,
@@ -459,7 +487,8 @@ export function computeSelectionCard(
         lines,
         dimensionLines,
         suppressedColumns,
-        rowsText: `${positions.length} of ${rows.length} rows`,
+        rowsText: hostText(opts.strings, "card.rows", "{selected} of {total} rows",
+                           { selected: countText(positions.length, opts.strings), total: countText(rows.length, opts.strings) }, rows.length),
         selectedRows: positions.length,
         totalRows: rows.length,
         hiddenMeasures: Math.max(0, measureCols.length - shown.length),

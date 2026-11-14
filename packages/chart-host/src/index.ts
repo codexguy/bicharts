@@ -296,6 +296,12 @@ export {
     computeSelectionCard, normaliseAggregation,
     type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
 } from "./selectionCard";
+// The text a reader sees, in the reader's language: a host passes `chartHostStrings(cultureCode)` (or its own source)
+// as HostServices.strings and to the card; none passed reads English.
+export {
+    hostText, catalogSource, chartHostStrings,
+    type StringSource, type CatalogValue, type TextVars,
+} from "./hostText";
 // The chrome around it (where the card opens, pinning, dismissal, the compact card) is
 // "@bicharts/chart-host/card", not this entry: only a host that mounts a card loads it, and this
 // entry's eager closure - every host loads it - is budgeted (scripts/checkEagerSize.mjs).

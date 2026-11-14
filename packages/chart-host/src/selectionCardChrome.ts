@@ -22,6 +22,7 @@
 // handler: by the time the row set arrives, the anchor is already recorded.
 
 import { computeSelectionCard, type SelectionCardModel } from "./selectionCard";
+import type { StringSource } from "./hostText";
 import type { SourceFormats } from "./sourceDateFormat";
 
 export interface SelectionCardsDeps {
@@ -42,6 +43,8 @@ export interface SelectionCardsDeps {
     getEnabled: () => boolean;
     getPinLimit: () => number;
     cultureCode?: string;
+    /** The card's words in the reader's language (the host's HostServices.strings); absent, English. */
+    strings?: StringSource | null;
     log?: (tag: string, detail?: unknown) => void;
 }
 
@@ -314,6 +317,7 @@ export function createSelectionCards(deps: SelectionCardsDeps): SelectionCards {
                 model = computeSelectionCard(deps.getPayload(), rowIdxs, {
                     aggregation: deps.getAggregation(),
                     cultureCode: deps.cultureCode,
+                    strings: deps.strings,
                     sourceFormats: deps.getSourceFormats?.() ?? null,
                 });
             } catch (e: any) {

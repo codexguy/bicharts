@@ -18,6 +18,7 @@
 // by a test in this package that assigns each one to the other in both directions.
 
 import type { RenderOptions, ViewStateProvider } from "../contract";
+import type { StringSource } from "../hostText";
 
 // ---- The wire-level services, restated (see above; kept identical to shape-core's) ----
 
@@ -260,4 +261,7 @@ export interface HostServices {
     snapshot?: SnapshotTarget | null;
     diagnostics?: DiagnosticsSink | null;
     viewState?: ViewStateService | null;
+    /** The text chart-host shows a reader, in the reader's language (`chartHostStrings(cultureCode)` is the package's
+     *  own). Absent, every surface reads English as before. */
+    strings?: StringSource | null;
 }
