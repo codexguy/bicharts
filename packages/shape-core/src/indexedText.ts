@@ -686,7 +686,7 @@ export interface ColumnNameAlias {
     name: string;
     /** The other name the code reads it by. */
     alias: string;
-    reason: "doubled-agg-prefix" | "english-implicit-agg" | "stored-query-name";
+    reason: "doubled-agg-prefix" | "english-implicit-agg" | "stored-query-name" | "reassembled-date-source-field";
 }
 
 /**
@@ -716,7 +716,7 @@ export function trimmedCells(colvals: any[]): any[] {
 
 // A second name armed for one column: the live name it was armed for, the alias, whether the alias takes the column's CSV
 // header slot, and which source proposed it (see ColumnNameAlias).
-type ArmedNameAlias = { name: string; alias: string; headerName: boolean; reason: "english-implicit-agg" | "stored-query-name" };
+type ArmedNameAlias = { name: string; alias: string; headerName: boolean; reason: "english-implicit-agg" | "stored-query-name" | "reassembled-date-source-field" };
 
 export class IndexedText implements IValueCollection {
     private _computedStatsForLevel: string = null;
@@ -2372,7 +2372,9 @@ export class IndexedText implements IValueCollection {
 
     private englishAliasesFor(code: string | null | undefined): Map<number, ArmedNameAlias> {
         const armed = new Map<number, ArmedNameAlias>();
-        if (!code || this._hostQueryNames.length === 0 || !this._cols || this._cols.length === 0) return armed;
+        // A rebuilt date answers to its source field without any query name (below), so only an index with neither stops here.
+        const anySourceField = (this._cols ?? []).some(c => !!c && !!(c as any).isReassembledDate && !!(c as any).sourceField);
+        if (!code || (this._hostQueryNames.length === 0 && !anySourceField) || !this._cols || this._cols.length === 0) return armed;
         const text = String(code);
         // Every name a column already answers to is off limits, the host's pre-collapse names
         // included: an English viewer's `Sum of Volume` needs no alias, and an English
@@ -2385,6 +2387,7 @@ export class IndexedText implements IValueCollection {
         }
         const claims = new Map<string, number[]>();
         const storedOnly = new Set<string>();
+        const sourceOnly = new Set<string>();
         for (let i = 0; i < this._cols.length; i++) {
             if (!this._cols[i]) continue;
             const q = this._hostQueryNames[i];
@@ -2405,16 +2408,22 @@ export class IndexedText implements IValueCollection {
                     }
                 }
             }
-            const read = [...english, ...stored].filter(n => !taken.has(n) && codeReadsColumn(text, n));
+            // A DATE REBOUND AS A HIERARCHY (item 1399): the host rebuilds one date from the levels, named "Date" (code generated
+            // on a hierarchy reads that), with the field it came from beside it. A chart saved on the plain date reads the field's
+            // name, so the rebuilt date answers to it too - for code that reads it, and only when no other column claims it.
+            const src = (this._cols[i] as any).isReassembledDate ? this.STR((this._cols[i] as any).sourceField) : "";
+            const fromSource = src && src !== live && !english.includes(src) && !stored.includes(src) ? [src] : [];
+            const read = [...english, ...stored, ...fromSource].filter(n => !taken.has(n) && codeReadsColumn(text, n));
             if (read.length !== 1) continue;
             claims.set(read[0], [...(claims.get(read[0]) ?? []), i]);
             if (stored.includes(read[0])) storedOnly.add(read[0]);
+            else if (fromSource.includes(read[0])) sourceOnly.add(read[0]);
         }
         for (const [alias, indexes] of claims) {
             if (indexes.length !== 1) continue;
             const name = this.STR(this._cols[indexes[0]].name);
             armed.set(indexes[0], { name, alias, headerName: !codeReadsColumn(text, name),
-                reason: storedOnly.has(alias) ? "stored-query-name" : "english-implicit-agg" });
+                reason: storedOnly.has(alias) ? "stored-query-name" : sourceOnly.has(alias) ? "reassembled-date-source-field" : "english-implicit-agg" });
         }
         return armed;
     }
