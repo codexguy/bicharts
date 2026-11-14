@@ -203,7 +203,7 @@ export { shouldReview, buildReviewWire, bareBase64, actionFor, type ReviewGate, 
 // The consent half of the same flow. It briefly existed once per host, and two copies of
 // "every ambiguous answer is No" is how two hosts come to charge differently for the same
 // click. Hosts localize strings and skin the chrome; the resolution rule is not an option.
-export { askApplyImprovements, type ReviewDialogOptions, type ReviewDialogText } from "./reviewDialog";
+export { askApplyImprovements, reviewDialogText, type ReviewDialogOptions, type ReviewDialogText } from "./reviewDialog";
 // A reader's suggestion box on a host's landing page (2026-09-16). Every host shows the same states - Send disabled
 // until there is a message, disabled while sending, cleared on success, and the typed words KEPT on failure - and sends
 // one payload shape; the host owns placement, words and its signed transport.
@@ -236,7 +236,7 @@ export {
     // ...and the sentence for a refusal that names no requirement. A null reason is a real
     // answer, so every host has to write SOMETHING; leaving each one to remember that is how
     // three surfaces came to render a bare chart name under a heading claiming to know why.
-    qualifyRefusalReason, QUALIFY_REFUSAL_UNSPECIFIED,
+    qualifyRefusalReason, QUALIFY_REFUSAL_UNSPECIFIED, qualifyRefusalUnspecified, qualifyTooSmallHeading,
     // ...and the refusals that are about the TILE rather than the fields. The server's code decides
     // which rows those are; the heading over them is one string, so every host says the same thing.
     refusalIsTileBound, QUALIFY_TILE_REFUSAL_CODES, QUALIFY_TOO_SMALL_HEADING,

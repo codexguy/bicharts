@@ -26,6 +26,8 @@
 // Hosts localize the strings and skin the chrome through options; the RESOLUTION RULE is not
 // an option.
 
+import { hostText, type StringSource } from "./hostText";
+
 export interface ReviewDialogText {
     title?: string;
     /** Shown when the judge supplied no reason. The judge's reason always wins when present. */
@@ -47,6 +49,9 @@ export interface ReviewDialogOptions {
     minWidth?: number;
     minHeight?: number;
     text?: ReviewDialogText;
+    /** The dialog's words in the reader's language (a text source, e.g. `chartHostStrings(culture)`); a field given in
+     *  `text` still wins. Neither passed, the dialog reads English. */
+    strings?: StringSource | null;
 }
 
 const DEFAULT_TEXT: Required<ReviewDialogText> = {
@@ -56,6 +61,17 @@ const DEFAULT_TEXT: Required<ReviewDialogText> = {
     decline: "No thanks",
     accept: "Apply",
 };
+
+/** The dialog's words in the language of `strings`, each the English default when the source does not word it. */
+export function reviewDialogText(strings?: StringSource | null): Required<ReviewDialogText> {
+    return {
+        title: hostText(strings, "review.title", DEFAULT_TEXT.title),
+        fallbackReason: hostText(strings, "review.fallback_reason", DEFAULT_TEXT.fallbackReason),
+        cost: hostText(strings, "review.cost", DEFAULT_TEXT.cost),
+        decline: hostText(strings, "review.decline", DEFAULT_TEXT.decline),
+        accept: hostText(strings, "review.accept", DEFAULT_TEXT.accept),
+    };
+}
 
 /** Resolves true ONLY on a deliberate click of Apply. Never rejects. */
 export function askApplyImprovements(
@@ -71,7 +87,7 @@ export function askApplyImprovements(
                 resolve(false);
                 return;
             }
-            const text = { ...DEFAULT_TEXT, ...(opts.text ?? {}) };
+            const text = { ...reviewDialogText(opts.strings), ...(opts.text ?? {}) };
             const doc = container.ownerDocument;
 
             const ov = doc.createElement("div");

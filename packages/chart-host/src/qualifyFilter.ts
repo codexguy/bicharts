@@ -20,6 +20,7 @@
 // in string matching, so there is no reason for it to live anywhere else.
 
 import { looseNameKey, localizedChartNames } from "@bicharts/shape-core";
+import { hostText, type StringSource } from "./hostText";
 
 /**
  * HOW A TERM MATCHES A NAME - a reader's setting on every host, and "loose" unless they choose
@@ -609,12 +610,14 @@ export function computeQualifyFilterView<E>(
  */
 export function qualifyFilterCountText(
     view: { tier: QualifyFilterTier; matched: number; total: number; refusalMatched?: number },
+    /** The words in the reader's language (a text source); English when none is passed. */
+    strings?: StringSource | null,
 ): string {
     if (view.tier === "all") return String(view.total);
-    const below = typeof view.refusalMatched === "number" && view.refusalMatched > 0
-        ? ` (+${view.refusalMatched})`
-        : "";
-    return `${view.matched} of ${view.total}${below}`;
+    const vars = { matched: view.matched, total: view.total, more: view.refusalMatched ?? 0 };
+    return typeof view.refusalMatched === "number" && view.refusalMatched > 0
+        ? hostText(strings, "qualify.count_more", "{matched} of {total} (+{more})", vars, view.total)
+        : hostText(strings, "qualify.count", "{matched} of {total}", vars, view.total);
 }
 
 /**

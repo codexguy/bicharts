@@ -22,6 +22,16 @@ const ENGLISH: Record<string, string | Record<string, string>> = {
     "card.share": "{pct}% of total",
     "card.distinct": "Distinct {column}",
     "card.rows": { one: "{selected} of {total} row", other: "{selected} of {total} rows" },
+    "qualify.too_small_heading": "Needs a bigger tile",
+    "qualify.refusal_unspecified": "refused for the fields as bound - no single requirement to name",
+    "qualify.count": "{matched} of {total}",
+    "qualify.count_more": "{matched} of {total} (+{more})",
+    "review.title": "Apply improvements?",
+    "review.fallback_reason": "The AI review suggests a change to this chart.",
+    "review.cost": "Applying creates a new chart version and uses a generation. Declining costs nothing.",
+    "review.decline": "No thanks",
+    "review.accept": "Apply",
+    "summary.warning": "Warning: {message}",
 };
 const TIER1 = "nl de fr es pt it ru uk pl cs sk sv da nb fi hu tr el ro hr ja zh ko ar he hi id vi th".split(" ");
 const ph = (s: string) => (s.match(/\{[a-z][a-z0-9_]*\}/g) ?? []).sort().join(",");

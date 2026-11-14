@@ -15,7 +15,10 @@
 // Heading TEXT is not here: hosts localize, and the visual runs every string through Localize.
 // The one exception is the tile block of the refused list (QUALIFY_TOO_SMALL_HEADING below): it is
 // new, it has to read the same in every host, and a host that localizes passes it through its own
-// lookup like the rest.
+// lookup like the rest - or reads it, and the unspecified-refusal sentence, through a text source (hostText) with
+// qualifyTooSmallHeading / qualifyRefusalUnspecified.
+
+import { hostText, type StringSource } from "./hostText";
 
 /** One row of a qualify result, in the only shape this logic cares about. */
 export interface QualifyGroupRow {
@@ -183,6 +186,11 @@ export const QUALIFY_TILE_REFUSAL_CODES: readonly string[] = Object.freeze([
  */
 export const QUALIFY_TOO_SMALL_HEADING = "Needs a bigger tile";
 
+/** {@link QUALIFY_TOO_SMALL_HEADING} in the reader's language (a text source); the English when none is passed. */
+export function qualifyTooSmallHeading(strings?: StringSource | null): string {
+    return hostText(strings, "qualify.too_small_heading", QUALIFY_TOO_SMALL_HEADING);
+}
+
 /**
  * IS THIS REFUSAL ABOUT THE TILE'S SIZE OR SHAPE? Decided from the server's code, never from the
  * sentence: a host that matched the English would go blind the day the sentences are translated,
@@ -301,6 +309,12 @@ export const QUALIFY_REFUSAL_UNSPECIFIED =
  *
  * `fallback` lets a host localize without re-implementing the decision.
  */
+/** {@link QUALIFY_REFUSAL_UNSPECIFIED} in the reader's language (a text source); the English when none is passed. Pass
+ *  it as `qualifyRefusalReason`'s fallback. */
+export function qualifyRefusalUnspecified(strings?: StringSource | null): string {
+    return hostText(strings, "qualify.refusal_unspecified", QUALIFY_REFUSAL_UNSPECIFIED);
+}
+
 export function qualifyRefusalReason(
     reason: string | null | undefined,
     fallback: string = QUALIFY_REFUSAL_UNSPECIFIED,

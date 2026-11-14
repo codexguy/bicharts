@@ -31,6 +31,8 @@
 // of one-line rule that gets rewritten slightly differently in each of them. The words around
 // it are per host; this join is not.
 
+import { hostText, type StringSource } from "./hostText";
+
 /**
  * Join a chart's description and its generation warning into one readable text.
  *
@@ -40,6 +42,8 @@
 export function composeSummaryText(
     codeSummary: string | null | undefined,
     warningMsg: string | null | undefined,
+    /** The "Warning:" label in the reader's language (a text source); English when none is passed. */
+    strings?: StringSource | null,
 ): string {
     let sumText = String(codeSummary ?? "");
     if (String(warningMsg ?? "").trim() !== "") {
@@ -49,7 +53,7 @@ export function composeSummaryText(
             // stop, the Devanagari danda and an ellipsis, beside the ASCII ones.
             sumText += /[.!?:;。！？：；…؟۔।॥]$/u.test(sumText) ? " " : ". ";
         }
-        sumText += "Warning: " + warningMsg;
+        sumText += hostText(strings, "summary.warning", "Warning: {message}", { message: String(warningMsg) });
     }
     return sumText;
 }
