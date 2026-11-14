@@ -114,4 +114,48 @@ describe("useBicUrlState with one pick across three panels", () => {
         expect(got.map.active).toBe(false);
         expect(got.table.active).toBe(false);
     });
+
+    it("the view stays in the address bar through a StrictMode mount, so a link copied right after opening still carries it", async () => {
+        const got: Record<string, Filter> = {};
+        function Page() {
+            got.map = useBicFilter("Country", { label: "Country (map)", group: "country" });
+            got.table = useBicFilter("Country", { label: "Country (table)", group: "country" });
+            got.scatter = useBicFilter("Country", { label: "Countries (scatter)", group: "country" });
+            useBicUrlState();
+            return null;
+        }
+        const page = () => createElement(StrictMode, null, createElement(Page));
+        await act(async () => { root.render(page()); });
+        await act(async () => { got.scatter.set(["Chile", "Peru"], "click"); });
+        const link = window.location.href;
+
+        await act(async () => root.unmount());
+        root = createRoot(el);
+        window.history.replaceState(null, "", link);
+        await act(async () => { root.render(page()); });
+        expect(got.scatter.values).toEqual(["Chile", "Peru"]);
+        // StrictMode's simulated unmount removes every filter before the URL writer unsubscribes: those removals are not a
+        // reader's change, so the parameter must survive them.
+        expect(new URL(window.location.href).searchParams.get("view")).toBe(new URL(link).searchParams.get("view"));
+    });
+
+    it("a reader's later change still rewrites the address bar, and clearing every pick still removes the parameter", async () => {
+        const got: Record<string, Filter> = {};
+        function Page() {
+            got.map = useBicFilter("Country", { label: "Country (map)", group: "country" });
+            got.scatter = useBicFilter("Country", { label: "Countries (scatter)", group: "country" });
+            useBicUrlState();
+            return null;
+        }
+        await act(async () => { root.render(createElement(StrictMode, null, createElement(Page))); });
+        await act(async () => { got.map.set(["Chile"], "click"); });
+        const first = new URL(window.location.href).searchParams.get("view");
+        expect(first).not.toBeNull();
+        await act(async () => { got.scatter.set(["Peru"], "click"); });
+        const second = new URL(window.location.href).searchParams.get("view");
+        expect(second).not.toBeNull();
+        expect(second).not.toBe(first);
+        await act(async () => { got.scatter.clear("click"); });
+        expect(new URL(window.location.href).searchParams.get("view")).toBeNull();
+    });
 });

@@ -668,6 +668,10 @@ export function useBicView(): { save: () => PageView; restore: (v: PageView | nu
  * THE VIEW IN THE ADDRESS BAR (opt-in): restores the page's filters and controls from `?<param>=` on mount, then keeps
  * the parameter current as they change (history.replaceState - no navigation, no new history entries). A copied link
  * opens the page as it was. Call once, in the page component, after its useBicFilter / useBicControls calls.
+ *
+ * Only a change of a filter's or controls' VALUE rewrites the parameter. A filter or a chart's controls coming or going
+ * does not: under React's StrictMode the simulated unmount removes every filter before this hook unsubscribes, and
+ * writing then saved an empty page and dropped the view from the address bar right after it was restored.
  */
 export function useBicUrlState(param = "view"): void {
     const scope = useContext(PageCtx);
@@ -675,7 +679,13 @@ export function useBicUrlState(param = "view"): void {
         if (typeof window === "undefined") return;
         const url = new URL(window.location.href);
         scope.restore(viewFromToken(url.searchParams.get(param)));
+        const members = () => [...scope.filters, ...scope.controls.values()];
+        let seen = members();
         return scope.onChange(() => {
+            const now = members();
+            const joinedOrLeft = now.length !== seen.length || now.some((m, i) => m !== seen[i]);
+            seen = now;
+            if (joinedOrLeft) return;
             const u = new URL(window.location.href);
             const view = scope.save();
             const empty = !view.filters && !view.controls;
