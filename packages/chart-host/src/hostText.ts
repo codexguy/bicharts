@@ -8,7 +8,8 @@
 // The text is a HOST SERVICE (HostServices.strings). A host that passes none reads the English at the call site, byte
 // for byte as before - the capability layer working as designed. `chartHostStrings(cultureCode)` is the package's own
 // catalog for a language, so a host that wants the reader's language passes that and writes no strings of its own; a host
-// may also pass a source of its own (a different wording, a language the package does not carry).
+// may also pass a source of its own (a different wording, a language the package does not carry). The catalogs
+// and chartHostStrings live in their own entry, "@bicharts/chart-host/strings" (strings.ts).
 
 /** One catalog value: a sentence, or a counted key's plural forms (Intl.PluralRules categories). */
 export type CatalogValue = string | Readonly<Partial<Record<Intl.LDMLPluralRule, string>>>;
@@ -53,19 +54,4 @@ export function hostText(src: StringSource | null | undefined, key: string, engl
 /** True when `src` will word text in a language other than English (numbers are then grouped in that language). */
 export function isLocalized(src: StringSource | null | undefined): src is StringSource {
     return !!src && !/^en(?:-|$)/i.test(src.lang);
-}
-
-const CATALOGS: Readonly<Record<string, Readonly<Record<string, CatalogValue>>>> = {};
-
-/**
- * chart-host's own catalog for the reader's culture ("es-MX" reads "es"), or null when the package carries none for it -
- * the host then reads English. English itself is null: the English is at each call site.
- */
-export function chartHostStrings(cultureCode: string | null | undefined): StringSource | null {
-    const tag = String(cultureCode ?? "").trim();
-    if (!tag) return null;
-    const lang = tag.split(/[-_]/)[0].toLowerCase();
-    if (lang === "en") return null;
-    const catalog = CATALOGS[tag.toLowerCase()] ?? CATALOGS[lang];
-    return catalog ? catalogSource(lang, catalog) : null;
 }

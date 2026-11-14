@@ -262,6 +262,6 @@ export interface HostServices {
     diagnostics?: DiagnosticsSink | null;
     viewState?: ViewStateService | null;
     /** The text chart-host shows a reader, in the reader's language (`chartHostStrings(cultureCode)` is the package's
-     *  own). Absent, every surface reads English as before. */
+     *  own, from "@bicharts/chart-host/strings"). Absent, every surface reads English as before. */
     strings?: StringSource | null;
 }

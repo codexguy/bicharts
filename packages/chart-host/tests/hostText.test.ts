@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { computeSelectionCard } from "../src/selectionCard";
-import { hostText, catalogSource, chartHostStrings, type CatalogValue } from "../src/hostText";
+import { hostText, catalogSource, type CatalogValue } from "../src/hostText";
+import { chartHostStrings } from "../src/strings";
 
 // THE CARD IN THE READER'S LANGUAGE. Every sentence the card shows is a key with its English at the call site, so a
 // host that passes no text source reads exactly what it read before, and a host that passes one reads whole sentences

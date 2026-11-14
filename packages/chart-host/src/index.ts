@@ -296,10 +296,10 @@ export {
     computeSelectionCard, normaliseAggregation,
     type SelectionCardModel, type SelectionCardLine, type SelectionCardOptions,
 } from "./selectionCard";
-// The text a reader sees, in the reader's language: a host passes `chartHostStrings(cultureCode)` (or its own source)
+// The text a reader sees, in the reader's language: a host passes `chartHostStrings(cultureCode)` ("@bicharts/chart-host/strings") or its own source
 // as HostServices.strings and to the card; none passed reads English.
 export {
-    hostText, catalogSource, chartHostStrings,
+    hostText, catalogSource,
     type StringSource, type CatalogValue, type TextVars,
 } from "./hostText";
 // The chrome around it (where the card opens, pinning, dismissal, the compact card) is

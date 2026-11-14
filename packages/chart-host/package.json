@@ -49,6 +49,11 @@
       "import": "./dist/card.mjs",
       "default": "./dist/card.mjs"
     },
+    "./strings": {
+      "types": "./dist/types/strings.d.ts",
+      "import": "./dist/strings.mjs",
+      "default": "./dist/strings.mjs"
+    },
     "./view-state": {
       "types": "./dist/types/viewState.d.ts",
       "import": "./dist/view-state.mjs",
