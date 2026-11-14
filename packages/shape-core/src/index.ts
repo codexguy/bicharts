@@ -328,10 +328,11 @@ export {
     viewportFields, maxNonMeasureCardinality, credentialFields, resolveFetchVersion, fetchFields, capabilityFields,
     retryFields, leafCardinalityField, dataCompletenessFields, qualifyOrderOf, qualifyOrderField, QUALIFY_ORDER_LABELS,
     shortlistIsStale, offeredShortlistFor,
+    valuesWithheldWholeField, VALUES_WITHHELD_SENT_CAP, VALUES_WITHHELD_PRIVACY_FLOOR,
 } from "./wireBuild";
 export type {
     ViewportFields, CredentialFields, FetchRequest, FetchFields, CapabilityFields, RetryFields, QualifyOrder,
-    DataCompletenessFields,
+    DataCompletenessFields, WithheldValues,
 } from "./wireBuild";
 // ARE THESE THE SAME FIELDS? (2026-09-25): the schema identity a host compares column sets by in
 // memory - name, role and type family per column. Never a persisted fingerprint; see schemaIdentity.ts.

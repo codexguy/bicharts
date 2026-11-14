@@ -356,6 +356,46 @@ export function dataCompletenessFields(
     };
 }
 
+/** One column's values that a cut erased whole: seen only in withheld rows, in no kept row. */
+export interface WithheldValues {
+    column: string;
+    count: number;
+    values?: string[];
+}
+
+/** The most values one column's entry names; `count` stays the true count. */
+export const VALUES_WITHHELD_SENT_CAP = 10;
+/** The privacy level from which actual values ship (the same floor as the shape's distinct values). */
+export const VALUES_WITHHELD_PRIVACY_FLOOR = 20;
+
+/**
+ * THE VALUES A CUT ERASED WHOLE, AS THE REQUEST STATES THEM - the client hints' `valuesWithheldWhole`.
+ * When a row cap turns rows away, a sorted delivery loses whole groups, not a thin slice of each: the
+ * count alone ("N rows were left out") cannot tell the reader or the model WHICH group is gone, so the
+ * chart draws six weekdays as if there were six. The host names, per low-cardinality non-measure column,
+ * the values it saw only in rows it withheld.
+ *  - An entry needs a column name and a whole count above zero; anything else is dropped.
+ *  - At most VALUES_WITHHELD_SENT_CAP values travel, with the true count beside them.
+ *  - Below privacy VALUES_WITHHELD_PRIVACY_FLOOR the values are stripped: the column and count remain.
+ * ABSENT MEANS NONE KNOWN: with nothing left, no field is sent. Spread where the host builds its hints.
+ */
+export function valuesWithheldWholeField(
+    entries: WithheldValues[] | null | undefined,
+    privacyLevel: number,
+): { valuesWithheldWhole?: WithheldValues[] } {
+    if (!Array.isArray(entries)) return {};
+    const withValues = typeof privacyLevel === "number" && privacyLevel >= VALUES_WITHHELD_PRIVACY_FLOOR;
+    const out: WithheldValues[] = [];
+    for (const e of entries) {
+        if (!e || typeof e.column !== "string" || !e.column) continue;
+        if (typeof e.count !== "number" || !Number.isInteger(e.count) || e.count < 1) continue;
+        const values = withValues && Array.isArray(e.values) && e.values.length
+            ? e.values.slice(0, VALUES_WITHHELD_SENT_CAP).map(String) : null;
+        out.push(values ? { column: e.column, count: e.count, values } : { column: e.column, count: e.count });
+    }
+    return out.length ? { valuesWithheldWhole: out } : {};
+}
+
 /** The order of the "what fits" list: by how well each type suits the data, or by the picker's selection order. */
 export type QualifyOrder = "fit" | "variety";
 

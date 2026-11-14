@@ -591,6 +591,12 @@ export type LLMClientHints =
         dataComplete?: boolean,
         rowsWithheld?: number,
         rowsFilteredOut?: number,
+        // VALUES A CUT ERASED WHOLE: for each low-cardinality non-measure column, the values seen ONLY in
+        // rows the host withheld (a row cap), so the reader and the model can be told "no rows for X were
+        // loaded". Sent only beside dataComplete false, and only when exact. `values` travels only at
+        // privacy level >= 20 (where actual values ship); below it, the column and the count alone.
+        // ABSENT MEANS NONE KNOWN, never "none withheld". Built by valuesWithheldWholeField.
+        valuesWithheldWhole?: { column: string; count: number; values?: string[] }[],
         randomSeed?: number,
         favorTitle?: string,           // "", "1", "0"
         legendPlacement?: string,      // "", "outside", "inside"
