@@ -104,9 +104,16 @@ import { resolve, dirname, join } from "node:path";
 // line was moved) runs before every render, so it cannot sit behind a dynamic import. The closure had 0.3 KB of
 // headroom left, so any addition would have crossed. No geometry is in the closure; closure (~860 KB) + the smallest
 // map asset (223 KB) is ~1083 KB, far above 870.
+//
+// 870 -> 1120 KB, deliberately, as ordinary growth, measured first: 1097 KB now, and about 840 KB in the published
+// 0.6.124 (shape-core's chunk was 435 KB and is 693 KB now). The whole increase is that chunk: the chart-type names
+// in the other Tier 1 languages (the chooser filter finds a type by a name in any of them) are read synchronously by
+// every host that lists or filters chart types, so they sit in the closure. No geometry is in the closure; closure
+// (~1097 KB) + the smallest map asset (223 KB) is ~1320 KB, far above 1120. Moving the names behind a dynamic import
+// would bring the closure back near 840 KB; that is a possible later change, not part of this one.
 // ─────────────────────────────────────────────────────────────────────────────────────────
 const entry = resolve(process.argv[2] ?? "packages/chart-host/dist/index.mjs");
-const limitKB = Number(process.argv[3] ?? 870);
+const limitKB = Number(process.argv[3] ?? 1120);
 
 // The map GEOMETRY modules — the thing this guard is actually about.
 //
