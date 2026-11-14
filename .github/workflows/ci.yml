@@ -209,5 +209,8 @@ jobs:
       # redraw and keyboard access for a stamped chart, measured first (818 -> 831 KB). No geometry; + 223 KB is far above 840.
       # RAISED 840 -> 850 with the script's default: the row-growth notice, measured first (839 -> 841 KB). No geometry;
       # + 223 KB is far above 850.
+      # RAISED 850 -> 1120, to the script's default (870 -> 1120): the chart-type names in the other Tier 1 languages
+      # are read synchronously by every host that lists or filters chart types, measured first (installed closure
+      # 1071 KB, the repo build 1097 KB; about 840 KB before). No geometry; + 223 KB is far above 1120.
       - name: geometry must stay out of the eager load path
-        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 850
+        run: node scripts/checkEagerSize.mjs /tmp/consumer/node_modules/@bicharts/chart-host/dist/index.mjs 1120
