@@ -71,6 +71,16 @@ export function cleanHostSelection(v: unknown): HostSelectionFact | undefined {
 // THE PAGE FILTER THAT NARROWED THE ROWS (contract 1.23.0), made safe to hand a chart: each value as trimmed text, blanks
 // and repeats dropped (a number or a boolean read as its text, anything else dropped); the field as trimmed text, "" when
 // it isn't text; a label only when it says something. No value left means nothing narrowed: absent, never an empty scope.
+/** The rows a page's filters keep (contract 1.26.0): whole, non-negative positions, sorted and once each; anything else is
+ *  absent (every row in view), never an empty view a host didn't mean. An empty array is kept: the filters keep no row. */
+export function cleanViewRows(v: unknown): number[] | undefined {
+    if (!Array.isArray(v)) return undefined;
+    const out: number[] = [];
+    for (const x of v) if (typeof x === "number" && Number.isInteger(x) && x >= 0 && !out.includes(x)) out.push(x);
+    if (out.length !== v.length) return undefined;
+    return out.sort((a, b) => a - b);
+}
+
 export function cleanFilterScope(v: unknown): FilterScopeFact | undefined {
     if (!v || typeof v !== "object" || !Array.isArray((v as any).values)) return undefined;
     const values: string[] = [];
@@ -130,6 +140,9 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         hostSelection: cleanHostSelection(p.hostSelection),
         // A host FACT about a filter applied before the rows arrived (contract 1.23.0), cleaned, never invented.
         filterScope: cleanFilterScope(p.filterScope),
+        // The rows the page's filters keep for a chart that models on every row (contract 1.26.0), cleaned, never invented.
+        viewRows: cleanViewRows(p.viewRows),
+        viewScope: cleanFilterScope(p.viewScope),
         // Host services (contract 1.18.0): a FUNCTION or nothing, so a junk value never reaches a chart as something
         // it would try to call. Passed through untouched otherwise: the host owns what opening or copying means.
         openUrl: typeof p.openUrl === "function" ? p.openUrl : undefined,

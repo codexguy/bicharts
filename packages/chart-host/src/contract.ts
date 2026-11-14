@@ -22,7 +22,12 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.25.0";
+export const HOST_CONTRACT_VERSION = "1.26.0";
+// 1.26.0 (2026-11-14): A CHART CAN MODEL ON EVERY ROW AND SHOW ONLY THE ONES THE PAGE KEEPS. RenderOptions gains viewRows (the
+// positions in data.rows the page's filters keep) and viewScope (what they keep, as filterScope says it), sent by a host whose
+// page hands a chart EVERY row and the reader's picks beside them (BicChart's viewedBy). A churn risk rated only from the rows a
+// joining-quarter pick left had too little follow-up to rate anyone; rated from every customer, the list shows the picked ones.
+// Absent means no filter is active: every row is in view, as before.
 // 1.25.0 (2026-11-12): A READER CAN KEEP A VIEW OF THEIR OWN. ViewStateService gains an optional `personal` store: the
 // reader's own copy (a browser store on their machine, an app's per-user record). resolveViewState reads it before the
 // durable store on a fresh viewing, so a person sees their own view and anyone without one sees the shared one;
@@ -615,6 +620,14 @@ export interface RenderOptions {
     // reads "North America · United States only", a rank "rank 2 of 3 (United States only)". ABSENT MEANS THE HOST SAYS
     // NOTHING NARROWED THE ROWS: the chart titles and compares as before.
     filterScope?: FilterScopeFact;
+    // THE ROWS THE PAGE'S FILTERS KEEP, FOR A CHART THAT MODELS ON ALL OF THEM (1.26.0). A chart whose numbers are estimated
+    // from every row - a churn risk rated from every customer's history - is handed every row, and the filters the reader
+    // picked arrive here instead of narrowing its query: `viewRows`, the positions in data.rows those filters keep, and
+    // `viewScope`, what they keep as the reader reads it (a FilterScopeFact). The chart models on every row and draws only
+    // these, and says so ("rated against all 3,600 customers; showing the 312 in 2023 Q2"). ABSENT MEANS NO FILTER IS ACTIVE:
+    // every row is in view. A chart that doesn't model on its rows draws viewRows' rows only, or ignores it and draws all.
+    viewRows?: number[];
+    viewScope?: FilterScopeFact;
     // HOST SERVICES A CHART MAY CALL (1.18.0). `openUrl` opens an address the host's own way: a sandboxed visual
     // cannot navigate itself, so a link a chart draws calls this, and only http(s) and mailto addresses are ever
     // handed to it. `copyText` writes text to the reader's clipboard the host's own way: a returned or resolved `false`,

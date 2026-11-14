@@ -147,6 +147,15 @@ export interface BicChartProps {
      */
     scopedBy?: ScopeSource | readonly ScopeSource[];
     /**
+     * THE PAGE FILTERS THIS CHART APPLIES TO ITS OWN ROWS - for a chart that models on EVERY row and shows only the ones the
+     * reader picked: a churn risk list rated from every customer, shown for one joining quarter. Give it every row (its query
+     * takes none of these picks) carrying the picks' key columns, and pass the picks here; while one is active the chart is
+     * told which rows it keeps (options.viewRows, positions in its rows) and what it keeps (options.viewScope), and it draws
+     * only those. A filter whose key columns aren't in the chart's rows can't be applied and is left out, with one console
+     * warning. Not for a filter the chart's query applies: that is `scopedBy`.
+     */
+    viewedBy?: ScopeSource | readonly ScopeSource[];
+    /**
      * THE CHART'S OWN CONTROLS AS PAGE STATE - from useBicControls(). For a chart that draws
      * sliders (the What-if projection's rate and horizon): `controls.values` holds every
      * knob's value from the first draw (no slider has to move first), `controls.info` / `summary`
@@ -249,7 +258,7 @@ export function BicChartGroup({ rows, columns, geo, point, destination, children
 export function BicChart(props: BicChartProps) {
     const { code, renderFn, options: pageOptions, d3, geoKind, viewState, zoomMemory, labelContrast, restoreScroll, onLabelContrast, onSelectionGlyphs, layoutPass,
             onInvalidSentinel, builtForRows, onRowGrowth, id, filteredBy, respondsWith, onSelect, annotations, onAnnotationClick,
-            className, style, selects, scopedBy, controls, ariaLabel } = props;
+            className, style, selects, scopedBy, viewedBy, controls, ariaLabel } = props;
 
     // THE FILTERS THIS CHART'S QUERY APPLIES (scopedBy): followed here, so the chart is told when one changes even when the
     // page component that holds them doesn't re-render this one. While one is active, options.filterScope says what it
@@ -301,6 +310,29 @@ export function BicChart(props: BicChartProps) {
     }, [group, ctx?.source, filterSel && filterSel.join(",")]);
     const data = built ? built.payload : props.data;
     rowMapRef.current = built ? built.rowMap : null;
+
+    // THE FILTERS THIS CHART APPLIES TO ITS OWN ROWS (viewedBy): followed like scopedBy, and turned into the positions of the
+    // rows they keep. Once viewedBy has been given the keys are always sent (options MERGE), so a cleared pick clears.
+    const viewSources: readonly ScopeSource[] = viewedBy == null ? [] : Array.isArray(viewedBy) ? viewedBy as readonly ScopeSource[] : [viewedBy as ScopeSource];
+    const viewList = viewSources.map(scopeFilterOf).filter((f): f is Filter => !!f);
+    const viewIds = viewList.map(f => f.id).join("\u0001");
+    const subscribeView = useCallback((cb: () => void) => {
+        const offs = viewList.map(f => f.onChange?.(() => cb()));
+        return () => { for (const off of offs) off?.(); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewIds]);
+    const viewSnapshot = () => viewList.map(f => f.version).join(",");
+    const viewVersion = useSyncExternalStore(subscribeView, viewSnapshot, viewSnapshot);
+    const [viewEver, setViewEver] = useState(viewedBy !== undefined);
+    if (viewedBy !== undefined && !viewEver) setViewEver(true);
+    const view = useMemo(() => viewEver ? viewOf(viewList, data as any) : null,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [viewEver, viewVersion, viewIds, data]);
+    const viewKey = view ? JSON.stringify(view) : "";
+    const optionsWithView = useMemo<ResolveOptionsInput | undefined>(
+        () => view ? { ...(options ?? {}), viewRows: view.rows, viewScope: view.scope } : options,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [options, viewKey]);
     const dataRef = useRef(data);
     dataRef.current = data;
     // What the page filter reads a drawn row as: the SOURCE row object in a group (the page's own
@@ -315,7 +347,7 @@ export function BicChart(props: BicChartProps) {
     };
     // Whether the selection this chart shows now was made by the reader on it (not painted in).
     const userSelectedRef = useRef(false);
-    const optKey = useMemo(() => JSON.stringify(options ?? {}), [options]);
+    const optKey = useMemo(() => JSON.stringify(optionsWithView ?? {}), [optionsWithView]);
     // THE ZOOM MEMORY: whether there is one is what rebuilds the host (the prop going from absent to present or back; null
     // and undefined are both absent), not which hook it is. A hook written inline, createZoomMemoryHook({ ... }) in the
     // props, is a new object on every parent render, over a new ZoomMemoryHost literal too; rebuilding on that would drop
@@ -382,7 +414,7 @@ export function BicChart(props: BicChartProps) {
         if (!el || (!code && !renderFn) || !data) return;
         const ctl = controls ? attachControls(() => hostRef.current, el, controls) : null;
         controlsRef.current = ctl;
-        const hostOptions = ctl ? { ...(options ?? {}), ...ctl.options } : options;
+        const hostOptions = ctl ? { ...(optionsWithView ?? {}), ...ctl.options } : optionsWithView;
         const host = createChartHost(el, { code, renderFn, data, options: hostOptions, d3, geoKind, viewState, zoomMemory: zoomRef.current,
                                            labelContrast, layoutPass, restoreScroll,
                                            onLabelContrast: r => onLabelContrastRef.current?.(r),
@@ -491,10 +523,10 @@ export function BicChart(props: BicChartProps) {
     // animMaxIdealFrames, maxMapPoints…). This is the whole point of setOptions. Skipped when the
     // options are the ones the host was just built with.
     useEffect(() => {
-        if (!hostRef.current || !options) return;
+        if (!hostRef.current || !optionsWithView) return;
         if (builtWithRef.current?.optKey === optKey) return;
         builtWithRef.current = { ...builtWithRef.current, optKey };
-        hostRef.current.setOptions(options);
+        hostRef.current.setOptions(optionsWithView);
         readControlsSoon();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [optKey]);
@@ -761,4 +793,33 @@ export function useMeasuredSize(ref: RefObject<Element | null>): { width: number
         return () => ro.disconnect();
     }, [ref]);
     return size;
+}
+
+/** The rows a chart's view filters keep: positions in data.rows passing EVERY active filter whose key columns the rows carry, and
+ *  what they keep as a reader reads it. Undefined values (no active, applicable filter) mean every row is in view. Exported for tests. */
+const warnedView = new Set<string>();
+export function viewOf(filters: readonly Filter[], data: { columns?: readonly { name: string }[]; rows?: readonly unknown[] } | null | undefined):
+        { rows: number[] | undefined; scope: ReturnType<typeof filterScopeOf> } {
+    const names = (data?.columns ?? []).map(c => c.name);
+    const active = filters.filter(f => f.active);
+    const usable = active.filter(f => {
+        const ok = f.columns.every(c => names.includes(c));
+        if (!ok && !warnedView.has(f.id)) {
+            warnedView.add(f.id);
+            try { console.warn(`[chart-host] viewedBy: filter "${f.label}" is keyed by ${f.columns.join(", ")}, which this chart's rows `
+                + `don't carry, so it can't keep rows here - add the column to the chart's query.`); } catch { /* no console */ }
+        }
+        return ok;
+    });
+    if (!usable.length) return { rows: undefined, scope: undefined };
+    const rows: number[] = [];
+    const list = data?.rows ?? [];
+    for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        const o: Record<string, unknown> = {};
+        if (Array.isArray(r)) names.forEach((n, k) => { o[n] = r[k]; });
+        else Object.assign(o, r as Record<string, unknown>);
+        if (usable.every(f => f.has(o))) rows.push(i);
+    }
+    return { rows, scope: filterScopeOf(usable) };
 }
