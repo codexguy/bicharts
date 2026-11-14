@@ -12,6 +12,12 @@
 // opening value included), and its label and readout from what the chart drew, so the page shows
 // the unit the chart shows. `set` applies values (a saved scenario), `reset` returns to the chart's
 // defaults.
+//
+// A chart can also draw a SEGMENTED row (d3.llmSegmented: "Compare by Channel | Plan | Region"). It keeps the reader's
+// choice in its own bag (`__lchSegments`) and persists it as uiState.segments. That choice is page state as much as a
+// slider is: a page that filters by what the chart compares must know it, or a click on a Plan curve goes on filtering
+// by Channel. So the host reads it too (after the sliders, `kind: "segmented"`), and set / reset route it back to
+// uiState.segments, where the helper reads it.
 
 import type { ChartHost } from "./host";
 import { LASSO_KNOB_KEY } from "./lasso";
@@ -28,12 +34,15 @@ export interface ControlInfo {
     value: unknown;
     /** The label the chart draws beside it ("growth per year"), or "" if none. */
     label: string;
-    /** The readout the chart draws ("+5.5%", "7 years") - the value in the chart's own words. */
+    /** The readout the chart draws ("+5.5%", "7 years") - the value in the chart's own words. For a segmented row, the
+     *  pressed button's words. */
     text: string;
+    /** "slider" (the knob bag) or "segmented" (a segmented row's choice). */
+    kind?: "slider" | "segmented";
 }
 
 export interface Controls {
-    /** Every knob's current value, by key - the opening values as soon as the chart has drawn. */
+    /** Every control's current value, by key (sliders and segmented rows) - the opening values as soon as the chart has drawn. */
     readonly values: Readonly<Record<string, unknown>>;
     /** Each knob in the order the chart draws them, with its label and readout. */
     readonly info: readonly ControlInfo[];
@@ -85,6 +94,9 @@ export function createControls(initial?: Readonly<Record<string, unknown>>): Con
             if (!info.length && ui.knobs && typeof ui.knobs === "object") {
                 for (const [k, v] of Object.entries(ui.knobs as Record<string, unknown>)) if (isKnob(k)) out[k] = v;
             }
+            if (!info.length && ui.segments && typeof ui.segments === "object") {
+                for (const [k, v] of Object.entries(ui.segments as Record<string, unknown>)) out[k] = v;
+            }
             return out;
         },
         get info() { return info; },
@@ -94,14 +106,22 @@ export function createControls(initial?: Readonly<Record<string, unknown>>): Con
         get ready() { return info.length > 0; },
         get version() { return version; },
         set(values) {
-            const knobs = { ...((ui.knobs as Record<string, unknown>) ?? {}), ...values };
-            ui.knobs = knobs;
+            // A segmented row's key goes where its helper reads it (uiState.segments); everything else is a slider.
+            const segKeys = new Set<string>(info.filter(i => i.kind === "segmented").map(i => i.key));
+            if (ui.segments && typeof ui.segments === "object") for (const k of Object.keys(ui.segments)) segKeys.add(k);
+            const knobVals: Record<string, unknown> = {}, segVals: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(values)) (segKeys.has(k) ? segVals : knobVals)[k] = v;
+            if (Object.keys(knobVals).length || !Object.keys(segVals).length) {
+                ui.knobs = { ...((ui.knobs as Record<string, unknown>) ?? {}), ...knobVals };
+            }
+            if (Object.keys(segVals).length) ui.segments = { ...((ui.segments as Record<string, unknown>) ?? {}), ...segVals };
             for (const a of Array.from(appliers)) a();
         },
         reset() {
             // The sliders go back to their defaults; the reader's lasso is not one of them.
             const kept = (ui.knobs as Record<string, unknown> | undefined)?.[LASSO_KNOB_KEY];
             delete ui.knobs;
+            delete ui.segments;
             if (kept !== undefined) ui.knobs = { [LASSO_KNOB_KEY]: kept };
             for (const a of Array.from(appliers)) a();
         },
@@ -117,8 +137,13 @@ export function createControls(initial?: Readonly<Record<string, unknown>>): Con
     return c;
 }
 
-/** Read each knob off a rendered chart: values from the bag, label and readout from what it drew. */
+/** Read each control off a rendered chart: values from the bags, label and readout from what it drew. Sliders first, then
+ *  segmented rows. */
 export function readControls(container: HTMLElement): ControlInfo[] {
+    return [...readSliders(container), ...readSegments(container)];
+}
+
+function readSliders(container: HTMLElement): ControlInfo[] {
     const bag = (container as any).__lchKnobs;
     if (!bag || typeof bag !== "object") return [];
     const keys = Object.keys(bag).filter(isKnob);
@@ -129,7 +154,25 @@ export function readControls(container: HTMLElement): ControlInfo[] {
         // order - the bag is filled in the order the sliders are drawn.
         const g = groups.find(x => x.getAttribute("data-knob") === key) ?? groups[i] ?? null;
         const txt = (sel: string) => (g?.querySelector(sel)?.textContent ?? "").trim();
-        return { key, value: bag[key], label: txt(".llm-slider-label"), text: txt(".llm-slider-readout") };
+        return { key, value: bag[key], label: txt(".llm-slider-label"), text: txt(".llm-slider-readout"), kind: "slider" as const };
+    });
+}
+
+function readSegments(container: HTMLElement): ControlInfo[] {
+    const bag = (container as any).__lchSegments;
+    if (!bag || typeof bag !== "object") return [];
+    const keys = Object.keys(bag);
+    if (!keys.length) return [];
+    // In the order the rows are drawn; a key whose row isn't drawn (yet) comes last, in the bag's order.
+    const groups = Array.from(container.querySelectorAll("g.llm-segmented"));
+    const drawn = groups.map(g => g.getAttribute("data-segment-key") ?? "").filter(k => keys.includes(k));
+    const order = [...drawn, ...keys.filter(k => !drawn.includes(k))];
+    return order.map(key => {
+        const g = groups.find(x => x.getAttribute("data-segment-key") === key) ?? null;
+        const label = (g?.querySelector(".llm-segmented-label")?.textContent ?? "").trim();
+        const on = g ? Array.from(g.querySelectorAll(".llm-segmented-button")).find(b => b.getAttribute("aria-pressed") === "true") : null;
+        const text = (on?.querySelector(".llm-segmented-text")?.textContent ?? "").trim();
+        return { key, value: bag[key], label, text, kind: "segmented" as const };
     });
 }
 
