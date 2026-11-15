@@ -81,6 +81,33 @@ export function cleanViewRows(v: unknown): number[] | undefined {
     return out.sort((a, b) => a - b);
 }
 
+/** A page's tags on customer segments (contract 1.27.0), cleaned and never invented: an own key (not a prototype key) maps to
+ *  a list of { tag, owner?, at? } with a non-empty string tag; owner and at are kept only as strings. Nothing usable is
+ *  absent. Bounded, because a bag is untrusted: at most 64 segment names and 100 tags each, 200 characters a field. */
+export function cleanSegmentTags(v: unknown): Record<string, Array<{ tag: string; owner?: string; at?: string }>> | undefined {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+    const out: Record<string, Array<{ tag: string; owner?: string; at?: string }>> = {};
+    const str = (s: unknown) => typeof s === "string" && s !== "" ? s.slice(0, 200) : undefined;
+    let names = 0;
+    for (const name of Object.keys(v)) {
+        if (names >= 64 || name === "__proto__" || name === "constructor" || name === "prototype") continue;
+        const list = (v as Record<string, unknown>)[name];
+        if (!Array.isArray(list)) continue;
+        const kept: Array<{ tag: string; owner?: string; at?: string }> = [];
+        for (const t of list.slice(0, 100)) {
+            const tag = t && typeof t === "object" ? str((t as any).tag) : undefined;
+            if (!tag) continue;
+            const e: { tag: string; owner?: string; at?: string } = { tag };
+            const owner = str((t as any).owner), at = str((t as any).at);
+            if (owner) e.owner = owner;
+            if (at) e.at = at;
+            kept.push(e);
+        }
+        if (kept.length) { out[name] = kept; names++; }
+    }
+    return names ? out : undefined;
+}
+
 export function cleanFilterScope(v: unknown): FilterScopeFact | undefined {
     if (!v || typeof v !== "object" || !Array.isArray((v as any).values)) return undefined;
     const values: string[] = [];
@@ -142,6 +169,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         filterScope: cleanFilterScope(p.filterScope),
         // The rows the page's filters keep for a chart that models on every row (contract 1.26.0), cleaned, never invented.
         viewRows: cleanViewRows(p.viewRows),
+        // A page's tags on customer segments, keyed by segment name (contract 1.27.0), cleaned, never invented.
+        segmentTags: cleanSegmentTags(p.segmentTags),
         viewScope: cleanFilterScope(p.viewScope),
         // Host services (contract 1.18.0): a FUNCTION or nothing, so a junk value never reaches a chart as something
         // it would try to call. Passed through untouched otherwise: the host owns what opening or copying means.

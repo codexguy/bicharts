@@ -22,7 +22,11 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.26.0";
+export const HOST_CONTRACT_VERSION = "1.27.0";
+// 1.27.0 (2026-11-15): A SEGMENT'S TAGS REACH ITS CARD. RenderOptions gains segmentTags ({ "<segment name>": [{ tag, owner?,
+// at? }] }), sent by a page that keeps campaign tags on customer segments, keyed by the segment's name. resolveOptions is a
+// whitelist, and without the field the chart's read always took its empty fallback: no tag ever reached a card. Additive;
+// absent means the page sends no tags.
 // 1.26.0 (2026-11-14): A CHART CAN MODEL ON EVERY ROW AND SHOW ONLY THE ONES THE PAGE KEEPS. RenderOptions gains viewRows (the
 // positions in data.rows the page's filters keep) and viewScope (what they keep, as filterScope says it), sent by a host whose
 // page hands a chart EVERY row and the reader's picks beside them (BicChart's viewedBy). A churn risk rated only from the rows a
@@ -627,6 +631,10 @@ export interface RenderOptions {
     // these, and says so ("rated against all 3,600 customers; showing the 312 in 2023 Q2"). ABSENT MEANS NO FILTER IS ACTIVE:
     // every row is in view. A chart that doesn't model on its rows draws viewRows' rows only, or ignores it and draws all.
     viewRows?: number[];
+    // CONTRACT 1.27.0: the page's tags on customer segments, keyed by the segment's NAME (the segments helper keeps names
+    // across a refresh and a filter). The chart draws the newest tag and its owner on that segment's card. Cleaned by
+    // resolveOptions (cleanSegmentTags); absent when the page sends none.
+    segmentTags?: Record<string, Array<{ tag: string; owner?: string; at?: string }>>;
     viewScope?: FilterScopeFact;
     // HOST SERVICES A CHART MAY CALL (1.18.0). `openUrl` opens an address the host's own way: a sandboxed visual
     // cannot navigate itself, so a link a chart draws calls this, and only http(s) and mailto addresses are ever
