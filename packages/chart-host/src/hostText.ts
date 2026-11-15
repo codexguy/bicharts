@@ -51,6 +51,15 @@ export function hostText(src: StringSource | null | undefined, key: string, engl
         Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : m);
 }
 
+/** A text source as a plain function, the form RenderOptions.text carries into a chart's own code: the key's sentence
+ *  in the source's language, or the English given, its {placeholders} filled (`count` picks a plural form). */
+export type RenderTextFn = (key: string, english: string, vars?: TextVars, count?: number) => string;
+
+/** RenderOptions.text for a source (a host passes renderText(chartHostStrings(culture))); English with none. */
+export function renderText(src: StringSource | null | undefined): RenderTextFn {
+    return (key, english, vars, count) => hostText(src, key, english, vars, count);
+}
+
 /** True when `src` will word text in a language other than English (numbers are then grouped in that language). */
 export function isLocalized(src: StringSource | null | undefined): src is StringSource {
     return !!src && !/^en(?:-|$)/i.test(src.lang);

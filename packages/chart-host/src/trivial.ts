@@ -37,6 +37,7 @@
 
 import type { RenderFn } from "./host";
 import { MARK_CLASS, ROW_IDX_ATTR } from "./contract";
+import { hostText, type StringSource } from "./hostText";
 
 /** Columns the host synthesises; never part of the user's data shape. */
 const META_COLUMNS = new Set(["__rowIdx__", "__geoIso__", "__geoLat__", "__geoLon__", "__geoPrecision__"]);
@@ -90,6 +91,11 @@ function isNumericColumn(rows: any[][], idx: number): boolean {
     return seen > 0;
 }
 
+/** The column's name as an emitted expression: the literal, or "Value" in the reader's language when it has none. */
+function nameExpr(name: string): string {
+    return name ? lit(name) : "tx('trivial.value', 'Value')";
+}
+
 /** JS string literal, safe to embed in emitted source. */
 function lit(s: string): string {
     return JSON.stringify(String(s));
@@ -99,7 +105,17 @@ function lit(s: string): string {
  * Decide whether a dataset has exactly one defensible chart, and return its source when it
  * does. Returns null whenever there is a real choice to make.
  */
-export function planTrivialChart(data: DataLike | null | undefined): TrivialPlan | null {
+/** The plan's reasons, by kind; a host's text source words them (keys trivial.reason.<kind>). */
+const REASONS = {
+    card: "One row of one column holds a single value, so this is a card. "
+        + "No generation was needed and none was used.",
+    histogram: "A single numeric column has one defensible chart: the distribution of its "
+        + "values. No generation was needed and none was used.",
+    frequency: "A single categorical column has one defensible chart: how often each value "
+        + "occurs. No generation was needed and none was used.",
+} as const;
+
+export function planTrivialChart(data: DataLike | null | undefined, strings?: StringSource | null): TrivialPlan | null {
     const allCols = Array.isArray(data?.columns) ? data!.columns! : [];
     const rows = Array.isArray(data?.rows) ? data!.rows! : [];
     if (!allCols.length || !rows.length) return null;
@@ -112,7 +128,8 @@ export function planTrivialChart(data: DataLike | null | undefined): TrivialPlan
     }
     if (dataCols.length !== 1) return null;          // more than one column = a real choice
     const idx = dataCols[0];
-    const name = columnName(allCols[idx]) || "Value";
+    // An unnamed column is labelled at RENDER time ("Value" in the reader's language), not baked into the source.
+    const name = columnName(allCols[idx]);
 
     const finish = (kind: TrivialShapeKind, reason: string, source: string): TrivialPlan => ({
         kind, reason, columnIndex: idx, source, render: compileTrivialSource(source),
@@ -120,19 +137,13 @@ export function planTrivialChart(data: DataLike | null | undefined): TrivialPlan
 
     // ---- one column, one row -> a card. There is nothing else to draw.
     if (rows.length === 1) {
-        return finish("card",
-            "One row of one column holds a single value, so this is a card. "
-            + "No generation was needed and none was used.",
-            cardSource(idx, name));
+        return finish("card", hostText(strings, "trivial.reason.card", REASONS.card), cardSource(idx, name));
     }
 
     // ---- one numeric column, many rows -> the distribution of its values.
     if (isNumericColumn(rows, idx)) {
         if (rows.length < MIN_HISTOGRAM_ROWS) return null;
-        return finish("histogram",
-            "A single numeric column has one defensible chart: the distribution of its "
-            + "values. No generation was needed and none was used.",
-            histogramSource(idx, name));
+        return finish("histogram", hostText(strings, "trivial.reason.histogram", REASONS.histogram), histogramSource(idx, name));
     }
 
     // ---- one categorical column, many rows -> how often each value occurs.
@@ -146,10 +157,7 @@ export function planTrivialChart(data: DataLike | null | undefined): TrivialPlan
     if (distinct.size < 2 || distinct.size >= rows.length) return null;
     if (distinct.size > MAX_FREQUENCY_CATEGORIES) return null;
 
-    return finish("frequency-bar",
-        "A single categorical column has one defensible chart: how often each value "
-        + "occurs. No generation was needed and none was used.",
-        frequencySource(idx, name));
+    return finish("frequency-bar", hostText(strings, "trivial.reason.frequency", REASONS.frequency), frequencySource(idx, name));
 }
 
 /** Compile emitted source the same way a host compiles generated code. */
@@ -180,8 +188,22 @@ const PRELUDE = `
     try { return new Intl.NumberFormat(options.cultureCode || undefined).format(v); }
     catch (e) { return String(v); }
   }
+  // WORDS AT RENDER TIME. options.text (renderText(strings)) answers a key in the reader's language; with none, or
+  // one that throws, the English below is drawn exactly as before. A build older than options.text never sets it.
+  function tx(key, en, vars, count) {
+    if (typeof options.text === 'function') {
+      try { var s = options.text(key, en, vars, count); if (typeof s === 'string') return s; } catch (e) {}
+    }
+    return en.replace(/\\{([a-z][a-z0-9_]*)\\}/g, function (m, k) { return vars && Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m; });
+  }
+  var LOCAL = !!options.cultureCode && !/^en(-|$)/i.test(options.cultureCode);
   function compact(v) {
     var a = Math.abs(v);
+    // K/M/B are English: another culture writes its own short form (3.9万, 39 k).
+    if (LOCAL && a >= 1e3) {
+      try { return new Intl.NumberFormat(options.cultureCode, { notation: 'compact', maximumSignificantDigits: 3 }).format(v); }
+      catch (e) {}
+    }
     if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1) + 'B';
     if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
     if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1) + 'K';
@@ -200,7 +222,7 @@ function cardSource(idx: number, name: string): string {
   var raw = rows[0] ? rows[0][${idx}] : null;
   var blank = (raw === null || raw === undefined || raw === '');
   var isNum = !blank && (typeof raw === 'number' || (String(raw).trim() !== '' && isFinite(Number(raw))));
-  var shown = blank ? '(blank)' : (isNum ? fmt(Number(raw)) : String(raw));
+  var shown = blank ? tx('trivial.blank', '(blank)') : (isNum ? fmt(Number(raw)) : String(raw));
 
   var root = document.createElement('div');
   root.style.width = W + 'px'; root.style.height = H + 'px';
@@ -227,7 +249,7 @@ function cardSource(idx: number, name: string): string {
   label.style.marginTop = '6px'; label.style.textAlign = 'center';
   label.style.maxWidth = '100%'; label.style.overflow = 'hidden';
   label.style.textOverflow = 'ellipsis'; label.style.whiteSpace = 'nowrap';
-  label.textContent = ${lit(name)};
+  label.textContent = ${nameExpr(name)};
 
   root.appendChild(value); root.appendChild(label);
   container.appendChild(root);
@@ -239,7 +261,7 @@ function frequencySource(idx: number, name: string): string {
   var counts = new Map();
   for (var r = 0; r < rows.length; r++) {
     var raw = rows[r] ? rows[r][${idx}] : null;
-    var key = (raw === null || raw === undefined || raw === '') ? '(blank)' : String(raw);
+    var key = (raw === null || raw === undefined || raw === '') ? tx('trivial.blank', '(blank)') : String(raw);
     var b = counts.get(key);
     if (b) b.push(r); else counts.set(key, [r]);
   }
@@ -254,7 +276,7 @@ function frequencySource(idx: number, name: string): string {
   var barH = Math.min(bandH - 3, 26);
 
   var title = svgEl('text', { x: 8, y: CF + 2, 'font-size': CF, 'font-weight': '700', fill: FG });
-  title.textContent = ${lit(name)} + ' \\u2014 count of ' + fmt(rows.length) + ' rows';
+  title.textContent = tx('trivial.count_title', '{name} \\u2014 count of {count} rows', { name: ${nameExpr(name)}, count: fmt(rows.length) }, rows.length);
   svg.appendChild(title);
 
   entries.forEach(function (e, i) {
@@ -330,7 +352,7 @@ function histogramSource(idx: number, name: string): string {
   var bw = plotW / binCount;
 
   var title = svgEl('text', { x: padL, y: CF + 2, 'font-size': CF, 'font-weight': '700', fill: FG });
-  title.textContent = ${lit(name)} + ' \\u2014 distribution of ' + fmt(vals.length) + ' values';
+  title.textContent = tx('trivial.distribution_title', '{name} \\u2014 distribution of {count} values', { name: ${nameExpr(name)}, count: fmt(vals.length) }, vals.length);
   svg.appendChild(title);
 
   bins.forEach(function (idxs, i) {

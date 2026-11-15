@@ -211,6 +211,7 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         cultureCode: p.cultureCode,
         allowTooltips: p.allowTooltips,
         noDataText: p.noDataText,
+        text: p.text,
         // A finite number, or a string that is numeric once trimmed, is clamped to DIM_OPACITY_MIN-1; anything else (absent,
         // blank, a boolean, an array, an object) stays undefined so the stylesheet - and a page's own CSS override - still
         // decides. Not numberOr: Number() reads true as 1 and false, [] and whitespace as 0, which would dim to the floor.

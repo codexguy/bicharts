@@ -299,8 +299,8 @@ export {
 // The text a reader sees, in the reader's language: a host passes `chartHostStrings(cultureCode)` ("@bicharts/chart-host/strings") or its own source
 // as HostServices.strings and to the card; none passed reads English.
 export {
-    hostText, catalogSource,
-    type StringSource, type CatalogValue, type TextVars,
+    hostText, catalogSource, renderText,
+    type StringSource, type CatalogValue, type TextVars, type RenderTextFn,
 } from "./hostText";
 // The chrome around it (where the card opens, pinning, dismissal, the compact card) is
 // "@bicharts/chart-host/card", not this entry: only a host that mounts a card loads it, and this

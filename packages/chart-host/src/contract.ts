@@ -750,6 +750,10 @@ export interface RenderOptions {
     cultureCode?: string;
     allowTooltips?: boolean;
     noDataText?: string;
+    /** The reader's language for words a chart's own code draws (renderText(strings) from hostText): text(key,
+     *  english, vars?, count?) answers the sentence, or the English given. Absent, a chart draws its English; a chart
+     *  saved before this existed never asks. Read today by the deterministic (trivial) charts. */
+    text?: (key: string, english: string, vars?: Readonly<Record<string, string | number>>, count?: number) => string;
     /** How far a selection dims the marks outside it, as a share of full opacity (DIM_OPACITY_MIN-1). Absent: the
      *  stylesheet decides - DIM_OPACITY_DEFAULT, or whatever the page sets on --lch-dim-opacity. */
     dimOpacity?: number;

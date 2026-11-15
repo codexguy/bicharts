@@ -35,6 +35,14 @@ const ENGLISH: Record<string, string | Record<string, string>> = {
     "summary.warning": "Warning: {message}",
     // The point map's place-role decisions (pointRoleFactText), every key the wording reads.
     ...POINT_ROLE_FACT_ENGLISH,
+    // The deterministic (trivial) charts' words, read at render time through RenderOptions.text.
+    "trivial.blank": "(blank)",
+    "trivial.value": "Value",
+    "trivial.count_title": { one: "{name} — count of {count} row", other: "{name} — count of {count} rows" },
+    "trivial.distribution_title": { one: "{name} — distribution of {count} value", other: "{name} — distribution of {count} values" },
+    "trivial.reason.card": "One row of one column holds a single value, so this is a card. No generation was needed and none was used.",
+    "trivial.reason.histogram": "A single numeric column has one defensible chart: the distribution of its values. No generation was needed and none was used.",
+    "trivial.reason.frequency": "A single categorical column has one defensible chart: how often each value occurs. No generation was needed and none was used.",
 };
 const TIER1 = "nl de fr es pt it ru uk pl cs sk sv da nb fi hu tr el ro hr ja zh ko ar he hi id vi th".split(" ");
 const ph = (s: string) => (s.match(/\{[a-z][a-z0-9_]*\}/g) ?? []).sort().join(",");
