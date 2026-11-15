@@ -1453,6 +1453,17 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             isSelected: m => !!m.classList?.contains(MARK_SELECTED_CLASS),
             labelOf: nameOfRow,
             keyOf: m => m.getAttribute(ROW_IDX_ATTR) ?? "",
+            // A run of marks chosen with Shift and the arrows goes to the lasso as a group, when this chart has one.
+            lassoMarks: marks => {
+                if (!lasso?.surface || !lasso.surface.isConnected) return false;
+                if (!marks) return true;
+                const rows: number[] = [];
+                for (const m of marks) for (const s of (m.getAttribute(ROW_IDX_ATTR) ?? "").split(",")) {
+                    const r = Number(s);
+                    if (s.trim() !== "" && Number.isInteger(r)) rows.push(r);
+                }
+                return lasso.selectRows(rows);
+            },
         });
     }
     container.classList?.add(HOST_CONTAINER_CLASS);

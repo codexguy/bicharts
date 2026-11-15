@@ -40,6 +40,8 @@ export function codeHasKeyboardStamp(code: unknown): boolean {
 export const KEYBOARD_CLASS = "lch-keyboard";
 /** On each element the host made focusable, so it never touches one the chart made focusable itself. */
 export const WIRED_ATTR = "data-lch-kb";
+/** On each mark of a run the reader is marking with Shift and the arrows, until Enter sends it as a lasso. */
+export const RANGE_ATTR = "data-lch-kb-range";
 
 export interface KeyboardEnv {
     container: HTMLElement;
@@ -64,6 +66,10 @@ export interface KeyboardEnv {
     labelOf(mark: Element): string | null;
     /** A stable key for a mark across redraws (its rows). */
     keyOf(mark: Element): string;
+    /** THE LASSO FROM THE KEYBOARD. Present when the host can send a group of marks as a lasso: true when this chart has
+     *  one now (Shift with an arrow then marks a run, and Enter sends it here), false when it has none (Shift with an
+     *  arrow stays a plain move). Called with no marks to ask, with marks to send. */
+    lassoMarks?(marks: Element[] | null): boolean;
 }
 
 export interface KeyboardHandle {
@@ -121,6 +127,20 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
     let destroyed = false;
     // The elements whose role the host gave (a chart's own role is never changed), so a mark can swap button for image.
     const ownRole = new WeakSet<Element>();
+    // A RUN OF MARKS FOR THE LASSO: where Shift with an arrow began, and the marks between it and the focused one, each
+    // carrying RANGE_ATTR (and aria-selected) so the reader sees and hears the run before Enter sends it.
+    let rangeAnchor: HTMLElement | null = null;
+    let rangeNow: HTMLElement[] = [];
+    const dropRange = () => {
+        for (const m of rangeNow) { m.removeAttribute(RANGE_ATTR); m.removeAttribute("aria-selected"); }
+        rangeNow = []; rangeAnchor = null;
+    };
+    const showRange = (list: HTMLElement[], from: HTMLElement, to: HTMLElement) => {
+        for (const m of rangeNow) { m.removeAttribute(RANGE_ATTR); m.removeAttribute("aria-selected"); }
+        const a = list.indexOf(from), b = list.indexOf(to);
+        rangeNow = a < 0 || b < 0 ? [] : list.slice(Math.min(a, b), Math.max(a, b) + 1);
+        for (const m of rangeNow) { m.setAttribute(RANGE_ATTR, "true"); m.setAttribute("aria-selected", "true"); }
+    };
 
     const marksNow = (): HTMLElement[] =>
         Array.from(container.querySelectorAll<HTMLElement>(env.markSelector))
@@ -191,12 +211,27 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
             setRoving(list, to);
             try { to.focus({ preventScroll: false }); } catch { /* an element that can't take focus */ }
         };
+        const arrow = k === "ArrowRight" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowUp";
+        if (arrow && e.shiftKey && !e.ctrlKey && !e.metaKey && env.lassoMarks?.(null)) {
+            e.preventDefault();
+            if (!rangeAnchor || !rangeNow.length) rangeAnchor = mark;
+            const to = list[Math.max(0, Math.min(list.length - 1, at + (k === "ArrowRight" || k === "ArrowDown" ? 1 : -1)))];
+            if (to) { go(list.indexOf(to)); showRange(list, rangeAnchor, to); }
+            return;
+        }
+        if (arrow || k === "Home" || k === "End" || k === "Escape") dropRange();
+        if ((k === "Enter" || k === " " || k === "Spacebar") && rangeNow.length >= 2) {
+            const run = rangeNow.slice();
+            dropRange();
+            if (env.lassoMarks?.(run)) { e.preventDefault(); return; }
+        }
         switch (k) {
             case "ArrowRight": case "ArrowDown": e.preventDefault(); go(at + 1); break;
             case "ArrowLeft": case "ArrowUp": e.preventDefault(); go(at - 1); break;
             case "Home": e.preventDefault(); go(0); break;
             case "End": e.preventDefault(); go(list.length - 1); break;
             case "Enter": case " ": case "Spacebar":
+                dropRange();
                 e.preventDefault();
                 rovingKey = env.keyOf(mark);
                 env.select(mark, { ctrl: !!(e.ctrlKey || e.metaKey), shift: !!e.shiftKey });

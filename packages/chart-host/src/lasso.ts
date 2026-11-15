@@ -151,6 +151,9 @@ export interface LassoEventDetail {
     mode: LassoMode;
     space: LassoSpace;
     source: "user" | "restore" | "host";
+    /** How a reader's lasso was made: absent or "pointer" for a drawn shape, "keyboard" for a run of marks chosen with
+     *  Shift and the arrows (no shape: polygon and polygons are empty). */
+    via?: "pointer" | "keyboard";
 }
 
 export interface LassoAxes {
@@ -507,6 +510,9 @@ export interface LassoHandle {
     clear(opts?: { publish?: boolean; source?: "user" | "host" }): void;
     /** Remove the listeners and everything the lasso drew. Nothing is persisted. */
     destroy(): void;
+    /** A group of rows the reader chose without drawing (a run of marks from the keyboard): the lasso's actions and its
+     *  event, as a drawn lasso's, with `via: "keyboard"` and no shape. False when this chart has no lasso. */
+    selectRows(rows: number[]): boolean;
 }
 
 interface Gesture {
@@ -540,7 +546,7 @@ function showNote(env: LassoEnv, rows: number, cap: number): LassoHandle {
     try { if (win?.getComputedStyle(container).position === "static") container.style.position = "relative"; } catch { /* no layout */ }
     container.appendChild(note);
     const handle: LassoHandle = {
-        surface: null, rows: () => [], clear: () => { /* nothing is drawn */ },
+        surface: null, rows: () => [], clear: () => { /* nothing is drawn */ }, selectRows: () => false,
         destroy: () => { note.remove(); if ((container as any)[LASSO_SLOT] === handle) (container as any)[LASSO_SLOT] = null; },
     };
     (container as any)[LASSO_SLOT] = handle;
@@ -659,6 +665,27 @@ export function installLasso(env: LassoEnv): LassoHandle | null {
             try { run(ctx); } catch { /* one action failing must not stop the next, nor the event */ }
         }
         emit(detail(rows, list, "user"));
+    };
+
+    // ---- a group chosen from the keyboard: the same actions and event as a drawn lasso, with no shape ----
+    // A drawn shape at rest is erased (the group replaces it) and nothing is stored: a restore re-draws a SHAPE, and a
+    // run of marks has none.
+    const commitRows = (picked: number[]): boolean => {
+        const rows = Array.from(new Set(picked.filter(r => Number.isInteger(r) && r >= 0))).sort((a, b) => a - b);
+        if (!rows.length) return false;
+        if (gesture) endGesture();
+        const hadShape = shapes.length > 0;
+        shapes = []; rowsNow = rows;
+        drawRest(); setCount(null);
+        if (hadShape) persist(null);
+        const ctx: LassoActionContext = { rows: rows.slice(), mode: modeNow(), source: "user", env };
+        for (const name of lassoActions(settingOf(env.options()))) {
+            const run = ACTIONS.get(name);
+            if (!run) continue;
+            try { run(ctx); } catch { /* one action failing must not stop the next, nor the event */ }
+        }
+        emit({ ...detail(rows, [], "user"), via: "keyboard" });
+        return true;
     };
 
     const clear = (opts: { publish?: boolean; source?: "user" | "host" } = {}) => {
@@ -818,6 +845,7 @@ export function installLasso(env: LassoEnv): LassoHandle | null {
         surface,
         rows: () => rowsNow.slice(),
         clear,
+        selectRows: commitRows,
         destroy() {
             if (gesture) { gesture = null; listen(false); }
             container.removeEventListener("pointerdown", onDown, true);
