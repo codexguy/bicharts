@@ -101,6 +101,18 @@ describe("a lasso chart answers the keyboard", () => {
         expect(selectedRows()).toEqual(["2"]);
     });
 
+    it("on a scatter the run is a group that sits together, not the next rows in data order", () => {
+        // rows 0, 2, 4 sit together in the top-left; 1, 3, 5 far away bottom-right. Data order interleaves them.
+        make();
+        const POS = [[100, 100], [400, 400], [115, 108], [420, 410], [130, 104], [440, 395]];
+        POS.forEach(([x, y], r) => mark(r).setAttribute("data-box", `${x},${y},6,6`));
+        mark(0).focus();
+        key(focused(), "ArrowRight", { shiftKey: true });
+        key(focused(), "ArrowRight", { shiftKey: true });
+        key(focused(), "Enter");
+        expect(events.map(e => e.rows)).toEqual([[0, 2, 4]]);
+    });
+
     it("a chart with no lasso keeps Shift with an arrow as a plain move", () => {
         make({});
         mark(1).focus();

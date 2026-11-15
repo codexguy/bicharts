@@ -133,12 +133,48 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
     let rangeNow: HTMLElement[] = [];
     const dropRange = () => {
         for (const m of rangeNow) { m.removeAttribute(RANGE_ATTR); m.removeAttribute("aria-selected"); }
-        rangeNow = []; rangeAnchor = null;
+        rangeNow = []; rangeAnchor = null; rangePath = [];
+    };
+    // THE RUN IS A GROUP THAT SITS TOGETHER. Marks are listed in page order, which on a scatter is data order spread over
+    // the whole plot, so a run of the next rows was no group a reader could see. On a chart that lays its marks out, Shift
+    // with an arrow moves to the nearest mark that way and the run is every mark inside the box the visited marks span;
+    // with no layout (every centre the same) it falls back to the page order.
+    let rangePath: Array<[number, number]> = [];
+    const centreOf = (el: Element): [number, number] | null => {
+        try {
+            const r = el.getBoundingClientRect();
+            return r && (r.width > 0 || r.height > 0) ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+        } catch { return null; }
+    };
+    const spatial = (list: HTMLElement[]) => list.length > 1 && list.every(m => centreOf(m) !== null);
+    const nearestToward = (list: HTMLElement[], from: HTMLElement, k: string): HTMLElement | null => {
+        const c = centreOf(from);
+        if (!c) return null;
+        let best: HTMLElement | null = null, bestD = Infinity;
+        for (const m of list) {
+            if (m === from) continue;
+            const p = centreOf(m);
+            if (!p) continue;
+            const dx = p[0] - c[0], dy = p[1] - c[1];
+            const along = k === "ArrowRight" ? dx : k === "ArrowLeft" ? -dx : k === "ArrowDown" ? dy : -dy;
+            if (along <= 0) continue;
+            const d = along + 2 * Math.abs(k === "ArrowRight" || k === "ArrowLeft" ? dy : dx);
+            if (d < bestD) { bestD = d; best = m; }
+        }
+        return best;
     };
     const showRange = (list: HTMLElement[], from: HTMLElement, to: HTMLElement) => {
         for (const m of rangeNow) { m.removeAttribute(RANGE_ATTR); m.removeAttribute("aria-selected"); }
-        const a = list.indexOf(from), b = list.indexOf(to);
-        rangeNow = a < 0 || b < 0 ? [] : list.slice(Math.min(a, b), Math.max(a, b) + 1);
+        if (spatial(list)) {
+            if (!rangePath.length) { const a = centreOf(from); if (a) rangePath.push(a); }
+            const b = centreOf(to); if (b) rangePath.push(b);
+            const xs = rangePath.map(p => p[0]), ys = rangePath.map(p => p[1]);
+            const x0 = Math.min(...xs) - 0.5, x1 = Math.max(...xs) + 0.5, y0 = Math.min(...ys) - 0.5, y1 = Math.max(...ys) + 0.5;
+            rangeNow = list.filter(m => { const p = centreOf(m)!; return p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1; });
+        } else {
+            const a = list.indexOf(from), b = list.indexOf(to);
+            rangeNow = a < 0 || b < 0 ? [] : list.slice(Math.min(a, b), Math.max(a, b) + 1);
+        }
         for (const m of rangeNow) { m.setAttribute(RANGE_ATTR, "true"); m.setAttribute("aria-selected", "true"); }
     };
 
@@ -214,8 +250,9 @@ export function installKeyboard(env: KeyboardEnv): KeyboardHandle {
         const arrow = k === "ArrowRight" || k === "ArrowDown" || k === "ArrowLeft" || k === "ArrowUp";
         if (arrow && e.shiftKey && !e.ctrlKey && !e.metaKey && env.lassoMarks?.(null)) {
             e.preventDefault();
-            if (!rangeAnchor || !rangeNow.length) rangeAnchor = mark;
-            const to = list[Math.max(0, Math.min(list.length - 1, at + (k === "ArrowRight" || k === "ArrowDown" ? 1 : -1)))];
+            if (!rangeAnchor || !rangeNow.length) { rangeAnchor = mark; rangePath = []; }
+            const to = spatial(list) ? nearestToward(list, mark, k)
+                : list[Math.max(0, Math.min(list.length - 1, at + (k === "ArrowRight" || k === "ArrowDown" ? 1 : -1)))];
             if (to) { go(list.indexOf(to)); showRange(list, rangeAnchor, to); }
             return;
         }
