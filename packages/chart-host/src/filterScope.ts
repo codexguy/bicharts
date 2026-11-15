@@ -338,7 +338,12 @@ export function createFilter(columns: string | readonly string[], opts: FilterOp
         get row() { return rows[0] ?? null; },
         get value() { return keys.length ? keys[0][0] : null; },
         get values() { return keys.map(k => k[0]); },
-        get text() { return keys.map(k => displayOf(k)).join(", "); },
+        // A pick of many keys (a segment card, a circled group) is said as a count: the chip and its live region read
+        // every name otherwise, about 1,020 of them for one segment.
+        get text() {
+            if (keys.length <= 3) return keys.map(k => displayOf(k)).join(", ");
+            return `${keys.slice(0, 2).map(k => displayOf(k)).join(", ")} and ${(keys.length - 2).toLocaleString("en-US")} more`;
+        },
         textOf(key, more, parts) {
             const k = (Array.isArray(key) ? key as FilterKey : [key]).slice(0, cols.length);
             return parts && cols.some(c => !parts.includes(c)) ? partsOf(k, more, parts) : displayOf(k, more);
