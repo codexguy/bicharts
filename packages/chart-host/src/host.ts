@@ -744,6 +744,15 @@ export function createChartHost(container: HTMLElement, config: ChartHostConfig)
             try {
                 provider.save(s as Record<string, unknown>);
             } catch { /* a chart must never fail to repaint because a save failed */ }
+            // THE BAG THE HOST HANDS BACK IS THE ONE THE READER LEFT. options.uiState on the host's next render is this
+            // bag, so it takes the new state too (REPLACE semantics), whatever the provider does with its copy: a provider
+            // whose save stores a NEW object left the bag at its first load, and a resize or setOptions drew the reader's
+            // old choice again.
+            if (s !== bag) {
+                const next = { ...(s as Record<string, unknown>) };
+                for (const k of Object.keys(bag)) delete bag[k];
+                Object.assign(bag, next);
+            }
         };
     }
     // A PAGE'S uiState IS ITS STARTING STATE. A React page passes a fixed one inside options, so every
