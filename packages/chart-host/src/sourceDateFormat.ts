@@ -396,6 +396,26 @@ function name(p: Parts, kind: "month" | "weekday", width: "long" | "short" | "na
     }
 }
 
+/** The day period of a 12-hour clock in the reader's language (Intl's `dayPeriod`: 午後, p. m.), the
+ *  source's own layout kept around it. English, no culture and a culture the runtime cannot read
+ *  print AM/PM (A/P for the one-letter form) byte for byte as before; another language prints its
+ *  whole word for both forms, because a first letter of 午後 or p. m. means nothing. */
+function dayPeriod(p: Parts, short: boolean, culture?: string): string {
+    const english = short ? (p.hours < 12 ? "A" : "P") : (p.hours < 12 ? "AM" : "PM");
+    if (!culture || /^en\b/i.test(culture)) return english;
+    try {
+        const f = new Intl.DateTimeFormat(culture, { hour: "numeric", hour12: true, timeZone: "UTC" });
+        // A tag the runtime has no data for resolves to the runtime's default locale: that is not the
+        // reader's language, so it keeps English rather than printing the machine's word.
+        if (/^en\b/i.test(f.resolvedOptions().locale) || !Intl.DateTimeFormat.supportedLocalesOf(culture).length) return english;
+        const parts = f.formatToParts(utcAnchor(p));
+        const word = parts.find(x => x.type === "dayPeriod")?.value.trim();
+        return word || english;
+    } catch {
+        return english;
+    }
+}
+
 const p2 = (n: number) => (n < 10 ? "0" : "") + n;
 
 function renderFormat(format: string, p: Parts, dialect: SourceFormatDialect, culture?: string): string | null {
@@ -434,8 +454,8 @@ function renderFormat(format: string, p: Parts, dialect: SourceFormatDialect, cu
             case "second2": out += p2(p.seconds); sawField = true; break;
             case "second1": out += String(p.seconds); sawField = true; break;
             case "fraction": out += String(p.ms).padStart(3, "0"); sawField = true; break;
-            case "meridiemLong": out += p.hours < 12 ? "AM" : "PM"; sawField = true; break;
-            case "meridiemShort": out += p.hours < 12 ? "A" : "P"; sawField = true; break;
+            case "meridiemLong": out += dayPeriod(p, false, culture); sawField = true; break;
+            case "meridiemShort": out += dayPeriod(p, true, culture); sawField = true; break;
         }
     }
     // Nothing recognised means this file did not understand the format, whatever `hasDateToken`

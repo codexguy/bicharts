@@ -89,6 +89,24 @@ describe("formatSourceDate - Excel's m is a month OR a minute", () => {
         expect(formatSourceDate("2025-08-31T00:30:00.000Z", { format: "h:mm AM/PM", dialect: "excel" }))
             .toBe("12:30 AM");
     });
+
+    it("words the day period in the reader's language, keeping the source's 12-hour layout", () => {
+        const fmt = { format: "h:mm AM/PM", dialect: "excel" as const };
+        expect(formatSourceDate(at, { ...fmt, culture: "ja-JP" })).toBe("2:05 午後");
+        expect(formatSourceDate("2025-08-31T00:30:00.000Z", { ...fmt, culture: "ja-JP" })).toBe("12:30 午前");
+        const es = formatSourceDate(at, { ...fmt, culture: "es-ES" })!;
+        expect(es.startsWith("2:05 ")).toBe(true);
+        expect(es).not.toContain("PM");
+        // The one-letter form has no meaning outside English, so another language prints its whole word.
+        expect(formatSourceDate(at, { format: "h:mm A/P", dialect: "excel", culture: "ja-JP" })).toBe("2:05 午後");
+    });
+
+    it("keeps English AM/PM byte for byte, and with no culture or one the runtime cannot read", () => {
+        for (const culture of ["en-US", "en-GB", undefined, "not-a-locale"]) {
+            expect(formatSourceDate(at, { format: "h:mm AM/PM", dialect: "excel", culture })).toBe("2:05 PM");
+            expect(formatSourceDate(at, { format: "h:mm A/P", dialect: "excel", culture })).toBe("2:05 P");
+        }
+    });
 });
 
 describe("formatSourceDate - the .NET dialect is NOT the Excel one", () => {
