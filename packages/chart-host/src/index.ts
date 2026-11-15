@@ -326,6 +326,8 @@ export {
 // the kind of one-line rule that gets rewritten slightly differently in each. The words around
 // it stay per host.
 export { composeSummaryText } from "./summaryText";
+export { pointRoleFactText, pointRoleFactKey, POINT_ROLE_FACT_ENGLISH } from "./geoRoleText";
+export type { GeoPointRoleFact } from "./contract";
 
 // A DECLARED mark that cannot receive a click is not a mark (2026-08-30). Two codegen habits
 // leave a tagged element unhittable: an inert <g> whose painted children are all

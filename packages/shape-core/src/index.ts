@@ -153,7 +153,7 @@ export type { GeoPointPrecision, GeoPointResult, GeoPointColumns, GeoPointAmbigu
 export {
     resolvePointRoles, looksLikeCountryColumn, admin1MatchPct, zipMatchPct,
 } from "./geoPointRoles";
-export type { PointBind, PointRoleResolution } from "./geoPointRoles";
+export type { PointBind, PointRoleResolution, PointRoleFact, PointRoleReason } from "./geoPointRoles";
 export { monthLookupFor, normalizeMonthKey } from "./monthNames";
 // KNOWN-NAME KEYS - the one loose form (accents, case, spaces and punctuation all folded away)
 // every match against a table of names we know uses on a miss of its exact key: places, months,

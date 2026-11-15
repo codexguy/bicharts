@@ -156,6 +156,8 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         geoPointDest: p.geoPointDest,
         // Why a point map placed nothing (the resolver's sentences), passed through untouched.
         geoPointRefused: p.geoPointRefused,
+        // The same refusals as data, for wording in the reader's language (pointRoleFactText), passed through untouched.
+        geoPointRefusedFacts: p.geoPointRefusedFacts,
         // A host FACT about the data it serialised (contract 1.9.0), passed through untouched.
         dateCellsAreUtcDays: p.dateCellsAreUtcDays,
         // Host FACTS about whether every row arrived (contract 1.15.0), passed through untouched: an

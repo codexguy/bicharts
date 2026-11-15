@@ -12,6 +12,22 @@ import type { ExportFormat, ExportTableService, SaveFileService } from "./export
 // live alongside them.
 // The generated code is unchanged — this describes what it already expects.
 
+/**
+ * One place-role decision of a point map as data: shape-core's PointRoleFact, restated here because shape-core is a
+ * build-time dependency a consumer never installs. A host words it with pointRoleFactText (hostText keys geo.role.*).
+ */
+export interface GeoPointRoleFact {
+    kind: "refused" | "backfilled";
+    role: "city" | "state" | "zip" | "country" | "lat/lon";
+    column: string;
+    reason: "low-match" | "short-digits" | "ambiguous-ca" | "country-values" | "replaced"
+        | "no-coordinate-pair" | "one-country" | "not-country" | "matched";
+    pct?: number;
+    replacement?: string;
+    /** On a flow map's top-level list, which end the decision was made at. */
+    endpoint?: "origin" | "destination";
+}
+
 // Bump when the contract changes in a way a host must adapt to (semver). Stamped
 // into the MCP integration contract so a caller can pin behavior.
 // 1.2.0 (2026-08-02): gazetteer v2. GeoPointBinding gained mapKind; geoPoint gained
@@ -585,7 +601,12 @@ export interface RenderOptions {
         ambiguousRows: number;
         rolesBackfilled?: string[];
         rolesRefused?: string[];
+        // The same decisions as data (refusals first, then backfills), for a host or helper that words them in
+        // the reader's language (pointRoleFactText); the sentences above stay English. Absent when both are.
+        roleFacts?: GeoPointRoleFact[];
     } | null;
+    // geoPointRefused as data (a destination's carry endpoint "destination"), for wording in the reader's language.
+    geoPointRefusedFacts?: GeoPointRoleFact[];
     // WHY A POINT MAP HAS NO COORDINATES (a refusal that placed nothing, so geoPoint is absent): the resolver's own
     // sentences, e.g. that every row resolves to the same country. Promoted from the payload like geoPoint, so a map
     // filtered down to one country can say so quietly instead of failing. Absent when nothing was refused.
@@ -665,6 +686,7 @@ export interface RenderOptions {
         ambiguousRows: number;
         rolesBackfilled?: string[];
         rolesRefused?: string[];
+        roleFacts?: GeoPointRoleFact[];
     } | null;
     // Point-map mark-count ceiling (the host's "Max Map Points" setting; MAX_MAP_POINTS_DEFAULT
     // when the host has none - resolveOptions fills it, so a chart never sees it absent).

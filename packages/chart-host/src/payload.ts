@@ -20,7 +20,7 @@ import {
 // GeoPointPrecision comes from OUR contract, not shape-core: it appears in this module's
 // public return type, and shape-core is a build-time devDependency that consumers never
 // install — so importing the type here put a dangling specifier in the shipped payload.d.ts.
-import type { GeoPointPrecision, GeoMapKind } from "./contract";
+import type { GeoPointPrecision, GeoMapKind, GeoPointRoleFact } from "./contract";
 
 /** Which columns hold the place parts a coordinate can be resolved from. Any subset;
  *  the cascade uses the most precise tier available per row. */
@@ -73,6 +73,8 @@ export interface GeoPointReport {
     //                ("state=Country (every value is a country, not a state)")
     rolesBackfilled?: string[];
     rolesRefused?: string[];
+    // The same decisions as data, refusals first: what a host words in the reader's language.
+    roleFacts?: GeoPointRoleFact[];
 }
 
 /** How a province map's rows were placed (geo binding with grain "admin1"), so the chart can say what its provinces
@@ -185,6 +187,7 @@ interface PointChannel {
     prec: (string | null)[] | null;
     geoPoint: GeoPointReport | undefined;
     rolesRefused: string[];
+    refusedFacts: GeoPointRoleFact[];
 }
 
 /** The host column carrying each row's position in the payload - what a mark's data-row-idx reports. */
@@ -214,6 +217,7 @@ function resolvePointChannel(
     let bind: GeoPointBinding | null = point ?? null;
     let rolesBackfilled: string[] = [];
     let rolesRefused: string[] = [];
+    let roleFacts: GeoPointRoleFact[] = [];
     // The column the resolver passed over, kept ONLY so an unplaced row can be named. When a
     // country hint is swapped for a cleaner column, the rows that then fail are typically the
     // ones whose value in the WINNING column is blank — so without this the report can count
@@ -237,6 +241,7 @@ function resolvePointChannel(
         bind = res.bind;
         rolesBackfilled = res.backfilled;
         rolesRefused = res.refused;
+        roleFacts = res.facts ?? [];
         const lf = res.labelFallback;
         labelCol = lf && (lf.country || lf.city || lf.state || lf.zip);
     }
@@ -280,9 +285,10 @@ function resolvePointChannel(
             // saying".
             ...(rolesBackfilled.length ? { rolesBackfilled } : {}),
             ...(rolesRefused.length ? { rolesRefused } : {}),
+            ...(roleFacts.length ? { roleFacts } : {}),
         };
     }
-    return { lat: pLat, lon: pLon, prec: pPrec, geoPoint, rolesRefused };
+    return { lat: pLat, lon: pLon, prec: pPrec, geoPoint, rolesRefused, refusedFacts: roleFacts.filter(f => f.kind === "refused") };
 }
 
 export function buildRenderPayload(
@@ -346,6 +352,10 @@ export function buildRenderPayload(
     // undifferentiated, tells a reader which rule fired but not which half of the route is
     // resting on it — and on a flow map those are different problems with different fixes.
     const rolesRefused = [...o.rolesRefused, ...d.rolesRefused.map(s => `destination: ${s}`)];
+    // The same list as data. Only a flow map has a destination, so only then does a fact say which end it is.
+    const refusedFacts = destination
+        ? [...o.refusedFacts.map(f => ({ ...f, endpoint: "origin" as const })), ...d.refusedFacts.map(f => ({ ...f, endpoint: "destination" as const }))]
+        : o.refusedFacts;
 
     // Geo choropleth: precompute the deterministic __geoIso__ join column (normal-
     // form ISO/USPS/FIPS via shape-core; unmatched → null) so each region <path>
@@ -466,6 +476,7 @@ export function buildRenderPayload(
         // Survives a refusal that placed nothing — see geoPointRefused. Omitted when empty so
         // the ordinary case adds no bytes.
         ...(rolesRefused.length ? { geoPointRefused: rolesRefused } : {}),
+        ...(refusedFacts.length ? { geoPointRefusedFacts: refusedFacts } : {}),
         ...(utcDayColumns ? { dateCellsAreUtcDays: true, utcDayColumns } : {}),
         ...(utcWallClockColumns ? { dateCellsAreUtcWallClock: true, utcWallClockColumns } : {}),
         ...(geoProvince ? { geoProvince } : {}),

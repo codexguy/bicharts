@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { HOST_TEXT_CATALOGS, chartHostStrings } from "../src/strings";
 import { computeSelectionCard } from "../src/selectionCard";
+import { POINT_ROLE_FACT_ENGLISH } from "../src/geoRoleText";
 
 // THE PACKAGE'S OWN CATALOGS are the only check a translation gets before a reader sees it, so every rule is pass/fail:
 // each language carries every key the card reads, with the English's placeholders, and a counted key carries exactly the
@@ -32,6 +33,8 @@ const ENGLISH: Record<string, string | Record<string, string>> = {
     "review.decline": "No thanks",
     "review.accept": "Apply",
     "summary.warning": "Warning: {message}",
+    // The point map's place-role decisions (pointRoleFactText), every key the wording reads.
+    ...POINT_ROLE_FACT_ENGLISH,
 };
 const TIER1 = "nl de fr es pt it ru uk pl cs sk sv da nb fi hu tr el ro hr ja zh ko ar he hi id vi th".split(" ");
 const ph = (s: string) => (s.match(/\{[a-z][a-z0-9_]*\}/g) ?? []).sort().join(",");

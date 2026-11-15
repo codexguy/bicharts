@@ -55,9 +55,40 @@ export type PointBind = {
     country?: string;
 };
 
+/** Why a role was refused or backfilled - a closed list a host words in the reader's language. */
+export type PointRoleReason =
+    | "low-match"          // too few values read as the role (pct says how many did)
+    | "short-digits"       // a ZIP column of 3-4 digit codes with nothing to say they are postal
+    | "ambiguous-ca"       // every value is "CA", both Canada and California
+    | "country-values"     // a state column whose every value is a country
+    | "replaced"           // a country column that lost to a better one (`replacement` names it)
+    | "no-coordinate-pair" // no row holds a usable latitude/longitude pair
+    | "one-country"        // every row resolves to the same country, so nothing places apart
+    | "not-country"        // a country column whose values are not country identifiers
+    | "matched";           // a backfill: the column read as the role (pct when measured)
+
+/**
+ * One role decision as DATA, beside the English sentence in `refused`/`backfilled` (same order).
+ * The sentences were written for a person and read only in English; a host that shows them to a
+ * reader words these facts in the reader's language instead, and no caller parses prose.
+ */
+export type PointRoleFact = {
+    kind: "refused" | "backfilled";
+    role: "city" | "state" | "zip" | "country" | "lat/lon";
+    /** The column the role named ("Lat/Lon" pairs read "latColumn/lonColumn"). */
+    column: string;
+    reason: PointRoleReason;
+    /** The share of values that read as the role, when the decision measured one. */
+    pct?: number;
+    /** For "replaced": the column used instead. */
+    replacement?: string;
+};
+
 export type PointRoleResolution = {
     /** The binding to geocode with: hint, minus anything refused, plus anything backfilled. */
     bind: PointBind | null;
+    /** Every refusal and backfill as data, in the order of `refused` then `backfilled`. */
+    facts: PointRoleFact[];
     /** Roles the hint omitted that were resolved from the data ("state=StateCode"). */
     backfilled: string[];
     /** Roles the hint named that were REFUSED, with why ("state=Country (country column)"). */
@@ -356,6 +387,10 @@ export function resolvePointRoles(
 ): PointRoleResolution {
     const backfilled: string[] = [];
     const refused: string[] = [];
+    const refusedFacts: PointRoleFact[] = [];
+    const backfilledFacts: PointRoleFact[] = [];
+    const refuse = (f: Omit<PointRoleFact, "kind">, text: string) => { refused.push(text); refusedFacts.push({ kind: "refused", ...f }); };
+    const backfill = (f: Omit<PointRoleFact, "kind">, text: string) => { backfilled.push(text); backfilledFacts.push({ kind: "backfilled", ...f }); };
     const out: PointBind = {};
     const labelFallback: PointBind = {};
     const colSet = new Set(columns);
@@ -394,9 +429,9 @@ export function resolvePointRoles(
     if (hintedZip && colSet.has(hintedZip)) {
         const vals = valuesOf(hintedZip);
         const pct = zipMatchPct(vals);
-        if (pct < ROLE_MATCH_PCT) refused.push(`zip=${hintedZip} (only ${pct}% of values read as ZIPs)`);
+        if (pct < ROLE_MATCH_PCT) refuse({ role: "zip", column: hintedZip, reason: "low-match", pct }, `zip=${hintedZip} (only ${pct}% of values read as ZIPs)`);
         else if (!zipColumnCorroborated(vals, hintedZip))
-            refused.push(`zip=${hintedZip} (all values are 3-4 digits with nothing to say they are postal)`);
+            refuse({ role: "zip", column: hintedZip, reason: "short-digits" }, `zip=${hintedZip} (all values are 3-4 digits with nothing to say they are postal)`);
         else out.zip = hintedZip;
     }
     const hintedState = hint?.state;
@@ -409,7 +444,7 @@ export function resolvePointRoles(
             // would place Canadian cities in California) and do NOT promote it to country
             // (that would place Californian cities in Canada). Falling back to city-only
             // still resolves, which is the one outcome that cannot be badly wrong.
-            refused.push(`state=${hintedState} (every value is "CA", which is both Canada and California)`);
+            refuse({ role: "state", column: hintedState, reason: "ambiguous-ca" }, `state=${hintedState} (every value is "CA", which is both Canada and California)`);
         } else if (looksLikeCountryColumn(vals)) {
             // The "CA" trap. Every value is a country, so this is a country column that
             // landed in the state slot. Using it would resolve "CA" to California and
@@ -418,10 +453,11 @@ export function resolvePointRoles(
             // Having identified what the column actually IS, put it to work rather than
             // discarding it: as the COUNTRY role it narrows city matching to the right
             // country, which is most of the value the state would have provided.
-            refused.push(`state=${hintedState} (every value is a country, not a state)`);
+            refuse({ role: "state", column: hintedState, reason: "country-values" }, `state=${hintedState} (every value is a country, not a state)`);
             if (!out.country) out.country = hintedState;
         } else if (admin1MatchPct(vals) < ROLE_MATCH_PCT) {
-            refused.push(`state=${hintedState} (only ${admin1MatchPct(vals)}% of values are states/provinces)`);
+            const pct = admin1MatchPct(vals);
+            refuse({ role: "state", column: hintedState, reason: "low-match", pct }, `state=${hintedState} (only ${pct}% of values are states/provinces)`);
         } else {
             out.state = hintedState;
         }
@@ -451,7 +487,7 @@ export function resolvePointRoles(
         if (best) {
             out.state = best.name;
             taken.add(best.name);
-            backfilled.push(`state=${best.name} (${best.pct}% states/provinces)`);
+            backfill({ role: "state", column: best.name, reason: "matched", pct: best.pct }, `state=${best.name} (${best.pct}% states/provinces)`);
         }
     }
 
@@ -465,7 +501,7 @@ export function resolvePointRoles(
             if (distinctRawMatches(vals, v => zipPrefixCandidates(v).length > 0) < MIN_DISTINCT_BACKFILL) continue;
             out.zip = c;
             taken.add(c);
-            backfilled.push(`zip=${c} (${pct}% ZIP codes)`);
+            backfill({ role: "zip", column: c, reason: "matched", pct }, `zip=${c} (${pct}% ZIP codes)`);
             break;
         }
     }
@@ -506,8 +542,9 @@ export function resolvePointRoles(
         }
         if (best) {
             if (hintedCountry) {
-                refused.push(`country=${hintedCountry} (only ${countryMatchPct(valuesOf(hintedCountry))}% `
-                    + `of values are country identifiers; using ${best.name} instead)`);
+                const pct = countryMatchPct(valuesOf(hintedCountry));
+                refuse({ role: "country", column: hintedCountry, reason: "replaced", pct, replacement: best.name },
+                    `country=${hintedCountry} (only ${pct}% of values are country identifiers; using ${best.name} instead)`);
                 // Keep the loser as a LABEL source: it is usually the human-readable column
                 // ("Freedonia"), and the winner is usually the code column that is blank on
                 // exactly the rows that fail. See PointRoleResolution.labelFallback.
@@ -515,7 +552,7 @@ export function resolvePointRoles(
             }
             out.country = best.name;
             taken.add(best.name);
-            backfilled.push(`country=${best.name}`);
+            backfill({ role: "country", column: best.name, reason: "matched" }, `country=${best.name}`);
         }
     }
 
@@ -532,7 +569,7 @@ export function resolvePointRoles(
         }
         if (best) {
             out.city = best.name;
-            backfilled.push(`city=${best.name} (${best.pct}% known cities)`);
+            backfill({ role: "city", column: best.name, reason: "matched", pct: best.pct }, `city=${best.name} (${best.pct}% known cities)`);
         }
     }
 
@@ -592,20 +629,20 @@ export function resolvePointRoles(
             && String(r[out.lat!] ?? "").trim() !== "" && String(r[out.lon!] ?? "").trim() !== "";
     });
     if (out.lat && out.lon && !latLonCanPlace) {
-        refused.push(`lat/lon=${out.lat}/${out.lon} (no row holds a usable coordinate pair)`);
+        refuse({ role: "lat/lon", column: `${out.lat}/${out.lon}`, reason: "no-coordinate-pair" }, `lat/lon=${out.lat}/${out.lon} (no row holds a usable coordinate pair)`);
     }
 
     if (out.country && !countryCanPlace && !(out.city || out.state || out.zip || latLonCanPlace)) {
         // The only candidate role was country and it cannot carry the map on its own. Say
         // which of the two conditions failed, so the chart can explain rather than blank.
-        refused.push(countryProven
+        refuse({ role: "country", column: out.country, reason: countryProven ? "one-country" : "not-country" }, countryProven
             ? `country=${out.country} (every row resolves to the same country - nothing to place apart)`
             : `country=${out.country} (values are not country identifiers)`);
     }
 
     const any = !!(out.city || out.state || out.zip || countryCanPlace || latLonCanPlace);
     return {
-        bind: any ? out : null, backfilled, refused,
+        bind: any ? out : null, backfilled, refused, facts: [...refusedFacts, ...backfilledFacts],
         // Omitted entirely when nothing was displaced, so the common case adds no bytes.
         ...(Object.keys(labelFallback).length ? { labelFallback } : {}),
     };
