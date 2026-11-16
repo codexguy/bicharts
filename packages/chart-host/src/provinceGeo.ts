@@ -31,6 +31,17 @@ export function geoKeyFor(res: { geoKind?: string | null; geoRegion?: string | n
     return res.geoKind ?? null;
 }
 
+/** How long the DEFAULT province fetch may take before the load gives up (undefined, no geometry) and the chart draws
+ *  without the basemap. A browser's own fetch waits far longer on a dead or blocked origin: the Power BI visual's first
+ *  draw sat ~90 s on one. A live server serves the file in well under a second; this leaves a slow link room. */
+export const PROVINCE_GEO_FETCH_TIMEOUT_MS = 8000;
+
+function fetchJsonBounded(url: string): Promise<any> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), PROVINCE_GEO_FETCH_TIMEOUT_MS);
+    return fetch(url, { credentials: "omit", signal: abort.signal }).then((res) => res.json()).finally(() => clearTimeout(timer));
+}
+
 const inflight = new Map<string, Promise<any | undefined>>();
 
 /**
@@ -52,7 +63,7 @@ export async function loadProvinceGeo(
         const started = Date.now();
         p = (async () => {
             try {
-                const doc = opts.fetchJson ? await opts.fetchJson(url) : await (await fetch(url, { credentials: "omit" })).json();
+                const doc = await (opts.fetchJson ?? fetchJsonBounded)(url);
                 if (!doc || doc.type !== "FeatureCollection" || !Array.isArray(doc.features) || doc.features.length === 0)
                     throw new Error("not a FeatureCollection");
                 registerGeo(key, doc);

@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
     loadProvinceGeo, provinceGeoPath, provinceGeoKey, geoKeyFor, provinceLocator, PROVINCE_SNAP_DEG, resetProvinceGeoForTests,
+    PROVINCE_GEO_FETCH_TIMEOUT_MS,
 } from "../src/provinceGeo";
 import { clearGeoCache, geoFromCache, registerGeo } from "../src/geoLazy";
 import { buildRenderPayload } from "../src/payload";
@@ -170,5 +171,33 @@ describe("the provinces entry", () => {
     it("builds no join column for a province binding without a join", () => {
         const p = buildRenderPayload([{ name: "Province" }], [{ Province: "West" }], { column: "Province", kind: "admin1-name", grain: "admin1", region: "europe" });
         expect(p.columns.some(c => c.name === "__geoIso__")).toBe(false);
+    });
+});
+
+// A province file that never answers (a dead tunnel, a blocked origin) can hold a host's first draw for as long as the
+// browser waits. The DEFAULT fetch - what a host gets when it passes no fetchJson - gives up instead: after
+// PROVINCE_GEO_FETCH_TIMEOUT_MS the request is aborted and the load resolves to undefined (no geometry), so the chart
+// draws without the basemap.
+describe("the default province fetch gives up", () => {
+    beforeEach(() => { clearGeoCache(); resetProvinceGeoForTests?.(); });
+    it("a fetch that never answers resolves to undefined once the timeout passes, the request aborted and logged", async () => {
+        vi.useFakeTimers();
+        const f = vi.fn((_u: string, init?: { signal?: AbortSignal }) => new Promise((_r, rej) => {
+            init?.signal?.addEventListener("abort", () => rej(new DOMException("The operation was aborted.", "AbortError")));
+        }));
+        vi.stubGlobal("fetch", f);
+        const logs: string[] = [];
+        try {
+            const p = loadProvinceGeo("north-america", { origin: "https://example.test", log: (t) => logs.push(t) });
+            await vi.advanceTimersByTimeAsync(PROVINCE_GEO_FETCH_TIMEOUT_MS + 50);
+            expect(await p).toBeUndefined();
+            expect(f).toHaveBeenCalledOnce();
+            expect(f.mock.calls[0][1]?.signal?.aborted).toBe(true);
+            expect(logs).toContain("province-geo-failed");
+        } finally { vi.unstubAllGlobals(); vi.useRealTimers(); }
+    });
+    it("the limit leaves a slow link room and beats a reader's patience", () => {
+        expect(PROVINCE_GEO_FETCH_TIMEOUT_MS).toBeGreaterThanOrEqual(5000);
+        expect(PROVINCE_GEO_FETCH_TIMEOUT_MS).toBeLessThanOrEqual(15000);
     });
 });
