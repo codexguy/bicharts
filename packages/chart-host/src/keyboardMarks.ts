@@ -17,6 +17,8 @@
 // code into every host (a React page, the Excel add-in, a saved chart) with nothing for a page or an agent to pass, and
 // a chart generated while the switch was off stays as it was until it is regenerated.
 
+import { formatSourceDate, type SourceFormats } from "./sourceDateFormat";
+
 export const KEYBOARD_STAMP = "// bic:keyboard-marks";
 const STAMP_RE = /^[ \t]*\/\/[ \t]*bic:keyboard-marks\b/;
 /** How many lines from the top the stamp may sit: a host writes its own header above the code (chart-mcp's is four). */
@@ -81,22 +83,40 @@ export interface KeyboardHandle {
 /** A Date from any window (a chart drawn in a frame hands over its own realm's Date). */
 const isDate = (v: unknown): v is Date => Object.prototype.toString.call(v) === "[object Date]";
 
+/** A column the payload serialised as a date: its cells are ISO instants (or Dates), never text the reader typed. The
+ *  same test the selection card uses, so a mark's name and its card agree on what a date is. */
+const isDateColumn = (c: any): boolean => /^datetime/i.test(String(c?.dataType ?? ""));
+
 /** What a screen reader calls a row: its first few values, numbers and dates in the reader's culture, internal columns
  *  left out. A Date is read as the reader's date, never as its String() (weekday, time and time zone); one that names
- *  no day is skipped like a blank. Text is kept as it is. Shared so every host names a mark the same way. */
+ *  no day is skipped like a blank. A DATE COLUMN'S CELL IS READ AS A DATE TOO: a host sends it as an ISO instant
+ *  ("2024-01-01T00:00:00.000Z"), which is the wire's form and nobody's words, so it is printed the way the selection
+ *  card prints it - the source's own format when the caller holds one, else the reader's date. Other text is kept as
+ *  it is. Shared so every host names a mark the same way. */
 export function rowNameOf(columns: ReadonlyArray<unknown>, row: ReadonlyArray<unknown> | null | undefined,
-                          culture?: string): string | null {
+                          culture?: string, formats?: SourceFormats | null): string | null {
     if (!row) return null;
     const parts: string[] = [];
     (columns || []).forEach((c: any, i: number) => {
         const name = typeof c === "string" ? c : c?.name;
         const v = row[i];
         if (parts.length >= 4 || v == null || v === "" || (typeof name === "string" && name.startsWith("__"))) return;
+        if (isDateColumn(c) && (typeof v === "string" || isDate(v))) {
+            let shown: string | null = null;
+            try {
+                shown = formatSourceDate(v, { format: formats?.byColumn?.[String(name ?? "")] ?? null, dialect: formats?.dialect, culture });
+            } catch { shown = null; }
+            if (shown) { parts.push(shown); return; }
+        }
+        // A culture code the runtime does not know throws in toLocale*: the name is read without it, never lost.
+        const inCulture = (print: (c: string | undefined) => string): string => {
+            try { return print(culture || undefined); } catch { return print(undefined); }
+        };
         if (isDate(v)) {
-            if (!Number.isNaN(v.getTime())) parts.push(v.toLocaleDateString(culture || undefined));
+            if (!Number.isNaN(v.getTime())) parts.push(inCulture(c2 => v.toLocaleDateString(c2)));
             return;
         }
-        parts.push(typeof v === "number" ? v.toLocaleString(culture || undefined, { maximumFractionDigits: 2 }) : String(v));
+        parts.push(typeof v === "number" ? inCulture(c2 => v.toLocaleString(c2, { maximumFractionDigits: 2 })) : String(v));
     });
     return parts.length ? parts.join(", ") : null;
 }

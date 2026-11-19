@@ -329,6 +329,34 @@ describe("rowNameOf", () => {
         expect(rowNameOf(cols, ["Brazil", day], "en-US")).not.toContain("GMT");
     });
 
+    // A DATE COLUMN'S CELL IS AN ISO INSTANT ON THE WIRE. A host that sends dates as text handed the name the wire's
+    // own form ("2024-01-01T00:00:00.000Z, Search, 27,587"); a date column reads as a date in the reader's culture.
+    it("names a date column's ISO text as the reader's date, in every culture, and leaves other text alone", async () => {
+        const { rowNameOf } = await import("../src/keyboardMarks");
+        const cols = [{ name: "Month", dataType: "DateTime" }, { name: "Channel", dataType: "String" }, { name: "Spend", dataType: "Decimal" },
+            { name: "Note", dataType: "String" }];
+        const row = ["2024-01-01T00:00:00.000Z", "Search", 27587, "2024-01-01T00:00:00.000Z"];
+        const en = rowNameOf(cols, row, "en-US")!;
+        expect(en).toBe("Jan 1, 2024, Search, 27,587, 2024-01-01T00:00:00.000Z");   // the text column keeps its own characters
+        expect(en.split(", Search")[0]).not.toMatch(/T\d\d:|Z$/);
+        expect(rowNameOf(cols, row, "de-DE")).toBe("01.01.2024, Search, 27.587, 2024-01-01T00:00:00.000Z");
+        expect(rowNameOf(cols, ["2024-01-01", "Search"], "en-US")).toBe("Jan 1, 2024, Search");
+        // a time of day is kept, as the reader's time
+        expect(rowNameOf(cols, ["2024-01-01T13:30:00.000Z", "Search"], "en-US")).toMatch(/^Jan 1, 2024, 1:30\s?PM, Search$/);
+        // a Date in a date column reads the same way as its ISO text
+        expect(rowNameOf(cols, [new Date(Date.UTC(2024, 0, 1)), "Search"], "en-US")).toBe("Jan 1, 2024, Search");
+        // text that is no date, in a date column, is kept; a bad culture never costs the name
+        expect(rowNameOf(cols, ["FY24 P1", "Search"], "en-US")).toBe("FY24 P1, Search");
+        expect(rowNameOf(cols, row, "not a culture")).toContain("Search");
+    });
+
+    it("prints a date column in the source's own format when the caller holds one", async () => {
+        const { rowNameOf } = await import("../src/keyboardMarks");
+        const cols = [{ name: "Month", dataType: "DateTime" }, { name: "Channel" }];
+        const formats = { dialect: "excel" as const, byColumn: { Month: "mmm yyyy" } };
+        expect(rowNameOf(cols, ["2024-01-01T00:00:00.000Z", "Search"], "en-US", formats)).toBe("Jan 2024, Search");
+    });
+
     it("skips a date that names no day, as it skips a blank", async () => {
         const { rowNameOf } = await import("../src/keyboardMarks");
         expect(rowNameOf([{ name: "Country" }, { name: "Day" }], ["Brazil", new Date(NaN)], "en-US")).toBe("Brazil");
