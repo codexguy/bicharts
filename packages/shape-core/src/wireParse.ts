@@ -89,6 +89,16 @@ export interface ParsedGenerateResponse {
     geoKind: string;
     /** The point-map binding, packed from the point columns the server named; null when none. */
     geoPointCols: WirePointBinding | null;
+    /**
+     * A continent or province map's frame ("north-america"): which land and borders it draws under its data.
+     * Present only when the server sent non-empty text (trimmed); every other chart sends none. A map that loses
+     * it draws its data with nothing under it, so a host keeps it with the code for a re-draw from cache.
+     */
+    geoRegion?: string;
+    /** A map's level below the country ("admin1" for a province map). Present only when sent, like geoRegion. */
+    geoGrain?: string;
+    /** Which source placed a province map's rows: "admin1", "latlon" or "city". Present only when sent. */
+    geoSource?: string;
     creditBalanceBefore: number | null;
     creditCost: number | null;
     isServiceError: boolean;
@@ -180,6 +190,11 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
     const pollFinal = f("isPollFinal");
     const minWidth = positiveOrNull(f("chartMinWidth"));
     const minHeight = positiveOrNull(f("chartMinHeight"));
+    const geoFrame: Pick<ParsedGenerateResponse, "geoRegion" | "geoGrain" | "geoSource"> = {};
+    for (const name of ["geoRegion", "geoGrain", "geoSource"] as const) {
+        const v = f(name);
+        if (typeof v === "string" && v.trim() !== "") geoFrame[name] = v.trim();
+    }
     return {
         errorMessage: str(f("errorMessage")),
         errorCode: str(f("errorCode")),
@@ -204,6 +219,7 @@ export function parseGenerateResponse(data: unknown): ParsedGenerateResponse {
         geoColumn: str(f("geoColumn")),
         geoKind: str(f("geoKind")),
         geoPointCols: Object.keys(point).length ? point : null,
+        ...geoFrame,
         creditBalanceBefore: numOrNull(f("creditBalanceBefore")),
         creditCost: numOrNull(f("creditCost")),
         isServiceError: flag(f("isServiceError")),

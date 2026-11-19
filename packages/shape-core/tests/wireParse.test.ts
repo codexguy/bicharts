@@ -199,6 +199,26 @@ describe("parseGenerateResponse", () => {
         expect("chartMinHeight" in parseGenerateResponse(THROTTLED)).toBe(false);
     });
 
+    // A continent map names its frame and a province map its level and source; every other chart sends none.
+    const PROVINCE_MAP = { ...POINT_MAP, chartName: "North America Choropleth (by province)", geoColumn: "State",
+        geoKind: "admin1-name", ...NULL_POINTS, geoRegion: "north-america", geoGrain: "admin1", geoSource: "admin1" };
+
+    it("a province map keeps its frame, level and source, in either casing", () => {
+        const want = { geoRegion: "north-america", geoGrain: "admin1", geoSource: "admin1" };
+        expect(parseGenerateResponse(PROVINCE_MAP)).toMatchObject(want);
+        expect(parseGenerateResponse(pascalize(PROVINCE_MAP))).toMatchObject(want);
+        expect(parseGenerateResponse({ geoRegion: " europe ", geoGrain: null, geoSource: "latlon" }))
+            .toMatchObject({ geoRegion: "europe", geoSource: "latlon" });
+    });
+
+    it("the frame fields are absent unless the server sent text, so an older body parses as before", () => {
+        for (const v of [null, undefined, "", "  ", 3, {}, true]) {
+            const p = parseGenerateResponse({ ...POINT_MAP, geoRegion: v, geoGrain: v, geoSource: v });
+            expect(["geoRegion" in p, "geoGrain" in p, "geoSource" in p], String(v)).toEqual([false, false, false]);
+        }
+        expect(Object.keys(parseGenerateResponse(POINT_MAP)).filter(k => /^geo(Region|Grain|Source)$/.test(k))).toEqual([]);
+    });
+
     it("chartName falls back to an older server's chartType", () => {
         expect(parseGenerateResponse({ chartType: "Line chart" }).chartName).toBe("Line chart");
         expect(parseGenerateResponse({ chartName: "Bar", chartType: "Line chart" }).chartName).toBe("Bar");
