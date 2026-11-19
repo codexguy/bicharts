@@ -428,6 +428,17 @@ describe("resolveOptions derives exportTable from the host's saveFile (1.19.0)",
         expect(none.saveFile).toBeUndefined();
     });
 
+    it("a host's words for a format reach the chart, only for formats it offers and only as text (1.28.0)", () => {
+        const o = resolveOptions({ saveFile: () => true, exportFormats: ["xlsx"], exportLabels: { xlsx: " d3.grid.export.new_sheet ", csv: "d3.x" } });
+        expect(o.exportLabels).toEqual({ xlsx: "d3.grid.export.new_sheet" });
+        expect(Object.isFrozen(o.exportLabels)).toBe(true);
+        expect(resolveOptions({ saveFile: () => true }).exportLabels).toBeUndefined();
+        for (const junk of [null, "d3.grid.export.new_sheet", ["xlsx"], { xlsx: 7 }, { xlsx: "  " }, { pdf: "x" }])
+            expect(resolveOptions({ saveFile: () => true, exportLabels: junk }).exportLabels, JSON.stringify(junk)).toBeUndefined();
+        // No file service, no export, and so no words for one.
+        expect(resolveOptions({ exportLabels: { xlsx: "d3.grid.export.new_sheet" } }).exportLabels).toBeUndefined();
+    });
+
     it("no file service, or junk in its place, gives no export at all - and a host cannot pass exportTable itself", () => {
         for (const junk of [undefined, null, true, "download", {}, []]) {
             const o = resolveOptions({ saveFile: junk });

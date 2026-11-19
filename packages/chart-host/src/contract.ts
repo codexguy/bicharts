@@ -38,7 +38,12 @@ export interface GeoPointRoleFact {
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.27.0";
+export const HOST_CONTRACT_VERSION = "1.28.0";
+// 1.28.0 (2026-11-18): A HOST CAN SAY WHAT ITS FILE SERVICE DOES. RenderOptions gains exportLabels ({ "<format>": "<catalog key>" }),
+// for a host whose saveFile does something other than hand over a file: a spreadsheet add-in whose "xlsx" adds a sheet to the open
+// workbook passes { xlsx: "d3.grid.export.new_sheet" }, and a chart draws the words that key names, in the reader's language. Only
+// formats the host offers keep a label, and only a string; a chart ignores a key it does not know. Additive: absent, a chart names
+// each format as before.
 // 1.27.0 (2026-11-15): A SEGMENT'S TAGS REACH ITS CARD. RenderOptions gains segmentTags ({ "<segment name>": [{ tag, owner?,
 // at? }] }), sent by a page that keeps campaign tags on customer segments, keyed by the segment's name. resolveOptions is a
 // whitelist, and without the field the chart's read always took its empty fallback: no tag ever reached a card. Additive;
@@ -676,6 +681,9 @@ export interface RenderOptions {
     // shows no export control. A chart never logs the rows it exports.
     saveFile?: SaveFileService;
     exportFormats?: readonly ExportFormat[];
+    // WHAT A FORMAT'S EXPORT DOES, IN WORDS (1.28.0): a catalog key per format, from a host whose saveFile does not hand over a
+    // file. Present only for formats in exportFormats; a chart that knows the key draws its words, and otherwise the format's.
+    exportLabels?: Readonly<Partial<Record<ExportFormat, string>>>;
     exportTable?: ExportTableService;
     geoPointDest?: {
         precision: GeoPointPrecision | null;

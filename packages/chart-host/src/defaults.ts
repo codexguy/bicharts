@@ -33,12 +33,23 @@ import { exportFormatsFor, exportTableService, type ExportFormat, type ExportTab
 
 // THE EXPORT SERVICE A CHART MAY CALL (contract 1.19.0), from the host's file service: a function or nothing, and the
 // formats it takes kept to those chart-host writes. No service, or no format left, gives no export at all.
-function hostExport(save: unknown, formats: unknown): { saveFile?: SaveFileService; exportFormats?: readonly ExportFormat[]; exportTable?: ExportTableService } {
+function hostExport(save: unknown, formats: unknown, labels?: unknown): { saveFile?: SaveFileService; exportFormats?: readonly ExportFormat[]; exportLabels?: Readonly<Partial<Record<ExportFormat, string>>>; exportTable?: ExportTableService } {
     if (typeof save !== "function") return {};
     const offered = exportFormatsFor(Array.isArray(formats) ? formats : undefined);
     if (!offered.length) return {};
     const saveFile = save as SaveFileService;
-    return { saveFile, exportFormats: Object.freeze(offered), exportTable: exportTableService(saveFile, offered) };
+    // The words a host gives a format's export (1.28.0): a non-empty string per OFFERED format, nothing else.
+    let exportLabels: Partial<Record<ExportFormat, string>> | undefined;
+    if (labels && typeof labels === "object" && !Array.isArray(labels)) {
+        for (const f of offered) {
+            const v = (labels as Record<string, unknown>)[f];
+            if (typeof v === "string" && v.trim()) (exportLabels ??= {})[f] = v.trim();
+        }
+    }
+    return {
+        saveFile, exportFormats: Object.freeze(offered), exportTable: exportTableService(saveFile, offered),
+        ...(exportLabels ? { exportLabels: Object.freeze(exportLabels) } : {}),
+    };
 }
 
 // A DARK CANVAS GETS A DARK LANDMASS. A map's land and no-data regions default to a light grey in the chart itself,
@@ -137,7 +148,7 @@ const numberOr = (raw: unknown, dflt: number) => {
 };
 
 export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
-    const exp = hostExport(p.saveFile, p.exportFormats);
+    const exp = hostExport(p.saveFile, p.exportFormats, p.exportLabels);
     return {
         // ---- host fields: pass through exactly as supplied ----
         width: p.width,
@@ -182,6 +193,7 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         // the host, so a chart offers an export only where a file can really be kept. See hostExport above.
         saveFile: exp.saveFile,
         exportFormats: exp.exportFormats,
+        exportLabels: exp.exportLabels,
         exportTable: exp.exportTable,
         // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
         // undefined, and every map chart then fell back to whatever number its own code carried -
