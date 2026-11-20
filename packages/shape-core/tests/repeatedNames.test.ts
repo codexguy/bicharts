@@ -57,6 +57,12 @@ describe("the engine keys every column", () => {
         expect(r.rows[0]["a (2)"]).toBe(3);
     });
 
+    it("ingest can keep repeated names for a source whose repeats are its own layout", () => {
+        const r = ingest({ kind: "grid", header: ["a", "b", "a"], rows: [[1, 2, 3]] }, { tellApartNames: false });
+        expect(r.columns.map(c => c.name)).toEqual(["a", "b", "a"]);
+        expect(r.index.getRenamedRepeats()).toEqual([]);
+    });
+
     it("a host can keep repeated names", () => {
         const idx = new IndexedText();
         idx.tellApartNames = false;

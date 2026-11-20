@@ -104,6 +104,12 @@ export interface IngestOptions {
      */
     dedup?: boolean;
     /**
+     * Tell columns that arrive with the same name apart (`Name (2)`). Default true. Set false for a source whose repeated
+     * names are the layout's own wording and are resolved before charting (a pivot report read from its cells repeats its
+     * value fields' captions under every column item); the columns then keep their names as given.
+     */
+    tellApartNames?: boolean;
+    /**
      * For the `objects` decoder: how many rows to scan when discovering column names.
      * Default 500. Raise it for sparse payloads where late rows introduce new keys.
      */
@@ -308,6 +314,7 @@ function buildProfile(
     // 3. Feed the engine.
     const index = new IndexedText();
     index.dedupRows = opts.dedup !== false;      // default true
+    index.tellApartNames = opts.tellApartNames !== false;   // default true
     index.deriveProvinces = opts.deriveProvinces !== false;   // default true
     index.setColumns(cols);
     // The caller's `dimensions` hold through the stats pass too. Without this the engine's
