@@ -27,7 +27,7 @@ import { coordinateAxisOfWords } from "./vocab/coordinates";
 import { readPeriodCode } from "./vocab/periodCodes";
 import { localizedIdentifierWordIn } from "./vocab/identifierWords";
 import { maskSampleText } from "./sampleMask";
-import { collapseRepeatedAggPrefix, codeNeedsLegacyAggNames, englishAggAliasContradicted, englishImplicitAggNames, foldAccents, localizedHostAggHint } from "./aggregation";
+import { collapseRepeatedAggPrefix, tellApartRepeatedNames, codeNeedsLegacyAggNames, englishAggAliasContradicted, englishImplicitAggNames, foldAccents, localizedHostAggHint } from "./aggregation";
 import { codeReadsColumn } from "./codeColumnReads";
 import { measureCadence, parseTemporalPoint } from "./cadence";
 import { measureSeriesCompleteness, pickSeriesColumn, type SeriesKeyCandidate } from "./seriesCompleteness";
@@ -756,6 +756,17 @@ export class IndexedText implements IValueCollection {
      * callers construct IndexedText with no arguments and are unaffected.
      */
     public dedupRows: boolean = true;
+
+    /**
+     * Tell columns that arrive with the same name apart (see setColumns). DEFAULT TRUE. A host may turn it off for a source
+     * whose repeated names are the layout's own wording and are resolved before charting.
+     */
+    public tellApartNames: boolean = true;
+    // The renames setColumns made to tell repeated names apart, for the host's log. Reset by every setColumns and reset().
+    private _renamedRepeats: Array<{ index: number; from: string; to: string }> = [];
+
+    /** Which columns setColumns renamed because their name repeated an earlier column's (index, old name, new name). */
+    public getRenamedRepeats(): ReadonlyArray<{ index: number; from: string; to: string }> { return this._renamedRepeats; }
 
     /**
      * ALSO key each row by the host's ORIGINAL column name, for columns the doubled-prefix
@@ -2506,6 +2517,7 @@ export class IndexedText implements IValueCollection {
         this._englishAliases = new Map();
         this._generationColumns = [];
         this._generationColumnsSig = "[]";
+        this._renamedRepeats = [];
     }
 
     /**
@@ -2527,11 +2539,16 @@ export class IndexedText implements IValueCollection {
      *
      * Idempotent (a collapsed name has nothing left to collapse), so the matrix-recovery path's
      * repeated setColumns calls are safe.
+     *
+     * TWO COLUMNS WITH ONE NAME ARE TOLD APART LAST (tellApartRepeatedNames): the first keeps the
+     * name, later ones become `Name (2)`. Last, so a collapsed name that now equals another column's
+     * is told apart too. Same seam, same reason: the shape and the rows stay in step. Also idempotent.
      */
     public setColumns(cols: LLMColumnWithValue[]): void {
         this.invalidateStats(); this._preStatsFields = null; this._statsAddedKeys = null;
         this._inferredMeasureFlags = null;
         this._cols = cols;
+        this._renamedRepeats = [];
         if (!cols || cols.length === 0) return;
         const taken = new Set<string>(cols.map(c => this.STR(c?.name)));
         for (const c of cols) {
@@ -2543,6 +2560,15 @@ export class IndexedText implements IValueCollection {
             taken.add(collapsed);
             c.hostName = original;
             c.name = collapsed;
+        }
+        if (this.tellApartNames) {
+            const before = cols.map(c => this.STR(c?.name));
+            const after = tellApartRepeatedNames(before);
+            for (let i = 0; i < cols.length; i++) {
+                if (!cols[i] || after[i] === before[i]) continue;
+                this._renamedRepeats.push({ index: i, from: before[i], to: after[i] });
+                cols[i].name = after[i];
+            }
         }
     }
 }

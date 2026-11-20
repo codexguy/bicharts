@@ -482,6 +482,28 @@ export function collapseRepeatedAggPrefix(name: string | null | undefined): stri
 }
 
 /**
+ * TWO COLUMNS, ONE NAME. A row keyed by name keeps only the LAST of them and a lookup by name finds only the FIRST, so the
+ * chart and the prompt disagree about which column a name means, and the first column's data cannot be reached. The first
+ * keeps its name; the second and later become `Name (2)`, `Name (3)` - the rule the Excel add-in's header reader already
+ * applies, so a workbook and a report name the same pair the same way. Exact match, the test a keyed object applies.
+ * Returns the names to use, same length and order; unchanged when nothing repeats.
+ */
+export function tellApartRepeatedNames(names: ReadonlyArray<string | null | undefined>): string[] {
+    const out = names.map(n => String(n ?? ""));
+    const taken = new Set(out);
+    const firstSeen = new Set<string>();
+    for (let k = 0; k < out.length; k++) {
+        if (!firstSeen.has(out[k])) { firstSeen.add(out[k]); continue; }
+        let i = 2;
+        while (taken.has(`${out[k]} (${i})`)) i++;
+        out[k] = `${out[k]} (${i})`;
+        taken.add(out[k]);
+        firstSeen.add(out[k]);
+    }
+    return out;
+}
+
+/**
  * THE OTHER HALF OF THE RENAME, and the reason it is safe to ship. Code generated before the
  * collapse existed reads the host's ORIGINAL key - `row["Sum of Sum of Revenue"]` - and a
  * cached chart re-renders that stored code against a freshly measured dataset. Renaming the key
