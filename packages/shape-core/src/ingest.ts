@@ -142,10 +142,48 @@ export type DataSource =
 // Type inference — used ONLY where a descriptor is silent.
 // ---------------------------------------------------------------------------
 
+// The sample a column's type is first read from. The rest of the column CONFIRMS it (see
+// step 1b in buildProfile): a later value the type cannot hold widens the type rather than being
+// converted to null.
 const TYPE_SAMPLE_CAP = 500;
 const INT_RE = /^[+-]?\d{1,15}$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 const SLASH_DATE_RE = /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/;
+
+// A CODE WRITTEN WITH ITS LEADING ZERO is a code: `00123`, a ZIP `02134`. Read as a number it is
+// drawn as 123, and the zero the writer kept on purpose is gone. One such value makes the column
+// text, the way a ZIP column a spreadsheet kept as text arrives. Three digits or more: `01`-`12`,
+// `00`-`23` are months, days and hours written to a fixed width, and stay numbers.
+const LEADING_ZERO_CODE = /^0\d{2,}$/;
+
+/** What one cell is, for typing its column. */
+type CellKind = "blank" | "int" | "num" | "date" | "other";
+
+function cellKind(raw: any, decimal: DecimalSeparator): CellKind {
+    if (raw === null || raw === undefined) return "blank";
+    // Already-typed values classify by JS type — no string round-trip.
+    if (typeof raw === "number") return Number.isInteger(raw) ? "int" : "num";
+    if (raw instanceof Date) return "date";
+    if (typeof raw === "boolean") return "other";   // -> String (true/false labels)
+    const v = String(raw).trim();
+    if (v === "") return "blank";
+    const digits = foldNumerals(v);
+    if (INT_RE.test(digits)) return LEADING_ZERO_CODE.test(digits) ? "other" : "int";
+    if (isNumberText(v, decimal)) return "num";
+    if ((ISO_DATE_RE.test(v) || SLASH_DATE_RE.test(v)) && !isNaN(Date.parse(v))) return "date";
+    return "other";
+}
+
+/** TRUE when `convert` keeps a cell of this kind under this type rather than making it null. */
+function cellFits(kind: CellKind, dataType: string): boolean {
+    switch (kind) {
+        case "blank": return true;
+        case "int": return dataType === "Integer" || dataType === "Decimal" || dataType === "String";
+        case "num": return dataType === "Decimal" || dataType === "String";
+        case "date": return dataType === "DateTime" || dataType === "String";
+        default: return dataType === "String";
+    }
+}
 
 // THE DECIMAL SEPARATOR IS A COLUMN'S, NOT THE PARSER'S (2026-09-24). Every text number used to be
 // read the English way, so a German export's `12,5` made its column text and its `1.234` read as
@@ -163,17 +201,13 @@ function inferDataType(samples: any[], decimal: DecimalSeparator = ".", textDate
     let ints = 0, nums = 0, dates = 0, nonblank = 0;
 
     for (const raw of samples) {
-        if (raw === null || raw === undefined) continue;
-        // Already-typed values classify by JS type — no string round-trip.
-        if (typeof raw === "number") { nonblank++; nums++; if (Number.isInteger(raw)) ints++; continue; }
-        if (raw instanceof Date) { nonblank++; dates++; continue; }
-        if (typeof raw === "boolean") { nonblank++; continue; }   // -> String (true/false labels)
-        const v = String(raw).trim();
-        if (v === "") continue;
-        nonblank++;
-        if (INT_RE.test(foldNumerals(v))) { ints++; nums++; continue; }
-        if (isNumberText(v, decimal)) { nums++; continue; }
-        if ((ISO_DATE_RE.test(v) || SLASH_DATE_RE.test(v)) && !isNaN(Date.parse(v))) { dates++; continue; }
+        switch (cellKind(raw, decimal)) {
+            case "blank": continue;
+            case "int": nonblank++; ints++; nums++; continue;
+            case "num": nonblank++; nums++; continue;
+            case "date": nonblank++; dates++; continue;
+            default: nonblank++;
+        }
     }
 
     if (nonblank === 0) return "String";
@@ -293,6 +327,23 @@ function buildProfile(
             ? readTextDateColumn(columnValues(rows, c), { locale: opts.locale ?? "en" })
             : null);
     const types: string[] = descriptors.map((d, c) => d.dataType ?? inferDataType(samples[c], decimals[c], textDates[c] !== null));
+    // 1b. THE SAMPLE DECIDES, THE REST OF THE COLUMN CONFIRMS. A value past the sample that the
+    //     sample's type cannot hold - a 0.15 discount after five hundred whole-number ones, a label
+    //     under a run of dates - was converted to null: the column kept its type and lost the value.
+    //     The first such value widens the type instead, read from the WHOLE column exactly as the
+    //     sample would have read it had the value been in it (Integer to Decimal to String, DateTime
+    //     to String), and the decimal separator is decided again over the whole column the same way.
+    //     A column whose every value fits costs one check per cell and changes nothing.
+    descriptors.forEach((d, c) => {
+        if (d.dataType !== undefined || textDates[c] !== null || types[c] === "String") return;
+        for (let i = TYPE_SAMPLE_CAP; i < rows.length; i++) {
+            if (cellFits(cellKind(rows[i]?.[c], decimals[c]), types[c])) continue;
+            const whole = Array.from(columnValues(rows, c));
+            decimals[c] = detectDecimalSeparator(whole, opts.locale);
+            types[c] = inferDataType(whole, decimals[c]);
+            return;
+        }
+    });
 
     // 2. Roles, by the ladder above.
     const forceM = new Set((opts.measures ?? []).map(s => s.toLowerCase()));
@@ -405,7 +456,12 @@ export function parseCsvRows(text: string): { rows: string[][]; errors: Papa.Par
     const rows: string[][] = [];
     const errors: Papa.ParseError[] = [];
     let prev = 0;
+    // THE DELIMITER IS READ FROM THE LINES THAT HOLD DATA. The parse below keeps empty lines (see above), and left to
+    // guess from them Papa counted the final newline as a one-field row: in a two-column file that pulled the average
+    // field count under its bar, the guess failed, and a semicolon or tab file read as ONE column, cut at every comma.
+    const delimiter = Papa.parse<string[]>(src, { preview: 20, skipEmptyLines: true }).meta.delimiter;
     Papa.parse<string[]>(src, {
+        delimiter,
         skipEmptyLines: false,
         step: (r) => {
             const end = r.meta.cursor;
