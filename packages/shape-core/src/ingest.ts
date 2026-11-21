@@ -150,14 +150,20 @@ const INT_RE = /^[+-]?\d{1,15}$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 const SLASH_DATE_RE = /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/;
 
+// A MISSING NUMBER WRITTEN AS A WORD. Databases and analysis tools write a missing value as a word
+// when they save text: `NULL` (SQL exports), `NA` (R), `NaN` (pandas), `N/A` (by hand). In a column
+// whose every other value is a number the word is the blank it stands for; anywhere else it is a
+// value like any other. Matched whole, ignoring case.
+const MISSING_NUMBER_WORDS = new Set(["null", "na", "n/a", "nan"]);
+
 // A CODE WRITTEN WITH ITS LEADING ZERO is a code: `00123`, a ZIP `02134`. Read as a number it is
 // drawn as 123, and the zero the writer kept on purpose is gone. One such value makes the column
 // text, the way a ZIP column a spreadsheet kept as text arrives. Three digits or more: `01`-`12`,
 // `00`-`23` are months, days and hours written to a fixed width, and stay numbers.
 const LEADING_ZERO_CODE = /^0\d{2,}$/;
 
-/** What one cell is, for typing its column. */
-type CellKind = "blank" | "int" | "num" | "date" | "other";
+/** What one cell is, for typing its column. `missing` is a missing-number word (above). */
+type CellKind = "blank" | "missing" | "int" | "num" | "date" | "other";
 
 function cellKind(raw: any, decimal: DecimalSeparator): CellKind {
     if (raw === null || raw === undefined) return "blank";
@@ -171,13 +177,16 @@ function cellKind(raw: any, decimal: DecimalSeparator): CellKind {
     if (INT_RE.test(digits)) return LEADING_ZERO_CODE.test(digits) ? "other" : "int";
     if (isNumberText(v, decimal)) return "num";
     if ((ISO_DATE_RE.test(v) || SLASH_DATE_RE.test(v)) && !isNaN(Date.parse(v))) return "date";
+    if (MISSING_NUMBER_WORDS.has(v.toLowerCase())) return "missing";
     return "other";
 }
 
-/** TRUE when `convert` keeps a cell of this kind under this type rather than making it null. */
+/** TRUE when `convert` keeps a cell of this kind under this type: nothing but a blank, or a missing-number word in a
+ *  numeric column, becomes null. */
 function cellFits(kind: CellKind, dataType: string): boolean {
     switch (kind) {
         case "blank": return true;
+        case "missing":
         case "int": return dataType === "Integer" || dataType === "Decimal" || dataType === "String";
         case "num": return dataType === "Decimal" || dataType === "String";
         case "date": return dataType === "DateTime" || dataType === "String";
@@ -198,11 +207,12 @@ function cellFits(kind: CellKind, dataType: string): boolean {
 // ISO and slash tests below exactly as it always did.
 function inferDataType(samples: any[], decimal: DecimalSeparator = ".", textDate = false): EngineDataType {
     if (textDate) return "DateTime";
-    let ints = 0, nums = 0, dates = 0, nonblank = 0;
+    let ints = 0, nums = 0, dates = 0, nonblank = 0, missing = 0;
 
     for (const raw of samples) {
         switch (cellKind(raw, decimal)) {
             case "blank": continue;
+            case "missing": missing++; continue;
             case "int": nonblank++; ints++; nums++; continue;
             case "num": nonblank++; nums++; continue;
             case "date": nonblank++; dates++; continue;
@@ -210,7 +220,10 @@ function inferDataType(samples: any[], decimal: DecimalSeparator = ".", textDate
         }
     }
 
+    // A missing-number word counts as a blank only toward a NUMERIC type (see MISSING_NUMBER_WORDS):
+    // a column of nothing but the words, or a dated column holding one, reads as it always did - text.
     if (nonblank === 0) return "String";
+    if (missing > 0 && dates > 0) return "String";
     // NOTHING TOLERATES A STRAGGLER, DATES LEAST OF ALL. This read
     // `dates / nonblank > 0.9`, under a comment saying dates tolerate a few stragglers where
     // numbers do not, and the asymmetry was backwards. The argument given for numbers — "one

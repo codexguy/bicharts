@@ -76,8 +76,14 @@ describe("type inference fills gaps only", () => {
     });
 
     it("one non-numeric value keeps a column textual rather than nulling data", () => {
-        const res = ingest({ kind: "grid", header: ["Mixed"], rows: [["1"], ["2"], ["n/a"]] });
+        const res = ingest({ kind: "grid", header: ["Mixed"], rows: [["1"], ["2"], ["abc"]] });
         expect(byName(res, "Mixed").dataType).toBe("String");
+    });
+
+    it("a missing-value word in an otherwise numeric column is a blank, not a reason to make it text", () => {
+        const res = ingest({ kind: "grid", header: ["Mixed"], rows: [["1"], ["2"], ["n/a"]] }, { dedup: false });
+        expect(byName(res, "Mixed").dataType).toBe("Integer");
+        expect(res.rows.map(r => r.Mixed)).toEqual([1, 2, null]);
     });
 });
 
