@@ -162,6 +162,14 @@ const MISSING_NUMBER_WORDS = new Set(["null", "na", "n/a", "nan"]);
 // `00`-`23` are months, days and hours written to a fixed width, and stay numbers.
 const LEADING_ZERO_CODE = /^0\d{2,}$/;
 
+// AN ALL-DIGIT CODE LONGER THAN 15 DIGITS is a code too: an order, account, card or tracking number. A double holds
+// every whole number exactly only up to 2^53 (sixteen digits); every fifteen-digit number fits, which is why INT_RE
+// stops at 15. Past it parseFloat rounds, so 100000000000000001..004 all read as 100000000000000000 - four orders
+// become one value, drawn as one bar and summed as a measure. Nobody writes a quantity that long without separators,
+// so the writer's digits are the value: one such value makes the column text, like a leading-zero code, and a
+// leading-zero code past fifteen digits is caught here because INT_RE never matched it.
+const LONG_DIGIT_CODE = /^[+-]?\d{16,}$/;
+
 /** What one cell is, for typing its column. `missing` is a missing-number word (above). */
 type CellKind = "blank" | "missing" | "int" | "num" | "date" | "other";
 
@@ -175,6 +183,7 @@ function cellKind(raw: any, decimal: DecimalSeparator): CellKind {
     if (v === "") return "blank";
     const digits = foldNumerals(v);
     if (INT_RE.test(digits)) return LEADING_ZERO_CODE.test(digits) ? "other" : "int";
+    if (LONG_DIGIT_CODE.test(digits)) return "other";
     if (isNumberText(v, decimal)) return "num";
     if ((ISO_DATE_RE.test(v) || SLASH_DATE_RE.test(v)) && !isNaN(Date.parse(v))) return "date";
     if (MISSING_NUMBER_WORDS.has(v.toLowerCase())) return "missing";
