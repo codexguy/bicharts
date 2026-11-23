@@ -1,10 +1,11 @@
 // "APPLY IMPROVEMENTS?" — the consent half of the propose/accept vision review.
 //
 // The review service judges a rendered chart and, when a change is warranted, PROPOSES it
-// without charging anything (see review.ts). This dialog is the moment a person decides, and
+// without applying anything (see review.ts). This dialog is the moment a person decides, and
 // its contract is identical in every host because the money is identical in every host:
 //
-//   * Nothing has been charged when it opens.
+//   * Only the review itself has been charged when it opens; declining adds nothing to that,
+//     which is why the cost line says declining costs nothing MORE.
 //   * EVERY ambiguous answer is No: the No button, Escape, a dialog that throws while
 //     building, a second dismissal racing the first, and a surface too small to ask in
 //     legibly. Only a deliberate click on Apply resolves true — and only that resolution
@@ -57,7 +58,7 @@ export interface ReviewDialogOptions {
 const DEFAULT_TEXT: Required<ReviewDialogText> = {
     title: "Apply improvements?",
     fallbackReason: "The AI review suggests a change to this chart.",
-    cost: "Applying creates a new chart version and uses a generation. Declining costs nothing.",
+    cost: "Applying creates a new chart version and uses a generation. Declining costs nothing more.",
     decline: "No thanks",
     accept: "Apply",
 };

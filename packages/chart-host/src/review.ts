@@ -4,17 +4,21 @@
 // pixels (see snapshot.ts) and posts them for review. The service judges the image against the
 // original ask and answers one of:
 //
-//   NOCHANGE — the chart is fine. Free, chart untouched.
-//   PROPOSED — a change is warranted. STILL FREE: the service stops at a proposal, the host
-//              asks the user, and only their explicit yes sends the instruction back to be
-//              applied as an ordinary (billed) modify.
+//   NOCHANGE — the chart is fine. Chart untouched.
+//   PROPOSED — a change is warranted. The service stops at a proposal, the host asks the user,
+//              and only their explicit yes sends the instruction back to be applied as an
+//              ordinary (billed) modify.
 //   OK       — the accepted round-trip's answer: a finished generate result to apply.
 //   REFUSED / ERROR — keep the chart, log the reason, never surface it as a chart failure.
 //
-// THE THROUGH-LINE: every ambiguous state resolves toward the FREE outcome. A review exists to
+// The judging call itself is charged by the service whatever it answers (the user turned the
+// review on, and the model call is paid for either way); what the user decides is only whether
+// a FIX is applied and charged on top of it.
+//
+// THE THROUGH-LINE: every ambiguous state resolves toward NO FIX. A review exists to
 // occasionally save a bad render, and the failure mode it must never have is quietly spending
-// the user's money — so an unreadable verdict keeps, a proposal with no instruction keeps, and
-// applying always requires an explicit human yes upstream of the one call that bills.
+// the user's money on an edit — so an unreadable verdict keeps, a proposal with no instruction
+// keeps, and applying always requires an explicit human yes upstream of the call that bills it.
 //
 // Everything here is pure and host-free so both the deciding and the wire shape are pinnable
 // in tests without a DOM, a network, or a Visual.
@@ -43,8 +47,8 @@ export interface ReviewGate {
     inFlight: boolean;
 }
 
-/** Should a review fire for this render? Every clause is a reason NOT to, because the free
- *  direction is "no review". */
+/** Should a review fire for this render? Every clause is a reason NOT to, because a review
+ *  is charged and the uncharged direction is "no review". */
 export function shouldReview(g: ReviewGate): boolean {
     if (!g.enabled) return false;
     if (!g.modeLicensed) return false;
@@ -70,7 +74,7 @@ export interface ReviewWire {
     /**
      * THE SECOND HALF of the propose/accept round-trip. Absent on the judging call; set to the
      * proposal's instruction — verbatim — when the user accepted. Its presence is the whole
-     * difference between a free judgement and a billed modify.
+     * difference between a judgement and a billed modify.
      */
     applyInstruction?: string;
 }
@@ -113,10 +117,13 @@ export interface ReviewVerdict {
     /** A full generate result when status === "OK": the fix IS a modify. */
     fix?: unknown;
     errorMessage?: string | null;
+    /** The credits the judging call was charged (0 for an answer the service had already given); absent from a
+     *  service that does not report it. */
+    creditsCharged?: number | null;
 }
 
 /** How the host should react to a verdict:
- *  - propose   → ASK THE USER; nothing has been charged and declining stays free;
+ *  - propose   → ASK THE USER; only the review has been charged and declining adds nothing;
  *  - apply-fix → the accepted round-trip answered with a finished result — apply and re-render;
  *  - keep      → chart untouched; log the reason. A REFUSED never surfaces as a user error:
  *                the toggle was on for an account that cannot use the feature, and the chart

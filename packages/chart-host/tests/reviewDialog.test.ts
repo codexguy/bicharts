@@ -79,7 +79,7 @@ describe("askApplyImprovements", () => {
         const text = overlay()!.textContent ?? "";
         expect(text).toContain("The y-axis labels overlap and are unreadable.");
         expect(text).toContain("uses a generation");
-        expect(text).toContain("Declining costs nothing");
+        expect(text).toContain("Declining costs nothing more.");
         button("No thanks").click();
         await p;
     });

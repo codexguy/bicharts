@@ -29,7 +29,7 @@ const ENGLISH: Record<string, string | Record<string, string>> = {
     "qualify.count_more": "{matched} of {total} (+{more})",
     "review.title": "Apply improvements?",
     "review.fallback_reason": "The AI review suggests a change to this chart.",
-    "review.cost": "Applying creates a new chart version and uses a generation. Declining costs nothing.",
+    "review.cost": "Applying creates a new chart version and uses a generation. Declining costs nothing more.",
     "review.decline": "No thanks",
     "review.accept": "Apply",
     "summary.warning": "Warning: {message}",
@@ -92,6 +92,55 @@ describe("chartHostStrings", () => {
             expect(card.rowsText, lang).not.toBe(en.rowsText);
             expect(card.lines[0].label, lang).toContain("Revenue");
             expect(card.lines[0].label, lang).not.toBe(en.lines[0].label);
+        }
+    });
+});
+
+// The review that proposes a fix is itself charged, so the dialog says declining costs nothing MORE. Each language's
+// earlier sentence said declining costs nothing at all; none of them may survive the change of meaning.
+const REVIEW_COST_RETIRED: Record<string, string> = {
+    ar: "يؤدي التطبيق إلى إنشاء إصدار جديد من المخطط ويستهلك عملية إنشاء واحدة. الرفض لا يكلف شيئاً.",
+    cs: "Použitím vznikne nová verze grafu a spotřebuje se jedno generování. Odmítnutí nic nestojí.",
+    da: "Hvis du anvender, oprettes en ny diagramversion, og der bruges en generering. Det koster intet at afvise.",
+    de: "Beim Anwenden entsteht eine neue Diagrammversion, und eine Generierung wird verbraucht. Ablehnen kostet nichts.",
+    el: "Η εφαρμογή δημιουργεί νέα έκδοση του γραφήματος και χρησιμοποιεί μία δημιουργία. Η απόρριψη δεν κοστίζει τίποτα.",
+    es: "Aplicar crea una nueva versión del gráfico y usa una generación. Rechazar no cuesta nada.",
+    fi: "Käyttöönotto luo kaaviosta uuden version ja kuluttaa yhden luonnin. Hylkääminen ei maksa mitään.",
+    fr: "Appliquer crée une nouvelle version du graphique et utilise une génération. Refuser ne coûte rien.",
+    he: "החלה יוצרת גרסה חדשה של התרשים ומשתמשת ביצירה אחת. דחייה לא עולה דבר.",
+    hi: "लागू करने से चार्ट का नया संस्करण बनता है और एक जनरेशन उपयोग होता है। अस्वीकार करना निःशुल्क है।",
+    hr: "Primjena stvara novu verziju grafikona i troši jedno generiranje. Odbijanje ne košta ništa.",
+    hu: "Az alkalmazás új diagramverziót hoz létre, és felhasznál egy generálást. Az elutasítás ingyenes.",
+    id: "Menerapkan akan membuat versi bagan baru dan menggunakan satu pembuatan. Menolak tidak dikenai biaya.",
+    it: "Applicare crea una nuova versione del grafico e usa una generazione. Rifiutare non costa nulla.",
+    ja: "適用すると新しいグラフ バージョンが作成され、生成を 1 回使用します。適用しない場合、費用はかかりません。",
+    ko: "적용하면 새 차트 버전이 만들어지고 생성 1회가 사용됩니다. 거절하면 비용이 들지 않습니다.",
+    nb: "Hvis du bruker dem, opprettes en ny diagramversjon, og én generering brukes. Å avslå koster ingenting.",
+    nl: "Toepassen maakt een nieuwe grafiekversie en gebruikt een generatie. Weigeren kost niets.",
+    pl: "Zastosowanie tworzy nową wersję wykresu i zużywa jedno generowanie. Odrzucenie nic nie kosztuje.",
+    pt: "Aplicar cria uma nova versão do gráfico e usa uma geração. Recusar não tem custo.",
+    ro: "Aplicarea creează o nouă versiune a diagramei și folosește o generare. Refuzul nu costă nimic.",
+    ru: "Применение создаёт новую версию диаграммы и расходует одну генерацию. Отказ ничего не стоит.",
+    sk: "Použitím vznikne nová verzia grafu a spotrebuje sa jedno generovanie. Odmietnutie nič nestojí.",
+    sv: "Om du tillämpar skapas en ny diagramversion och en generering används. Att avböja kostar ingenting.",
+    th: "การใช้จะสร้างแผนภูมิเวอร์ชันใหม่และใช้การสร้าง 1 ครั้ง การปฏิเสธไม่มีค่าใช้จ่าย",
+    tr: "Uygulamak yeni bir grafik sürümü oluşturur ve bir oluşturma kullanır. Reddetmek ücretsizdir.",
+    uk: "Застосування створює нову версію діаграми й витрачає одну генерацію. Відмова нічого не коштує.",
+    vi: "Áp dụng sẽ tạo một phiên bản biểu đồ mới và dùng một lượt tạo. Từ chối thì không mất phí.",
+    zh: "应用会创建新的图表版本并使用一次生成。拒绝不产生任何费用。",
+};
+
+describe("the review dialog's cost sentence", () => {
+    it("says declining costs nothing more, in English and in every language", () => {
+        expect(ENGLISH["review.cost"]).toMatch(/Declining costs nothing more\.$/);
+        for (const lang of TIER1) {
+            const retired = REVIEW_COST_RETIRED[lang];
+            const now = HOST_TEXT_CATALOGS[lang]["review.cost"] as string;
+            expect(now, lang).not.toBe(retired);
+            // What applying costs did not change, so the first sentence keeps its wording.
+            const firstEnd = [". ", "। ", "。", " การ"].map(sep => retired.indexOf(sep)).filter(i => i > 0)[0];
+            expect(firstEnd, lang).toBeGreaterThan(0);
+            expect(now.startsWith(retired.slice(0, firstEnd)), lang).toBe(true);
         }
     });
 });

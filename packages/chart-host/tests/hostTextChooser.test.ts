@@ -45,7 +45,7 @@ describe("the review dialog's words", () => {
         expect(reviewDialogText()).toEqual({
             title: "Apply improvements?",
             fallbackReason: "The AI review suggests a change to this chart.",
-            cost: "Applying creates a new chart version and uses a generation. Declining costs nothing.",
+            cost: "Applying creates a new chart version and uses a generation. Declining costs nothing more.",
             decline: "No thanks",
             accept: "Apply",
         });
