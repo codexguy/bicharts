@@ -1056,10 +1056,7 @@ export class IndexedText implements IValueCollection {
                     const ks = [...vals.keys()].map(k => STR(k).trim().toLowerCase()).sort();
                     const boolPairs = [["false", "true"], ["no", "yes"], ["n", "y"], ["0", "1"], ["f", "t"]];
                     const valuesBoolean = boolPairs.some(p => ks[0] === p[0] && ks[1] === p[1]);
-                    // After `is`/`has`, any letter, digit or underscore in any script (`hasÄnderung`);
-                    // an all-ASCII name reads exactly as it always did.
-                    const nameOutcome = /^(is|has)[_\p{L}\p{N}]|(?:default|churn|fraud|approv|convert|active|cancel|delinquen|flag|paid|win|pass|fail)/iu.test(col.name);
-                    if (valuesBoolean || nameOutcome) col.isBinaryFlag = true;
+                    if (valuesBoolean || nameReadsAsOutcome(col.name)) col.isBinaryFlag = true;
                 }
             } else if (col.isMeasure && (col.dataType === "Integer" || col.dataType === "Decimal")
                 && vals.size === 2 && vals.has("0") && vals.has("1")) {
@@ -2593,4 +2590,22 @@ export class IndexedText implements IValueCollection {
             }
         }
     }
+}
+
+// A NAME THAT SAYS OUTCOME, for the binary-outcome flag. After `is`/`has`, any letter, digit or underscore in any script
+// (`isActive`, `hasÄnderung`). Otherwise the name is split into words (camel case and any non-letter, non-digit) and a
+// word must BE an outcome word: matched anywhere, `win`, `pass` and `active` read Window, Winter, Passenger, Compass and
+// Interactive as outcomes. The short words count whole, with their inflections; the long distinctive stems count at a
+// word's start (Churned, Defaulted, Approval, Cancelled, Delinquent).
+const OUTCOME_WORDS = new Set([
+    "active", "inactive", "flag", "flags", "flagged", "paid", "unpaid", "win", "wins", "won", "winner",
+    "pass", "passed", "passes", "fail", "failed", "fails", "failure", "failures",
+]);
+const OUTCOME_STEM = /^(?:default|churn|fraud|approv|convert|cancel|delinquen)/u;
+
+export function nameReadsAsOutcome(name: string | null | undefined): boolean {
+    const n = String(name ?? "");
+    if (/^(is|has)[_\p{L}\p{N}]/iu.test(n)) return true;
+    const words = n.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 0);
+    return words.some(w => OUTCOME_WORDS.has(w) || OUTCOME_STEM.test(w));
 }
