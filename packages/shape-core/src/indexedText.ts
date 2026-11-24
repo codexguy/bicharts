@@ -70,6 +70,11 @@ const CONTINUOUS_ABS_DISTINCT = 100;
 // …or Continuous when at least this fraction of non-blank rows are distinct
 // (values are mostly unique → a measurement, not a repeating label).
 const CONTINUOUS_DISTINCT_RATIO = 0.30;
+// Rule (d2), a small table's own numbers (2026-11-23): at least this many distinct values (two cannot tell a quantity from a
+// pair of codes), and at least this fraction of the non-blank rows holding a value of their own (bins repeat; one coincidence
+// in six rows does not make a measured quantity a category).
+const SMALL_SET_MIN_VALUES = 3;
+const SMALL_SET_OWN_VALUE_RATIO = 0.75;
 // Consecutiveness (distinct / value-span) at/above this = densely consecutive
 // integers → eligible to be an ORDINAL axis (Hour 0-23), vs a gappy code set.
 const CONTIGUOUS_DENSITY = 0.9;
@@ -608,6 +613,23 @@ export function classifyNumericValueNature(i: {
     //     absolute count, OR mostly-unique) → a measured quantity.
     if (distinct > DISCRETE_NUMERIC_MAX_DISTINCT
         && (fractional || distinct >= CONTINUOUS_ABS_DISTINCT || ratio >= CONTINUOUS_DISTINCT_RATIO)) {
+        return "Continuous";
+    }
+
+    // (d2) A SMALL TABLE'S OWN NUMBERS (2026-11-23). Rule (d) needs more than twelve distinct values, and a table with twelve rows
+    //      or fewer can never have them, so a six-row Region + Attainment bound unsummarised stamped Attainment Categorical and the
+    //      server refused every chart that needs a number ("Attainment is a category field"). What still tells a quantity from a
+    //      code at this size: nearly every row has its OWN value, and the values are not a run of consecutive whole numbers (store
+    //      101..106 is a list of codes; rule (c2) answers the same question above twelve). Bins repeat, so they fail the ratio and
+    //      stay categories; a large table with a handful of values has a ratio near zero, so it never reaches here. Whole numbers
+    //      that read as years or carry an ordered-axis name are left alone: a sparse 2015/2018/2024 skips rule (b)'s dense-run test
+    //      and would otherwise be promoted and summed.
+    if (distinct >= SMALL_SET_MIN_VALUES
+        && ratio >= SMALL_SET_OWN_VALUE_RATIO
+        && (fractional
+            || (density < CONTIGUOUS_DENSITY
+                && !isOrdinalFriendlyName(name)
+                && !(minval >= ORDINAL_YEAR_MIN && maxval <= ORDINAL_YEAR_MAX)))) {
         return "Continuous";
     }
     // Otherwise a small / heavily-repeated set of numeric codes → discrete nominal.

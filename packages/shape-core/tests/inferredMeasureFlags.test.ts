@@ -131,7 +131,9 @@ describe("inferredMeasureFlags", () => {
 
     it("the cache follows the rows", () => {
         const spec: Spec[] = [{ name: "Amount", dataType: "Decimal" }];
-        const a = build(spec, [[1.5], [2.5], [3.5]]);
+        // Starts from repeated values: three unique decimals are now a small table's quantity and promoted at once, which
+        // would leave the cache nothing to change.
+        const a = build(spec, [[1.5], [1.5], [2.5]]);
         expect(a.inferredMeasureFlags()).toEqual([false]);
         for (let i = 0; i < 60; i++) a.addRow([100.25 + i * 3.17]);
         expect(a.inferredMeasureFlags()).toEqual([true]);

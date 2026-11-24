@@ -1,0 +1,72 @@
+{
+  "_why": "Engine output for small tables whose numbers arrive unsummarised: a six-row attainment table (two decimals, each row its own value), an eight-row orders table (whole numbers, each row its own value), and a six-row table of repeated price bands that must stay a category.",
+  "attainment": [
+    {
+      "name": "Region",
+      "dataType": "String",
+      "isMeasure": false,
+      "distinctCount": 6,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "Attainment",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "distinctCount": 6,
+      "valueNature": "Continuous"
+    },
+    {
+      "name": "Target",
+      "dataType": "Decimal",
+      "isMeasure": true,
+      "distinctCount": 6,
+      "valueNature": "Continuous"
+    }
+  ],
+  "orders": [
+    {
+      "name": "Region",
+      "dataType": "String",
+      "isMeasure": false,
+      "distinctCount": 8,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "Orders",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "distinctCount": 8,
+      "valueNature": "Continuous"
+    },
+    {
+      "name": "Revenue",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "distinctCount": 8,
+      "valueNature": "Continuous"
+    },
+    {
+      "name": "Profit",
+      "dataType": "Integer",
+      "isMeasure": true,
+      "distinctCount": 8,
+      "valueNature": "Continuous"
+    }
+  ],
+  "bands": [
+    {
+      "name": "Region",
+      "dataType": "String",
+      "isMeasure": false,
+      "distinctCount": 6,
+      "valueNature": "Categorical"
+    },
+    {
+      "name": "PriceBand",
+      "dataType": "Decimal",
+      "isMeasure": false,
+      "distinctCount": 3,
+      "valueNature": "Categorical"
+    }
+  ]
+}

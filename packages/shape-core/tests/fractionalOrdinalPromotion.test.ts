@@ -46,8 +46,17 @@ describe("a fractional column is not a consecutive-integer axis on the promotion
         expect(build(RATES_129).inferredMeasureFlags()).toEqual([false, true]);
     });
 
-    it("seven decimal values stay a dimension: twelve or fewer distinct values are not promoted", () => {
+    // This used to assert the opposite ("twelve or fewer distinct values are not promoted"). Seven decimals, each row its own
+    // value, is a small table's measured quantity, and leaving it a dimension was the defect a small-table rule now fixes: the
+    // server then refused every chart that needs a number. Bins that repeat are still not promoted (see the small-table tests).
+    it("seven decimal values, each row its own, are promoted: a small table's quantity is a measure", () => {
         const c = profile([0.92, 1.36, 1.43, 1.91, 1.97, 2.19, 1.1]);
+        expect(c.isMeasure).toBe(true);
+        expect(c.valueNature).toBe("Continuous");
+    });
+
+    it("seven repeated decimal bins stay a dimension", () => {
+        const c = profile([0.5, 0.5, 1.5, 1.5, 2.5, 2.5, 0.5]);
         expect(c.isMeasure).toBe(false);
         expect(c.valueNature).toBe("Ordinal");
     });
