@@ -18,6 +18,7 @@
 // a chart generated while the switch was off stays as it was until it is regenerated.
 
 import { formatSourceDate, type SourceFormats } from "./sourceDateFormat";
+import { chartNumberCulture } from "./numberCulture";
 
 export const KEYBOARD_STAMP = "// bic:keyboard-marks";
 const STAMP_RE = /^[ \t]*\/\/[ \t]*bic:keyboard-marks\b/;
@@ -108,9 +109,10 @@ export function rowNameOf(columns: ReadonlyArray<unknown>, row: ReadonlyArray<un
             } catch { shown = null; }
             if (shown) { parts.push(shown); return; }
         }
-        // A culture code the runtime does not know throws in toLocale*: the name is read without it, never lost.
+        // A culture code the runtime does not know throws in toLocale*: the name is read without it, never lost. A
+        // right-to-left reader's digits are Latin, as the chart's own (numberCulture.ts).
         const inCulture = (print: (c: string | undefined) => string): string => {
-            try { return print(culture || undefined); } catch { return print(undefined); }
+            try { return print(chartNumberCulture(culture) || undefined); } catch { return print(undefined); }
         };
         if (isDate(v)) {
             if (!Number.isNaN(v.getTime())) parts.push(inCulture(c2 => v.toLocaleDateString(c2)));

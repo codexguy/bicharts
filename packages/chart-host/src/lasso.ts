@@ -31,6 +31,7 @@
 // Pure DOM plus the host's own selection (passed in): no d3, no randomness, and nothing is logged.
 
 import { MARK_CLASS, LEGEND_MARK_CLASS, AXIS_FILTER_CLASS, ROW_IDX_ATTR, SNAPSHOT_SVG_ATTR, CONTROL_CLASS, type RenderOptions } from "./contract";
+import { chartNumberCulture } from "./numberCulture";
 import { DRAG_NOT_CLICK_PX, gestureWasDrag, isInsideControl, rowIdxsFromMark, type PressPoint } from "./selection";
 
 // ---- constants -------------------------------------------------------------------------------
@@ -525,8 +526,9 @@ interface Gesture {
     dragging: boolean;
 }
 
+// Latin digits for a right-to-left reader, as the chart's own numbers (numberCulture.ts).
 function fmtCount(n: number, culture?: string): string {
-    try { return new Intl.NumberFormat(culture || undefined).format(n); } catch { return String(n); }
+    try { return new Intl.NumberFormat(chartNumberCulture(culture) || undefined).format(n); } catch { return String(n); }
 }
 
 /** The one-line caption over the cap. Absolutely positioned, so it adds nothing to the chart's layout. */

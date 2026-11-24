@@ -183,6 +183,20 @@ export function vocabularyLanguage(code: string | null | undefined): VocabularyL
     return supportedLanguage(k) ?? VOCAB_ONLY_BY_CODE.get(k);
 }
 
+/**
+ * TRUE when a culture tag names a language written right to left, by the `dir` this list (and the
+ * vocabulary-only list) records for it. The tag is read the way `resolveLanguage` reads it - trimmed,
+ * `_` taken as `-`, canonicalised, its primary subtag looked up by code or alias - so `he`, `iw`,
+ * `ar-SA`, `AR_sa` and `ar-SA-u-nu-arab` all answer true. A language neither list carries answers
+ * false, as does an absent or unparseable tag.
+ */
+export function isRightToLeft(tag: string | null | undefined): boolean {
+    const raw = String(tag ?? "").trim().replace(/_/g, "-");
+    const canon = raw ? canonicalTag(raw) : null;
+    if (!canon) return false;
+    return vocabularyLanguage(canon.split("-")[0])?.dir === "rtl";
+}
+
 export interface ResolvedLanguage {
     /** The Tier 1 language whose vetted text this reader gets - always one of the thirty. */
     code: SupportedLanguageCode;

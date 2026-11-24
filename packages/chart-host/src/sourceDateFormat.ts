@@ -31,6 +31,7 @@
 // string this replaced. A card is a courtesy; it must never be the reason a click does nothing.
 
 import { parseDateStable, wholeDayFrame } from "@bicharts/shape-core";
+import { chartNumberCulture } from "./numberCulture";
 
 /** Which vocabulary a source format string is written in. See the header note - this is stated
  *  by the host that owns the format, never inferred from the string. */
@@ -150,7 +151,9 @@ function localeDate(p: Parts, wholeDay: boolean, culture?: string): string {
     try {
         const o: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeZone: "UTC" };
         if (!wholeDay) o.timeStyle = p.seconds || p.ms ? "medium" : "short";
-        return new Intl.DateTimeFormat(culture || undefined, o).format(anchor);
+        // The day's digits in Latin for a right-to-left reader, as the chart's own numbers (numberCulture.ts); month
+        // and weekday names below stay on the reader's culture as sent.
+        return new Intl.DateTimeFormat(chartNumberCulture(culture) || undefined, o).format(anchor);
     } catch {
         // A bad culture code, or a runtime without the full ICU data, must not cost the reader
         // the date. ISO minus the noise: still a day they can read, never a `Z`.

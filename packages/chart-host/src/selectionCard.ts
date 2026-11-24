@@ -37,6 +37,9 @@ import {
 import { formatSourceDate, type SourceFormats } from "./sourceDateFormat";
 // The card's words in the reader's language when the host passes a text source; English, as before, when it does not.
 import { hostText, isLocalized, type StringSource } from "./hostText";
+// Its numbers in Latin digits for a right-to-left reader, as the chart's own (numberCulture.ts); its words stay in the
+// reader's language.
+import { chartNumberCulture } from "./numberCulture";
 
 /** Columns the payload appends for its own plumbing. Never a measure, never a dimension, never
  *  shown: `__rowIdx__` IS the row position, and the geo trio is host metadata. A card that
@@ -199,7 +202,7 @@ export function measureLineLabel(agg: Agg, name: string, strings?: StringSource 
 /** A count as the reader writes it: digits as before in English, grouped in the reader's own form otherwise. */
 function countText(n: number, strings: StringSource | null | undefined): string {
     if (!isLocalized(strings)) return String(n);
-    try { return new Intl.NumberFormat(strings.lang).format(n); } catch { return String(n); }
+    try { return new Intl.NumberFormat(chartNumberCulture(strings.lang)).format(n); } catch { return String(n); }
 }
 
 /** "12.3% of total": one decimal, "<0.1" below it; the reader's decimal mark when the card is localized. */
@@ -207,7 +210,7 @@ function shareText(pct: number, strings: StringSource | null | undefined): strin
     const v = pct < 0.1 ? 0.1 : pct;
     let num = pct < 0.1 ? "0.1" : pct.toFixed(1);
     if (isLocalized(strings)) {
-        try { num = new Intl.NumberFormat(strings.lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v); } catch { /* digits as before */ }
+        try { num = new Intl.NumberFormat(chartNumberCulture(strings.lang), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v); } catch { /* digits as before */ }
     }
     return hostText(strings, "card.share", "{pct}% of total", { pct: (pct < 0.1 ? "<" : "") + num });
 }
@@ -316,7 +319,7 @@ function fmtNumber(v: number, culture?: string): string {
         const opts: Intl.NumberFormatOptions = abs >= 1_000_000
             ? { notation: "compact", maximumFractionDigits: 1 }
             : { maximumFractionDigits: abs < 10 ? 2 : 0 };
-        return new Intl.NumberFormat(culture || undefined, opts).format(v);
+        return new Intl.NumberFormat(chartNumberCulture(culture) || undefined, opts).format(v);
     } catch {
         // A bad culture code must not cost the reader the number.
         return String(Math.round(v * 100) / 100);

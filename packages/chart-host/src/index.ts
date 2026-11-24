@@ -302,6 +302,9 @@ export {
     hostText, catalogSource, renderText,
     type StringSource, type CatalogValue, type TextVars, type RenderTextFn,
 } from "./hostText";
+// A right-to-left reader's numbers in Latin digits, their language unchanged: chartNumberCulture(cultureCode) is the tag
+// to format a chart's numbers with (resolveOptions already hands a chart's code that tag as options.cultureCode).
+export { isRightToLeft, chartNumberCulture } from "./numberCulture";
 // The chrome around it (where the card opens, pinning, dismissal, the compact card) is
 // "@bicharts/chart-host/card", not this entry: only a host that mounts a card loads it, and this
 // entry's eager closure - every host loads it - is budgeted (scripts/checkEagerSize.mjs).

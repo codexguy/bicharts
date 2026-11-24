@@ -9,7 +9,8 @@
 //     the RAW setting value; resolveOptions applies the default + clamp.
 //   • HOST fields (width/height/palette/geo/theme/cultureCode/allowTooltips/
 //     noDataText/uiState/setUiState/onSelect): the caller has already computed the
-//     final value; resolveOptions passes it through untouched.
+//     final value; resolveOptions passes it through untouched - except a right-to-left
+//     cultureCode, which gains Latin digits (chartNumberCulture).
 import {
     type RenderOptions,
     type HostSelectionFact,
@@ -28,6 +29,7 @@ import {
 import { toRGBA, compositeOver, relativeLuminance } from "./labelContrast";
 
 import { resolveAutoColorScale } from "./autoRamp";
+import { chartNumberCulture } from "./numberCulture";
 import { readSelectionMarker, readMapSelectionMarker } from "./selectionMarker";
 import { exportFormatsFor, exportTableService, type ExportFormat, type ExportTableService, type SaveFileService } from "./exportTable";
 
@@ -220,7 +222,12 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         themeFg: p.themeFg,
         isHighContrast: p.isHighContrast,
         themeAccent: p.themeAccent,
-        cultureCode: p.cultureCode,
+        // NOT A PASS-THROUGH FOR A RIGHT-TO-LEFT READER. A chart's own code formats its numbers with this tag, and an
+        // Arabic tag formats Arabic-Indic digits beside the Latin ones every other number in the chart prints. So a
+        // right-to-left tag gains Latin digits, and Arabic the Gregorian calendar its data is in (`ar-SA` ->
+        // `ar-SA-u-ca-gregory-nu-latn`); its language is unchanged, and every
+        // other tag, English first, passes through untouched. See numberCulture.ts.
+        cultureCode: chartNumberCulture(p.cultureCode),
         allowTooltips: p.allowTooltips,
         noDataText: p.noDataText,
         text: p.text,

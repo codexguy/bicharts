@@ -170,7 +170,7 @@ export { STR, SIMPLE_STRING_HASH, GET_RANDOM, isDeterministicRefusal, nameWords,
 // `no` and `zh-TW` read as Simplified. Data vocabulary never keys on this: a Spanish model sits in
 // an English UI, so vocabulary is the union of all thirty.
 export {
-    SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, supportedLanguage, resolveLanguage,
+    SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, supportedLanguage, resolveLanguage, isRightToLeft,
     VOCABULARY_ONLY_LANGUAGES, VOCABULARY_LANGUAGE_CODES, vocabularyLanguage,
 } from "./languages";
 export type {

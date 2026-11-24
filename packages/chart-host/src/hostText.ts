@@ -10,6 +10,18 @@
 // catalog for a language, so a host that wants the reader's language passes that and writes no strings of its own; a host
 // may also pass a source of its own (a different wording, a language the package does not carry). The catalogs
 // and chartHostStrings live in their own entry, "@bicharts/chart-host/strings" (strings.ts).
+//
+// A VALUE INSIDE A RIGHT-TO-LEFT SENTENCE IS ISOLATED. A filled value (a column name, a number) is often Latin text, and
+// inside an Arabic or Hebrew sentence the bidirectional algorithm lets it pull the words around it out of order. So when
+// the sentence came from a source whose language is right to left, each FILLED value is wrapped in FIRST STRONG ISOLATE
+// ... POP DIRECTIONAL ISOLATE (U+2068 ... U+2069), the same isolation the server's catalog applies. English (no source,
+// or the English given here because the source does not word the key), a left-to-right language and a placeholder left
+// unfilled are unchanged, byte for byte. renderText inherits it.
+
+import { isRightToLeft } from "./numberCulture";
+
+const FSI = "⁨";
+const PDI = "⁩";
 
 /** One catalog value: a sentence, or a counted key's plural forms (Intl.PluralRules categories). */
 export type CatalogValue = string | Readonly<Partial<Record<Intl.LDMLPluralRule, string>>>;
@@ -40,15 +52,21 @@ function pluralForm(value: CatalogValue, lang: string, count: number | undefined
 
 /**
  * The sentence for `key` in the source's language, its {placeholders} filled; the English given here when the source is
- * absent or does not word the key. A placeholder with no value is left as written.
+ * absent or does not word the key. A placeholder with no value is left as written. In a right-to-left source's sentence
+ * each filled value is isolated (FSI ... PDI); see the header.
  */
 export function hostText(src: StringSource | null | undefined, key: string, english: CatalogValue,
                          vars?: TextVars, count?: number): string {
     const own = src?.get(key);
-    const template = (own != null ? pluralForm(own, src!.lang, count) : undefined) ?? pluralForm(english, "en", count) ?? "";
+    const fromSource = own != null ? pluralForm(own, src!.lang, count) : undefined;
+    const template = fromSource ?? pluralForm(english, "en", count) ?? "";
     if (!vars) return template;
-    return template.replace(PLACEHOLDER, (m, name: string) =>
-        Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : m);
+    const isolate = fromSource != null && isRightToLeft(src!.lang);
+    return template.replace(PLACEHOLDER, (m, name: string) => {
+        if (!Object.prototype.hasOwnProperty.call(vars, name)) return m;
+        const value = String(vars[name]);
+        return isolate ? FSI + value + PDI : value;
+    });
 }
 
 /** A text source as a plain function, the form RenderOptions.text carries into a chart's own code: the key's sentence
