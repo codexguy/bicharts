@@ -170,6 +170,12 @@ const LEADING_ZERO_CODE = /^0\d{2,}$/;
 // leading-zero code past fifteen digits is caught here because INT_RE never matched it.
 const LONG_DIGIT_CODE = /^[+-]?\d{16,}$/;
 
+/** TRUE for a whole number a double cannot hold as written: an all-digit string, or a BigInt, longer than 15 digits. */
+function isLongDigitCode(v: any): boolean {
+    if (typeof v === "bigint") return LONG_DIGIT_CODE.test(String(v));
+    return typeof v === "string" && LONG_DIGIT_CODE.test(foldNumerals(v.trim()));
+}
+
 /** What one cell is, for typing its column. `missing` is a missing-number word (above). */
 type CellKind = "blank" | "missing" | "int" | "num" | "date" | "other";
 
@@ -263,12 +269,15 @@ function blankSpreadsheetErrors(rows: any[][], inferred: boolean[]): any[][] {
 function convert(v: any, dataType: string, decimal: DecimalSeparator = ".", textDate: TextDateColumn | null = null): any {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") return dataType === "String" ? String(v) : v;
+    if (typeof v === "bigint") return dataType === "String" ? String(v) : Number(v);
     if (v instanceof Date) return dataType === "DateTime" ? v : v.toISOString();
     if (typeof v === "boolean") return String(v);
     const s = String(v).trim();
     if (s === "") return null;
     switch (dataType) {
-        case "Integer": { const f = foldNumerals(s); return INT_RE.test(f) ? parseInt(f, 10) : null; }
+        // A whole number past fifteen digits reaches here only in a column declared a measure (step 1c): the
+        // nearest double, never a blank.
+        case "Integer": { const f = foldNumerals(s); return INT_RE.test(f) ? parseInt(f, 10) : LONG_DIGIT_CODE.test(f) ? Number(f) : null; }
         case "Decimal": return parseNumberText(s, decimal);
         // parseDateStable, not Date.parse: a zone-less date-TIME and every non-ISO spelling
         // are LOCAL to Date.parse, so the same text became a different instant on every
@@ -365,6 +374,19 @@ function buildProfile(
             types[c] = inferDataType(whole, decimals[c]);
             return;
         }
+    });
+
+    // 1c. A DECLARED WHOLE NUMBER TOO LONG FOR A DOUBLE IS A KEY. A 64-bit key (a database bigint, a snowflake id)
+    //     runs to nineteen digits; a driver hands one over as text (node-postgres returns int8 as a string) or as a
+    //     BigInt, and the integer reader, which reads at most fifteen digits, turned every such key into null. Read as
+    //     a number the keys would round onto each other instead. Nobody adds two ids, so a declared Integer or Decimal
+    //     column holding one such value is text, every value kept as written. A column the host or the caller
+    //     declares a measure is a quantity and stays a number (convert rounds it, never blanks it).
+    const declaredMeasures = new Set((opts.measures ?? []).map(s => s.toLowerCase()));
+    descriptors.forEach((d, c) => {
+        if (d.dataType !== "Integer" && d.dataType !== "Decimal") return;
+        if (d.isMeasure === true || declaredMeasures.has(d.name.toLowerCase())) return;
+        for (const v of columnValues(rows, c)) if (isLongDigitCode(v)) { types[c] = "String"; return; }
     });
 
     // 2. Roles, by the ladder above.
