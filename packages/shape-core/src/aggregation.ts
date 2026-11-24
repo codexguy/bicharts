@@ -686,6 +686,85 @@ export function nameLooksIntensiveRate(name: string | null | undefined): boolean
     return matchesName(INTENSIVE_RE, name) || nameLooksPositional(name);
 }
 
+// ── levels that are not summed: phrases and exclusions, not tokens ───────────────────────────
+//
+// A price, a stock's open/high/low/close, a temperature, a life expectancy, a level or a per-case
+// duration in days is a value read at a point, never a quantity that adds up across rows. None
+// of them carries a rate word, so the token arrays above cannot see them, and these rules are not
+// token rules anyway: the stock words count only as the WHOLE name ("Open", never "Open
+// Tickets"), a price stops being one beside a total or an amount ("TotalPrice" is a sum of
+// prices), and "days" counts only in a per-case form (days to resolve, days open, lead time
+// days), never days present or a count of days.
+//
+// The server's resolver holds the same rule; the two are bound by a shared name table
+// (tests/fixtures/level-not-sum.json) that both test suites read.
+
+/* parity:level-stock-whole:begin */
+/** Stock words that count only as the WHOLE name. */
+export const LEVEL_STOCK_WHOLE_NAMES: readonly string[] = ["open", "high", "low", "close", "adj close", "adjusted close"];
+/* parity:level-stock-whole:end */
+
+/* parity:level-price:begin */
+/** A price, in the languages a model is authored in (accent-folded, lower-case). */
+export const LEVEL_PRICE_TOKENS: readonly string[] = [
+    "price", "prices", "precio", "precios", "prix", "preis", "preco", "precos", "prezzo", "prijs",
+];
+/* parity:level-price:end */
+
+/* parity:level-sum:begin */
+/** A total or an amount of a price is a sum of prices, which adds up. */
+export const LEVEL_SUM_TOKENS: readonly string[] = ["total", "totals", "subtotal", "amt", "amount", "amounts"];
+/* parity:level-sum:end */
+
+/* parity:level-level:begin */
+export const LEVEL_LEVEL_TOKENS: readonly string[] = ["level", "levels", "nivel", "niveau"];
+/* parity:level-level:end */
+
+/* parity:level-day:begin */
+export const LEVEL_DAY_TOKENS: readonly string[] = ["days", "dias"];
+/* parity:level-day:end */
+
+/* parity:level-per-case-day:begin */
+/** Beside a day word, these make it a per-case duration rather than a count of days. */
+export const LEVEL_PER_CASE_DAY_TOKENS: readonly string[] = [
+    "to", "until", "till", "open", "hand", "lead", "stay", "transit", "stage", "since", "growing",
+];
+/* parity:level-per-case-day:end */
+
+const LEVEL_STOCK_WHOLE_SET = new Set(LEVEL_STOCK_WHOLE_NAMES);
+const LEVEL_PRICE_SET = new Set(LEVEL_PRICE_TOKENS);
+const LEVEL_SUM_SET = new Set(LEVEL_SUM_TOKENS);
+const LEVEL_LEVEL_SET = new Set(LEVEL_LEVEL_TOKENS);
+const LEVEL_DAY_SET = new Set(LEVEL_DAY_TOKENS);
+const LEVEL_PER_CASE_DAY_SET = new Set(LEVEL_PER_CASE_DAY_TOKENS);
+
+/** The name's tokens the way the server's level rule reads them: strip the host's default
+ *  aggregation prefix, read `%` as the word, split camelCase and digit transitions, accent-fold,
+ *  lower-case, then split on every character that is not a letter or a number. NOT `nameWords`:
+ *  that keeps punctuation attached, so "Lead Time (days)" would carry "(days)" and miss. */
+function levelTokens(name: string): string[] {
+    let base = stripHostAggPrefix(name);
+    if (base.length === 0) return [];
+    if (base.indexOf("%") >= 0) base = base.split("%").join(" pct ");
+    const norm = foldAccents(base.replace(CAMEL_BOUNDARY, " ")).toLowerCase();
+    return norm.split(/[^\p{L}\p{N}]+/u).filter((s) => s.length > 0);
+}
+
+/** Does this column NAME read as a level that is not summed - a price, a stock's
+ *  open/high/low/close, a temperature, a life expectancy, a level or a per-case duration in days?
+ *  Name only: no data, no culture. */
+export function nameLooksLevelNotSum(name: string | null | undefined): boolean {
+    if (!name) return false;
+    const t = levelTokens(String(name));
+    if (t.length === 0) return false;
+    if (LEVEL_STOCK_WHOLE_SET.has(t.join(" "))) return true;
+    if (t.some((x) => LEVEL_PRICE_SET.has(x)) && !t.some((x) => LEVEL_SUM_SET.has(x))) return true;
+    if (t.some((x) => x === "temp" || LEVEL_LEVEL_SET.has(x))) return true;
+    for (let i = 0; i + 1 < t.length; i++) if (t[i] === "life" && t[i + 1] === "expectancy") return true;
+    if (t.some((x) => LEVEL_DAY_SET.has(x)) && t.some((x) => LEVEL_PER_CASE_DAY_SET.has(x))) return true;
+    return false;
+}
+
 // ── the classifier ───────────────────────────────────────────────────────────────────────────
 
 const NUMERIC_DATATYPE = /int|double|decimal|single|float|number|currency|money/i;
@@ -741,6 +820,9 @@ export function classifyForAggregation(col: AggregationColumn | null | undefined
         return { nature, additivity: "intensive_rate", basis: "host-flag", suppressed: false };
     }
     if (nameLooksIntensiveRate(c.name)) {
+        return { nature, additivity: "intensive_rate", basis: "name", suppressed: false };
+    }
+    if (nameLooksLevelNotSum(c.name)) {
         return { nature, additivity: "intensive_rate", basis: "name", suppressed: false };
     }
     return { nature, additivity: "additive", basis: "default", suppressed: false };

@@ -66,6 +66,9 @@ export {
     shareOfTotalIsHonest,
     nameLooksIntensiveRate,
     nameLooksPositional,
+    // A price, a stock's open/high/low/close, a temperature, a level or a per-case duration in
+    // days: not summed, by phrase rules the token arrays cannot say (tests/fixtures/level-not-sum.json).
+    nameLooksLevelNotSum,
     stripHostAggPrefix,
     hasDefaultAggPrefix,
     // "Sum of Sum of Revenue" -> "Sum of Revenue" (2026-09-04). IndexedText.setColumns applies

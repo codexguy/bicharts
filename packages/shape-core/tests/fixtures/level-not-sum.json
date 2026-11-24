@@ -1,0 +1,23 @@
+{
+  "rule": "MeasureAdditivity.NameLooksLevelNotSum",
+  "source": "item 1607 / Item1607PriceLevelDurationTests",
+  "yes": [
+    "Open", "High", "Low", "Close",
+    "Sum of Open", "Sum of Close", "Adj Close",
+    "UnitPrice", "Sum of ListPrice", "ClosePriceUSD", "MonthlyPrice", "Price_USDm",
+    "Sale Price",
+    "temp_f", "Sum of temp_f", "Suma de temp_f", "TempC", "Water Temp (C)",
+    "LifeExpectancy", "Sum of LifeExpectancy", "Life Expectancy 2",
+    "Sum of ExpressionLevel", "LevelMeters",
+    "DaysToResolve", "Days to Close", "Days Open", "DaysOnHand", "Sum of LeadTimeDays",
+    "Lead Time (days)", "LengthOfStayDays", "DaysInStage", "Transit Days",
+    "Days Since Last Pick", "EST_GROWING_DAYS", "DaysToReadmit"
+  ],
+  "no": [
+    "TotalPrice", "Total Unit Price", "AMT_HARDWARE_PRICE", "Price Amount",
+    "Days Present", "Days Out of Service", "Pozos_Apagados_100_Dias", "Course Days",
+    "Sum of DurationDays",
+    "Open Communication", "High Risk Clients", "Open Tickets", "Closed Won",
+    "Revenue", "Sales", "Quantity", "Cost"
+  ]
+}
