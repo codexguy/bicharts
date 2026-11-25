@@ -2,6 +2,8 @@
 // preview and verdict instead of bare names, and the MCP, the React demo and the hosts read one shape. The selection
 // weight is never a field here: a printed "61.9" read as a quality score, and rank plus verdict carry the ordering.
 
+import { hostText, type StringSource } from "./hostText";
+
 /**
  * What kind of thing a chart type is, beyond a plain chart, in the chart gallery's own families: an app (a type with
  * its own controls or logic), a table, a map or a KPI card. A plain chart has no kind and no badge. The same four
@@ -72,18 +74,22 @@ export interface QualifyKindBadgeStyle {
 /**
  * The style for one kind's badge on one pane, or null for no kind (a plain chart, or a kind this version does not
  * know). In high contrast the badge has no fill: the text and a 1px border take the host's foreground colour, so the
- * system's colours decide and the word stays the signal.
+ * system's colours decide and the word stays the signal. `strings` is the host's text source (its HostServices.strings,
+ * e.g. chartHostStrings(culture)): the word is then the reader's ("qualify.kind.<kind>"); without one it is the English
+ * in QUALIFY_KIND_BADGES. The colours never depend on the language.
  */
-export function qualifyKindBadgeStyle(kind: string | null | undefined, pane: QualifyKindPane): QualifyKindBadgeStyle | null {
+export function qualifyKindBadgeStyle(kind: string | null | undefined, pane: QualifyKindPane,
+                                      strings?: StringSource | null): QualifyKindBadgeStyle | null {
     const k = knownKind(kind);
     if (!k) return null;
     const badge = QUALIFY_KIND_BADGES[k];
+    const label = hostText(strings, `qualify.kind.${k}`, badge.label);
     if (typeof pane === "object") {
         const fg = pane.highContrastForeground;
-        return { label: badge.label, background: "transparent", color: fg, border: `1px solid ${fg}` };
+        return { label, background: "transparent", color: fg, border: `1px solid ${fg}` };
     }
     const c = pane === "dark" ? badge.dark : badge.light;
-    return { label: badge.label, background: c.background, color: c.text, border: "none" };
+    return { label, background: c.background, color: c.text, border: "none" };
 }
 
 function knownKind(v: unknown): QualifyKind | null {

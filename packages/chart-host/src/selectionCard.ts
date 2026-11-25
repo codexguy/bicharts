@@ -200,7 +200,7 @@ export function measureLineLabel(agg: Agg, name: string, strings?: StringSource 
 }
 
 /** A count as the reader writes it: digits as before in English, grouped in the reader's own form otherwise. */
-function countText(n: number, strings: StringSource | null | undefined): string {
+export function countText(n: number, strings: StringSource | null | undefined): string {
     if (!isLocalized(strings)) return String(n);
     try { return new Intl.NumberFormat(chartNumberCulture(strings.lang)).format(n); } catch { return String(n); }
 }

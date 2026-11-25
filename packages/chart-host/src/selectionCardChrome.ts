@@ -21,8 +21,8 @@
 // container's own click is watched in the CAPTURE phase, which runs before a bubble-phase click
 // handler: by the time the row set arrives, the anchor is already recorded.
 
-import { computeSelectionCard, type SelectionCardModel } from "./selectionCard";
-import type { StringSource } from "./hostText";
+import { computeSelectionCard, countText, type SelectionCardModel } from "./selectionCard";
+import { hostText, type StringSource } from "./hostText";
 import type { SourceFormats } from "./sourceDateFormat";
 
 export interface SelectionCardsDeps {
@@ -188,16 +188,17 @@ export function createSelectionCards(deps: SelectionCardsDeps): SelectionCards {
         const pin = document.createElement("button");
         pin.type = "button";
         pin.className = `${CARD_CLASS}-btn`;
-        pin.title = "Keep this card while you click other marks";
-        pin.setAttribute("aria-label", "Pin this card");
-        pin.textContent = "Pin";
+        // The controls' words are the reader's too (the host's text source, English without one).
+        pin.title = hostText(deps.strings, "card.pin.title", "Keep this card while you click other marks");
+        pin.setAttribute("aria-label", hostText(deps.strings, "card.pin.aria", "Pin this card"));
+        pin.textContent = hostText(deps.strings, "card.pin", "Pin");
         head.append(pin);
 
         const close = document.createElement("button");
         close.type = "button";
         close.className = `${CARD_CLASS}-btn`;
-        close.title = "Dismiss";
-        close.setAttribute("aria-label", "Dismiss this card");
+        close.title = hostText(deps.strings, "card.dismiss.title", "Dismiss");
+        close.setAttribute("aria-label", hostText(deps.strings, "card.dismiss.aria", "Dismiss this card"));
         close.textContent = "×";
         head.append(close);
 
@@ -224,7 +225,9 @@ export function createSelectionCards(deps: SelectionCardsDeps): SelectionCards {
             if (model.hiddenMeasures > 0) {
                 const more = document.createElement("div");
                 more.className = `${CARD_CLASS}-more`;
-                more.textContent = `+${model.hiddenMeasures} more measure${model.hiddenMeasures === 1 ? "" : "s"}`;
+                const n = model.hiddenMeasures;
+                more.textContent = hostText(deps.strings, "card.more_measures",
+                    { one: "+{n} more measure", other: "+{n} more measures" }, { n: countText(n, deps.strings) }, n);
                 el.append(more);
             }
             // DIMENSIONS, BELOW THE AMOUNTS. A dimension has no arithmetic, which
@@ -292,7 +295,7 @@ export function createSelectionCards(deps: SelectionCardsDeps): SelectionCards {
             if (handle.pinned) return;
             handle.pinned = true;
             transient = null;                      // it belongs to the pin list now
-            built.pin.textContent = "Pinned";
+            built.pin.textContent = hostText(deps.strings, "card.pinned", "Pinned");
             built.pin.disabled = true;
             el.classList.add(`${CARD_CLASS}--pinned`);
             pinned.push(handle);

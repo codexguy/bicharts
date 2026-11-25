@@ -23,6 +23,19 @@ const ENGLISH: Record<string, string | Record<string, string>> = {
     "card.share": "{pct}% of total",
     "card.distinct": "Distinct {column}",
     "card.rows": { one: "{selected} of {total} row", other: "{selected} of {total} rows" },
+    // The card's own controls and its overflow line (selectionCardChrome).
+    "card.pin": "Pin",
+    "card.pinned": "Pinned",
+    "card.pin.title": "Keep this card while you click other marks",
+    "card.pin.aria": "Pin this card",
+    "card.dismiss.title": "Dismiss",
+    "card.dismiss.aria": "Dismiss this card",
+    "card.more_measures": { one: "+{n} more measure", other: "+{n} more measures" },
+    // The what-fits kind badge's word (qualifyKindBadgeStyle).
+    "qualify.kind.app": "App",
+    "qualify.kind.table": "Table",
+    "qualify.kind.map": "Map",
+    "qualify.kind.kpi": "KPI",
     "qualify.too_small_heading": "Needs a bigger tile",
     "qualify.refusal_unspecified": "refused for the fields as bound - no single requirement to name",
     "qualify.count": "{matched} of {total}",
@@ -70,6 +83,18 @@ describe("chart-host's catalogs", () => {
             expect(Object.keys(cat).filter(k => !(k in ENGLISH)), `${lang} extra keys`).toEqual([]);
         });
     }
+});
+
+describe("the kind badge's word", () => {
+    it("stays a short word in every language: a pill, not a phrase", () => {
+        for (const lang of TIER1) {
+            for (const kind of ["app", "table", "map", "kpi"]) {
+                const v = HOST_TEXT_CATALOGS[lang][`qualify.kind.${kind}`] as string;
+                expect(v, `${lang} ${kind}`).toBe(v.trim());
+                expect([...v].length, `${lang} ${kind}: ${v}`).toBeLessThanOrEqual(10);
+            }
+        }
+    });
 });
 
 describe("chartHostStrings", () => {
