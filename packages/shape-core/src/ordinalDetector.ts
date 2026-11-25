@@ -682,7 +682,80 @@ export function detectOrdinalDomain(rawValues: string[], locale?: string): Ordin
     }
     const plain = detectScaleOrCalendar(normIndex, locale);
     if (plain !== null) return plain;
-    return coded !== null ? detectNumericRankPrefix(normIndex) : null;
+    if (coded !== null) return detectNumericRankPrefix(normIndex);
+    return detectFiscalPeriods(normIndex) ?? detectSequenceNumbers(normIndex);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// A fiscal period code is an order ("FY24 P01" ... "FY25 P13")
+// ──────────────────────────────────────────────────────────────────────────
+// A fiscal calendar's periods shipped as plain text: no pattern, so no time axis, and "FY24 P10" sorted before
+// "FY24 P02". Every value must carry "FY" with a two- or four-digit year AND one period code - P (a fiscal
+// period, 1-13), M (month, 1-12), W (week, 1-53), Q (quarter, 1-4) or H (half, 1-2) - the code before or after
+// the year, separated by a space, "-", "/" or nothing. Bare codes ("P01") are products as often as periods, so
+// "FY" is required on every value. One letter for the whole column. The domain runs by year, then period.
+const FISCAL_PERIOD = /^(?:fy\s?(\d{2}|\d{4})\s*[-/ ]?\s*([pmwqh])\s?(\d{1,2})|([pmwqh])\s?(\d{1,2})\s*[-/ ]?\s*fy\s?(\d{2}|\d{4}))$/;
+const FISCAL_PERIOD_MAX: Record<string, number> = { p: 13, m: 12, w: 53, q: 4, h: 2 };
+const FISCAL_MIN = 3;
+
+function detectFiscalPeriods(normIndex: Map<string, string>): OrdinalDetectionResult | null {
+    if (normIndex.size < FISCAL_MIN) return null;
+    let letter: string | null = null;
+    const seen = new Set<number>();
+    const read: { key: number; original: string }[] = [];
+    for (const original of normIndex.values()) {
+        const m = FISCAL_PERIOD.exec(original.trim().toLowerCase());
+        if (!m) return null;
+        const yearText = m[1] ?? m[6];
+        const code = m[2] ?? m[4];
+        const n = Number(m[3] ?? m[5]);
+        if (letter === null) letter = code;
+        else if (letter !== code) return null;
+        if (n < 1 || n > FISCAL_PERIOD_MAX[code]) return null;
+        const year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+        const key = year * 100 + n;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        read.push({ key, original });
+    }
+    read.sort((a, b) => a.key - b.key);
+    return { pattern: "fiscal_period", orderedDomain: read.map(r => r.original) };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// A numbered sequence word is an order ("Round 1" ... "Round 22")
+// ──────────────────────────────────────────────────────────────────────────
+// A league's rounds, a team's sprints, a course's lessons: one noun that names a STEP in a sequence, then a
+// whole number, on every value - and the numbers distinct. Only the nouns listed: a numbered store, team, site or
+// product ("Store 12") is a name, and ordering stores by their number would draw a line through things that have
+// no order. At least three values; the domain runs by the number.
+const SEQUENCE_NOUNS: Set<string> = new Set([
+    "round", "rd", "week", "wk", "day", "sprint", "phase", "stage", "step", "wave", "cycle", "episode", "season",
+    "lap", "matchday", "gameweek", "period", "iteration", "session", "lesson", "chapter", "module", "level", "leg",
+]);
+const SEQUENCE_VALUE = /^(\p{L}+)\.?\s*(\d{1,3})$/u;
+const SEQUENCE_MIN = 3;
+
+function detectSequenceNumbers(normIndex: Map<string, string>): OrdinalDetectionResult | null {
+    if (normIndex.size < SEQUENCE_MIN) return null;
+    let noun: string | null = null;
+    const seen = new Set<number>();
+    const read: { n: number; original: string }[] = [];
+    for (const original of normIndex.values()) {
+        const m = SEQUENCE_VALUE.exec(original.trim());
+        if (!m) return null;
+        const word = m[1].toLowerCase();
+        if (!SEQUENCE_NOUNS.has(word)) return null;
+        if (noun === null) noun = word;
+        else if (noun !== word) return null;
+        const n = Number(m[2]);
+        if (seen.has(n)) continue;   // "Round 1" and "round 1" read as one value; the first spelling stands
+        seen.add(n);
+        read.push({ n, original });
+    }
+    if (read.length < SEQUENCE_MIN) return null;
+    read.sort((a, b) => a.n - b.n);
+    return { pattern: "sequence_number", orderedDomain: read.map(r => r.original) };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
