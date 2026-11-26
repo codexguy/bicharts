@@ -31,7 +31,13 @@ interface Parsed {
     admin1ByKey: Map<string, string[]>;      // key (primary or alternate) -> codes
     provinceOfCode: Map<string, string>;     // "FR.11" -> the province id it maps to
     provinceIds: Set<string>;                // every province id a city or a code reaches
-    centers: Map<string, [number, number]>;  // province id -> its center [lon, lat], where a bubble map places it
+    // A PROVINCE ID IS ONE ID WHATEVER ITS CASE. ISO ids are written upper-case ("DE-BY"), the fallback ids for provinces
+    // with no ISO 3166-2 code as lower-case slugs ("ES-X-cataluna"). Every query goes through this index (upper-cased id ->
+    // the id as written), so a lookup in any case finds it and answers in the lookup's own spelling - the one the province
+    // geometry's features carry, so a choropleth still joins. Before it, a fallback id's center was stored as written and
+    // looked up upper-cased: 258 of 3,699 provinces never placed on a point map.
+    idByUpper: Map<string, string>;
+    centers: Map<string, [number, number]>;  // province id (as written) -> its center [lon, lat], where a bubble map places it
     cityCount: number;
     admin1Count: number;
 }
@@ -101,7 +107,9 @@ export function registerAdmin1Lookup(doc: Admin1LookupDoc): { cities: number; ad
         const [pid, lon, lat] = line.split("|");
         if (pid && isFinite(+lon) && isFinite(+lat) && lon !== "" && lat !== "") { centers.set(pid, [+lon, +lat]); provinceIds.add(pid); }
     }
-    state.lookup = { version: doc.version, cityByKey, admin1ByCode, admin1ByKey, provinceOfCode, provinceIds, centers, cityCount, admin1Count };
+    const idByUpper = new Map<string, string>();
+    provinceIds.forEach(pid => { const u = pid.toUpperCase(); if (!idByUpper.has(u)) idByUpper.set(u, pid); });
+    state.lookup = { version: doc.version, cityByKey, admin1ByCode, admin1ByKey, provinceOfCode, provinceIds, idByUpper, centers, cityCount, admin1Count };
     return { cities: cityCount, admin1: admin1Count };
 }
 
@@ -185,14 +193,21 @@ export function provinceIdForAdmin1Code(code: string | null | undefined): string
 /** True when a value is a province id the lookup knows (an ISO 3166-2 code such as "FR-IDF", or a fallback id). */
 export function isKnownProvinceId(value: string | null | undefined): boolean {
     if (!state.lookup || !value) return false;
-    return state.lookup.provinceIds.has(String(value).trim().toUpperCase());
+    return knownId(value) !== null;
+}
+
+/** The lookup's own spelling of a province id given in any case, or null when it knows no such id. */
+function knownId(value: string | null | undefined): string | null {
+    if (!state.lookup || !value) return null;
+    return state.lookup.idByUpper.get(String(value).trim().toUpperCase()) ?? null;
 }
 
 /** A province's center [lon, lat] - population-weighted over its cities, else its largest part's center - where a
  *  bubble map places a row that names the province and no city. Null when the lookup carries none. */
 export function provinceCenter(provinceId: string | null | undefined): [number, number] | null {
     if (!state.lookup || !provinceId) return null;
-    return state.lookup.centers?.get(String(provinceId).trim().toUpperCase()) ?? null;
+    const id = knownId(provinceId);
+    return id ? state.lookup.centers?.get(id) ?? null : null;
 }
 
 export type ProvinceValueResult =
@@ -209,7 +224,8 @@ export function resolveProvinceValue(value: string | null | undefined, opts: { c
     if (!state.lookup || !value) return { status: "unmatched" };
     const raw = String(value).trim();
     if (!raw) return { status: "unmatched" };
-    if (state.lookup.provinceIds.has(raw.toUpperCase())) return { status: "resolved", provinceId: raw.toUpperCase() };
+    const asId = knownId(raw);
+    if (asId) return { status: "resolved", provinceId: asId };
     const byCode = state.lookup.provinceOfCode.get(raw.toUpperCase());
     if (byCode) return { status: "resolved", provinceId: byCode };
     let pids = [...new Set(admin1CodesForName(raw, opts.country ?? null).map(provinceIdForAdmin1Code).filter((x): x is string => !!x))];
