@@ -3,7 +3,7 @@ import { crc32 as zlibCrc32 } from "node:zlib";
 import { JSDOM } from "jsdom";
 import {
     tableToCsv, tableToXlsx, buildExportFile, exportFileName, sheetName, excelNumberFormat, excelSerial,
-    bytesToBase64, exportFormatsFor, exportTableService, browserSaveFile, columnLetters, zipStored,
+    bytesToBase64, exportFormatsFor, exportTableService, browserSaveFile, columnLetters, zipStored, exportNoteOf, exportNoteRow,
     EXPORT_FORMATS, XLSX_MIME, type ExportTable, type ExportFile,
 } from "../src/exportTable";
 import { resolveOptions } from "../src/defaults";
@@ -504,4 +504,91 @@ describe("a large table", () => {
         expect(csvMs, "csv ms").toBeLessThan(3000);
         expect(xlsxMs, "xlsx ms").toBeLessThan(3000);
     }, 20000);
+});
+
+// ------------------------------------------------------------------ the host's note (1.29.0) --------------------------
+
+describe("the host's note under an exported workbook's table (contract 1.29.0)", () => {
+    const NOTE = { text: "Made with Example Charts", url: "https://example.com/charts?loc=xlsx" };
+    const lastRow = SALES.rows.length + 1;      // the header is row 1
+
+    it("sits in column A after ONE empty row under the table, as a real hyperlink in its own style", () => {
+        const bytes = tableToXlsx({ ...SALES, note: NOTE });
+        const p = parts(bytes);
+        const cells = sheetCells(bytes);
+        const at = exportNoteRow(SALES.rows.length);
+        expect(at).toBe(lastRow + 2);
+        expect(cells.filter(c => Number(c.r.replace(/^[A-Z]+/, "")) > lastRow).map(c => c.r)).toEqual(["A" + at]);
+        expect(cellAt(cells, "A" + at)!.text).toBe(NOTE.text);
+        const sheet = parseXml("sheet1", p["xl/worksheets/sheet1.xml"]);
+        const link = sheet.getElementsByTagName("hyperlink")[0];
+        expect(link.getAttribute("ref")).toBe("A" + at);
+        const rels = parseXml("sheet rels", p["xl/worksheets/_rels/sheet1.xml.rels"]).getElementsByTagName("Relationship")[0];
+        expect(rels.getAttribute("Id")).toBe(link.getAttribute("r:id"));
+        expect(rels.getAttribute("Target")).toBe(NOTE.url);
+        expect(rels.getAttribute("TargetMode")).toBe("External");
+        // its style underlines it; no formula anywhere
+        const styles = parseXml("styles", p["xl/styles.xml"]);
+        const xf = styles.getElementsByTagName("cellXfs")[0].getElementsByTagName("xf")[Number(cellAt(cells, "A" + at)!.s)];
+        const font = styles.getElementsByTagName("fonts")[0].getElementsByTagName("font")[Number(xf.getAttribute("fontId"))];
+        expect(font.getElementsByTagName("u").length).toBe(1);
+        expect(styles.getElementsByTagName("fonts")[0].getAttribute("count")).toBe("3");
+        expect(p["xl/worksheets/sheet1.xml"]).not.toContain("<f>");
+    });
+
+    it("never inside the table's range: the filter and its defined name end at the last data row; the used range includes the note", () => {
+        const bytes = tableToXlsx({ ...SALES, note: NOTE });
+        const p = parts(bytes);
+        const at = exportNoteRow(SALES.rows.length);
+        expect(p["xl/worksheets/sheet1.xml"]).toContain('<autoFilter ref="A1:E' + lastRow + '"/>');
+        expect(p["xl/workbook.xml"]).toContain("$A$1:$E$" + lastRow + "<");
+        expect(p["xl/worksheets/sheet1.xml"]).toContain('<dimension ref="A1:E' + at + '"/>');
+        // every table cell is the same as without the note
+        const plain = sheetCells(tableToXlsx(SALES));
+        expect(sheetCells(bytes).filter(c => c.r !== "A" + at)).toEqual(plain);
+    });
+
+    it("without a url it is plain text: no hyperlink, no sheet relationships, no extra font", () => {
+        const p = parts(tableToXlsx({ ...SALES, note: { text: NOTE.text } }));
+        expect(p["xl/worksheets/sheet1.xml"]).not.toContain("<hyperlinks>");
+        expect(p["xl/worksheets/_rels/sheet1.xml.rels"]).toBeUndefined();
+        expect(parseXml("styles", p["xl/styles.xml"]).getElementsByTagName("fonts")[0].getAttribute("count")).toBe("2");
+    });
+
+    it("absent, blank or malformed: the workbook is byte for byte what it was; an unsafe url is dropped, the text kept", () => {
+        const plain = tableToXlsx(SALES);
+        for (const n of [undefined, null, { text: "" }, { text: "   " }, "Made with", { url: NOTE.url }]) {
+            expect(Array.from(tableToXlsx({ ...SALES, note: n as never }))).toEqual(Array.from(plain));
+        }
+        expect(exportNoteOf({ text: "  Made   with\nit ", url: "javascript:alert(1)" })).toEqual({ text: "Made with it" });
+        expect(exportNoteOf({ text: "x", url: "https://e.com/a b" })).toEqual({ text: "x" });
+        expect(exportNoteOf(NOTE)).toEqual(NOTE);
+    });
+
+    it("a CSV never carries it", () => {
+        expect(tableToCsv({ ...SALES, note: NOTE })).toBe(tableToCsv(SALES));
+        expect(buildExportFile({ ...SALES, note: NOTE }, "csv").text).toBe(tableToCsv(SALES));
+    });
+
+    it("the host passes it once as exportNote: every .xlsx the chart exports carries it, and the CSV does not", async () => {
+        const files: ExportFile[] = [];
+        const opts = resolveOptions({ saveFile: (f: ExportFile) => { files.push(f); return true; }, exportNote: NOTE });
+        expect(opts.exportNote).toEqual(NOTE);
+        expect(await opts.exportTable!(SALES, "xlsx")).toBe(true);
+        expect(await opts.exportTable!(SALES, "csv")).toBe(true);
+        expect(files[0].table.note).toEqual(NOTE);
+        expect(parts(files[0].bytes)["xl/worksheets/sheet1.xml"]).toContain(NOTE.text);
+        expect(files[1].text).toBe(tableToCsv(SALES));
+        // a host that writes the workbook again from file.table (a free sheet name) keeps the note
+        expect(parts(buildExportFile({ ...files[0].table, title: "Other" }, "xlsx").bytes)["xl/worksheets/sheet1.xml"]).toContain(NOTE.text);
+        // none given: none written, and no exportNote on the options
+        const bare = resolveOptions({ saveFile: () => true });
+        expect(bare.exportNote).toBeUndefined();
+        expect(exportTableService(() => true, ["xlsx"], { text: "" })).toBeTypeOf("function");
+    });
+
+    it("a table with no columns gets no note", () => {
+        const p = parts(tableToXlsx({ columns: [], rows: [], note: NOTE }));
+        expect(p["xl/worksheets/sheet1.xml"]).not.toContain(NOTE.text);
+    });
 });

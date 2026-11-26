@@ -1,5 +1,5 @@
 // @bicharts/chart-host — the HOST CONTRACT the generated D3 code targets.
-import type { ExportFormat, ExportTableService, SaveFileService } from "./exportTable";
+import type { ExportFormat, ExportNote, ExportTableService, SaveFileService } from "./exportTable";
 //
 // Single source of truth for: the render options surface, the interaction grammar
 // (mark classes, the cross-filter event, container lifecycle slots), and the
@@ -38,7 +38,11 @@ export interface GeoPointRoleFact {
 // 1.1.0 (2026-08-02): GeoPointPrecision gained "country" for the World point map. Additive,
 // but a host that switches exhaustively on the tier or holds its own Record<Precision, …>
 // has a new case to handle — which is exactly what this version exists to announce.
-export const HOST_CONTRACT_VERSION = "1.28.0";
+export const HOST_CONTRACT_VERSION = "1.29.0";
+// 1.29.0 (2026-11-26): A HOST CAN SIGN ITS EXPORTED WORKBOOKS. RenderOptions gains exportNote ({ text, url? }): one note cell the
+// .xlsx carries in column A, under the table with one empty row between, so the table's range (its filter buttons, an Excel table
+// or a pivot made over it) never takes it in. With a url the cell is a link. A CSV carries nothing: it has no place for a line
+// that would not change the data a reader imports. Additive: absent or blank, a workbook is exactly as before.
 // 1.28.0 (2026-11-18): A HOST CAN SAY WHAT ITS FILE SERVICE DOES. RenderOptions gains exportLabels ({ "<format>": "<catalog key>" }),
 // for a host whose saveFile does something other than hand over a file: a spreadsheet add-in whose "xlsx" adds a sheet to the open
 // workbook passes { xlsx: "d3.grid.export.new_sheet" }, and a chart draws the words that key names, in the reader's language. Only
@@ -684,6 +688,9 @@ export interface RenderOptions {
     // WHAT A FORMAT'S EXPORT DOES, IN WORDS (1.28.0): a catalog key per format, from a host whose saveFile does not hand over a
     // file. Present only for formats in exportFormats; a chart that knows the key draws its words, and otherwise the format's.
     exportLabels?: Readonly<Partial<Record<ExportFormat, string>>>;
+    // A NOTE UNDER AN EXPORTED WORKBOOK'S TABLE (1.29.0): the host's own line (and link) for the .xlsx, never inside the table's
+    // range and never in a CSV. Absent or blank text: no note.
+    exportNote?: ExportNote | null;
     exportTable?: ExportTableService;
     geoPointDest?: {
         precision: GeoPointPrecision | null;

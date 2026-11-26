@@ -31,11 +31,12 @@ import { toRGBA, compositeOver, relativeLuminance } from "./labelContrast";
 import { resolveAutoColorScale } from "./autoRamp";
 import { chartNumberCulture } from "./numberCulture";
 import { readSelectionMarker, readMapSelectionMarker } from "./selectionMarker";
-import { exportFormatsFor, exportTableService, type ExportFormat, type ExportTableService, type SaveFileService } from "./exportTable";
+import { exportFormatsFor, exportNoteOf, exportTableService, type ExportFormat, type ExportNote, type ExportTableService, type SaveFileService } from "./exportTable";
 
 // THE EXPORT SERVICE A CHART MAY CALL (contract 1.19.0), from the host's file service: a function or nothing, and the
-// formats it takes kept to those chart-host writes. No service, or no format left, gives no export at all.
-function hostExport(save: unknown, formats: unknown, labels?: unknown): { saveFile?: SaveFileService; exportFormats?: readonly ExportFormat[]; exportLabels?: Readonly<Partial<Record<ExportFormat, string>>>; exportTable?: ExportTableService } {
+// formats it takes kept to those chart-host writes. No service, or no format left, gives no export at all. The host's
+// note (1.29.0) rides every table the service writes; the .xlsx places it under the table, a CSV leaves it out.
+function hostExport(save: unknown, formats: unknown, labels?: unknown, note?: unknown): { saveFile?: SaveFileService; exportFormats?: readonly ExportFormat[]; exportLabels?: Readonly<Partial<Record<ExportFormat, string>>>; exportNote?: ExportNote; exportTable?: ExportTableService } {
     if (typeof save !== "function") return {};
     const offered = exportFormatsFor(Array.isArray(formats) ? formats : undefined);
     if (!offered.length) return {};
@@ -48,9 +49,11 @@ function hostExport(save: unknown, formats: unknown, labels?: unknown): { saveFi
             if (typeof v === "string" && v.trim()) (exportLabels ??= {})[f] = v.trim();
         }
     }
+    const exportNote = exportNoteOf(note);
     return {
-        saveFile, exportFormats: Object.freeze(offered), exportTable: exportTableService(saveFile, offered),
+        saveFile, exportFormats: Object.freeze(offered), exportTable: exportTableService(saveFile, offered, exportNote),
         ...(exportLabels ? { exportLabels: Object.freeze(exportLabels) } : {}),
+        ...(exportNote ? { exportNote } : {}),
     };
 }
 
@@ -150,7 +153,7 @@ const numberOr = (raw: unknown, dflt: number) => {
 };
 
 export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
-    const exp = hostExport(p.saveFile, p.exportFormats, p.exportLabels);
+    const exp = hostExport(p.saveFile, p.exportFormats, p.exportLabels, p.exportNote);
     return {
         // ---- host fields: pass through exactly as supplied ----
         width: p.width,
@@ -196,6 +199,7 @@ export function resolveOptions(p: ResolveOptionsInput): RenderOptions {
         saveFile: exp.saveFile,
         exportFormats: exp.exportFormats,
         exportLabels: exp.exportLabels,
+        exportNote: exp.exportNote,
         exportTable: exp.exportTable,
         // NO LONGER A PASS-THROUGH. A host without a Max Map Points setting used to leave this
         // undefined, and every map chart then fell back to whatever number its own code carried -

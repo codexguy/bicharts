@@ -36,6 +36,36 @@ export interface ExportTable {
     title?: string | null;
     columns: ExportColumn[];
     rows: ExportCell[][];
+    /**
+     * The host's note (contract 1.29.0), for the .xlsx only: one cell in column A, under the table with one empty row between,
+     * so the table's range never takes it in. A CSV never carries it. Set by exportTableService from the host's exportNote.
+     */
+    note?: ExportNote | null;
+}
+
+/** A line a host puts under an exported workbook's table, and the address it links to (none: plain text). */
+export interface ExportNote {
+    text: string;
+    url?: string | null;
+}
+
+/** A host's note as written: trimmed text and an http(s) link, or null when there is no text. Never throws. */
+export function exportNoteOf(v: unknown): ExportNote | null {
+    if (!v || typeof v !== "object") return null;
+    const t = (v as { text?: unknown }).text;
+    const text = typeof t === "string" ? t.replace(/\s+/g, " ").trim() : "";
+    if (!text) return null;
+    const u = (v as { url?: unknown }).url;
+    const url = typeof u === "string" && /^https?:\/\/[^\s"<>]+$/i.test(u.trim()) ? u.trim() : null;
+    return Object.freeze(url ? { text, url } : { text });
+}
+
+/**
+ * Where a workbook puts the note, 1-based: column A, the row after one empty row under the table (the header is row 1, the
+ * last data row is rowCount + 1). Pure, so a host that writes its own sheet places it the same way.
+ */
+export function exportNoteRow(rowCount: number): number {
+    return Math.max(0, Math.floor(rowCount)) + 3;
 }
 
 export type ExportFormat = "csv" | "xlsx";
@@ -386,13 +416,24 @@ export function tableToXlsx(table: ExportTable): Uint8Array {
         sheetRows.push('<row r="' + (ri + 2) + '">' + cells.join("") + "</row>");
     }
 
+    // The host's note (1.29.0): column A, after one empty row, OUTSIDE the filter range and the defined name below, and left out
+    // of the column's fitted width (its text runs on over the empty cells to its right). With a url it is a real hyperlink, in
+    // its own style: the sheet's relationship to an external address, never a formula.
+    const note = nC ? exportNoteOf(table.note) : null;
+    const noteRow = note ? exportNoteRow(rows.length) : 0;
+    const hasNote = !!note && noteRow <= XLSX_MAX_ROWS;
+    const XF_LINK = nextXf;
+    const hasLink = hasNote && !!note!.url;
+    if (hasNote) sheetRows.push('<row r="' + noteRow + '">' + inlineStr("A" + noteRow, note!.text, hasLink ? XF_LINK : 0) + "</row>");
+
     const lastRef = nC ? columnLetters(nC - 1) + (rows.length + 1) : "A1";
+    const usedRef = hasNote ? columnLetters(nC - 1) + noteRow : lastRef;
     const colsXml = nC ? "<cols>" + widths.map((w, ci) =>
         '<col min="' + (ci + 1) + '" max="' + (ci + 1) + '" width="' + Math.max(8, Math.round(w + 1)) + '" customWidth="1"/>').join("") + "</cols>" : "";
     const name = sheetName(table.title);
     const sheetXml = XML_HEAD +
         '<worksheet xmlns="' + NS_MAIN + '" xmlns:r="' + NS_REL + '">' +
-        '<dimension ref="A1:' + lastRef + '"/>' +
+        '<dimension ref="A1:' + usedRef + '"/>' +
         '<sheetViews><sheetView tabSelected="1" workbookViewId="0">' +
         (nC ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/>' : "") +
         "</sheetView></sheetViews>" +
@@ -400,7 +441,12 @@ export function tableToXlsx(table: ExportTable): Uint8Array {
         colsXml +
         "<sheetData>" + sheetRows.join("") + "</sheetData>" +
         (nC ? '<autoFilter ref="A1:' + lastRef + '"/>' : "") +
+        (hasLink ? '<hyperlinks><hyperlink ref="A' + noteRow + '" r:id="rId1"/></hyperlinks>' : "") +
         "</worksheet>";
+    const sheetRels = hasLink ? XML_HEAD +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' +
+        xmlText(note!.url!) + '" TargetMode="External"/></Relationships>' : "";
 
     const workbookXml = XML_HEAD +
         '<workbook xmlns="' + NS_MAIN + '" xmlns:r="' + NS_REL + '">' +
@@ -420,9 +466,12 @@ export function tableToXlsx(table: ExportTable): Uint8Array {
         '<xf numFmtId="22" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>',
     ];
     for (const code of numFmtList) xfs[xfFor[code]] = '<xf numFmtId="' + numFmtIds[code] + '" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>';
+    if (hasLink) xfs[XF_LINK] = '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>';
+    const fonts = ['<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>', '<font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font>'];
+    if (hasLink) fonts.push('<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/><family val="2"/></font>');
     const stylesXml = XML_HEAD +
         '<styleSheet xmlns="' + NS_MAIN + '">' + numFmtsXml +
-        '<fonts count="2"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts>' +
+        '<fonts count="' + fonts.length + '">' + fonts.join("") + "</fonts>" +
         '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
         '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
         '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
@@ -455,6 +504,7 @@ export function tableToXlsx(table: ExportTable): Uint8Array {
         ["xl/_rels/workbook.xml.rels", workbookRels],
         ["xl/styles.xml", stylesXml],
         ["xl/worksheets/sheet1.xml", sheetXml],
+        ...(hasLink ? [["xl/worksheets/_rels/sheet1.xml.rels", sheetRels] as [string, string]] : []),
     ]);
 }
 
@@ -631,13 +681,15 @@ export function exportFormatsFor(hostFormats?: readonly unknown[] | null): Expor
  * be written, a format the host does not take, or a host that refuses, resolves false, and the chart says the export
  * did not happen.
  */
-export function exportTableService(save: SaveFileService, formats: readonly ExportFormat[] = EXPORT_FORMATS): ExportTableService {
+export function exportTableService(save: SaveFileService, formats: readonly ExportFormat[] = EXPORT_FORMATS, note?: ExportNote | null): ExportTableService {
     const allowed = formats.slice();
+    // The host's note (1.29.0) goes on every table, so a host that writes the file again (a new sheet's free name) keeps it.
+    const hostNote = exportNoteOf(note);
     return async (table: ExportTable, format: ExportFormat): Promise<boolean> => {
         try {
             if (!table || !Array.isArray(table.columns) || !Array.isArray(table.rows)) return false;
             if (allowed.indexOf(format) < 0) return false;
-            const file = buildExportFile(table, format);
+            const file = buildExportFile(hostNote ? { ...table, note: hostNote } : table, format);
             const res = await save(file);
             return res !== false;
         } catch {

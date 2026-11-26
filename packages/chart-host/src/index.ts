@@ -63,6 +63,8 @@ export {
     exportFormatsFor,
     exportTableService,
     browserSaveFile,
+    exportNoteOf,
+    exportNoteRow,
     EXPORT_FORMATS,
     XLSX_MIME,
     CSV_MIME,
@@ -72,6 +74,7 @@ export {
     type ExportCell,
     type ExportFormat,
     type ExportFile,
+    type ExportNote,
     type SaveFileService,
     type ExportTableService,
 } from "./exportTable";
