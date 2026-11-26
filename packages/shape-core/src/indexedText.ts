@@ -92,6 +92,11 @@ const ORDINAL_SMALL_MAX = 20;
 // NOMINAL even when unique (LoanID, StoreId, Zip, ProductCode). Conservative on
 // purpose: false-flagging a real measure as an identifier (→ Categorical) is
 // worse than missing one, so only unambiguous identifier tokens are listed.
+/** The English words that name a coordinate column (whole letter runs, lower-cased). getGeoExtent reads them; a
+ *  stand-in (obfuscate.ts) keeps them in a masked name so the pair is still found. */
+export const LATITUDE_NAME_WORDS: ReadonlySet<string> = new Set(["lat", "latitude"]);
+export const LONGITUDE_NAME_WORDS: ReadonlySet<string> = new Set(["lon", "lng", "long", "longitude"]);
+
 const IDENTIFIER_NAME_TOKENS: Set<string> = new Set([
     "id", "ids", "uuid", "guid", "key",
     "zip", "zipcode", "postal", "postalcode", "ssn",
@@ -123,7 +128,8 @@ export type ValueNature = "Continuous" | "Ordinal" | "Categorical";
 // Another language's word for year (vocab/calendarWords.ts) is read only where these find nothing:
 // `Jahr`, `Año`, `Geschäftsjahr`, `회계연도`, `السنة`.
 const TEMPORAL_YEAR_WORDS: Set<string> = new Set(["year", "yr", "fy"]);
-const hasYearName = (name: string): boolean =>
+/** A column name that reads as a year (`Year`, `fiscal_year`, `Jahr`). Exported for the stand-in (obfuscate.ts). */
+export const hasYearName = (name: string): boolean =>
     nameWords(name).some(w => TEMPORAL_YEAR_WORDS.has(w)) || localizedYearWordIn(name) !== null;
 // 2024 | 2024-Q1 | 2024Q1 | Q1-2024 | 2024-01 | 2024-1 | 202401 | 2024-W12 |
 // Jan 2024 | January-2024  (case-insensitive)
@@ -2161,8 +2167,8 @@ export class IndexedText implements IValueCollection {
             // Coordinates may arrive as a measure or a dimension, so IsMeasure is not filtered;
             // a string-typed column is never a coordinate.
             const numericish = c.dataType === "Integer" || c.dataType === "Decimal";
-            if (numericish && latIdx < 0 && t.some(x => x === "lat" || x === "latitude")) latIdx = i;
-            else if (numericish && lonIdx < 0 && t.some(x => x === "lon" || x === "lng" || x === "long" || x === "longitude")) lonIdx = i;
+            if (numericish && latIdx < 0 && t.some(x => LATITUDE_NAME_WORDS.has(x))) latIdx = i;
+            else if (numericish && lonIdx < 0 && t.some(x => LONGITUDE_NAME_WORDS.has(x))) lonIdx = i;
             if (countryIdx < 0 && !c.isMeasure && typeof c.geoKind === "string"
                 && c.geoKind.indexOf("country") === 0) countryIdx = i;
         });
@@ -2185,8 +2191,8 @@ export class IndexedText implements IValueCollection {
             this._cols.forEach((c, i) => {
                 if (!(c.dataType === "Integer" || c.dataType === "Decimal")) return;
                 const t = tok(c.name);
-                const axis = t.some(x => x === "lat" || x === "latitude") ? "lat"
-                    : t.some(x => x === "lon" || x === "lng" || x === "long" || x === "longitude") ? "lon"
+                const axis = t.some(x => LATITUDE_NAME_WORDS.has(x)) ? "lat"
+                    : t.some(x => LONGITUDE_NAME_WORDS.has(x)) ? "lon"
                     : coordinateAxisOfWords(t);
                 if (axis === "lat" && la < 0 && fits(i, 90)) la = i;
                 else if (axis === "lon" && lo < 0 && fits(i, 180)) lo = i;

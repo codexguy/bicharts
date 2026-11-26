@@ -20,6 +20,12 @@ import {
     SIMPLE_STRING_HASH,
     GET_RANDOM,
     DEFAULT_TEMPERATURE,
+    obfuscate,
+    restoreRows,
+    rebindRows,
+    rebindCode,
+    serializeKey,
+    parseKey,
 } from "../src/index";
 
 describe("@bicharts/shape-core public API", () => {
@@ -28,7 +34,8 @@ describe("@bicharts/shape-core public API", () => {
         for (const fn of [classifyNumericValueNature, classifyTemporal, classifyAdditivity,
             hostAggHint, isIdentifierName, detectOrdinalDomain, detectFormatSignature,
             detectGeo, toGeoIso, buildGeoIsoColumn, monthLookupFor, normalizeMonthKey,
-            STR, SIMPLE_STRING_HASH, GET_RANDOM]) {
+            STR, SIMPLE_STRING_HASH, GET_RANDOM,
+            obfuscate, restoreRows, rebindRows, rebindCode, serializeKey, parseKey]) {
             expect(typeof fn).toBe("function");
         }
     });

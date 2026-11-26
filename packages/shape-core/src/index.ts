@@ -256,6 +256,15 @@ export type {
     DataSource, IngestOptions, IngestResult, ColumnDescriptor, SqlColumnMeta, EngineDataType,
 } from "./ingest";
 
+// THE STAND-IN: a table with the same shape and statistical nature whose labels, magnitudes and dates identify
+// nothing, made in the caller's process from a seed, with a key that turns it (and code written for it) back onto
+// the real rows. Not anonymization: see obfuscate.ts's header for what it keeps and what it hides.
+export { obfuscate, restoreRows, rebindRows, rebindCode, serializeKey, parseKey } from "./obfuscate";
+export type {
+    ObfuscateCell, ObfuscateTable, ObfuscateOptions, ObfuscateResult, StandInKey, StandInColumnKey, StandInTransform,
+    RebindFlag, RebindResult,
+} from "./obfuscate";
+
 // WHAT A HOST WOULD SEND, minus the reader's own credentials - the shared redactor behind
 // "See what's sent" in the Power BI visual and the Excel task pane. Pure: object in, object
 // out, no rendering, because the two hosts render it very differently (a 95% overlay vs a

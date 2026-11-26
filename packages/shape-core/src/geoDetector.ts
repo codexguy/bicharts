@@ -166,10 +166,10 @@ function normalizeName(s: string): string {
 
 
 // ── Column-name tokens (tiebreaker / guard, never a substitute) ─────────────
-const COUNTRY_NAME_TOKENS = new Set(["country", "countries", "nation", "nationality", "iso", "geo"]);
-const STATE_NAME_TOKENS = new Set(["state", "province", "st"]);
+export const COUNTRY_NAME_TOKENS = new Set(["country", "countries", "nation", "nationality", "iso", "geo"]);
+export const STATE_NAME_TOKENS = new Set(["state", "province", "st"]);
 export const ZIP_NAME_TOKENS = new Set(["zip", "zipcode", "postal", "postcode", "plz"]);
-const COUNTY_NAME_TOKENS = new Set(["county", "fips", "borough", "parish"]);
+export const COUNTY_NAME_TOKENS = new Set(["county", "fips", "borough", "parish"]);
 export const CITY_NAME_TOKENS = new Set(["city", "cities", "town", "municipality", "metro", "location", "place"]);
 
 export function hasAnyToken(columnName: string | undefined, tokens: Set<string>): boolean {

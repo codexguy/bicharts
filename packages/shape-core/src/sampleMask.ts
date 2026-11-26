@@ -115,8 +115,11 @@ const JITTERABLE = /^[\p{L}\p{Nd}]$/u;
  * Mask one text value - see the header. `rand` is uniform [0,1); the host passes its own
  * GET_RANDOM, a test passes a seeded one. Same-class, same-script, and no character of the value
  * survives; length jitters by about a fifth, as it always has, so a length is not a fingerprint.
+ *
+ * `keepLength` turns the jitter off. A stand-in (obfuscate.ts) needs it: a column of fixed-length
+ * codes reads as `ALL_UPPER_FIXED_7` only while every masked code keeps its length.
  */
-export function maskSampleText(input: string, rand: () => number): string {
+export function maskSampleText(input: string, rand: () => number, opts: { keepLength?: boolean } = {}): string {
     if (!input) return input ?? "";
     const own = new Set(Array.from(input));
 
@@ -133,11 +136,11 @@ export function maskSampleText(input: string, rand: () => number): string {
             // Length jitter up (~20%): after a letter or digit only, and of the same class and
             // script, so a letters-only value never gains a digit and punctuation is never doubled
             // ('flight-1234' must not become 'flight--1234').
-            if (JITTERABLE.test(ch) && rand() < 0.2) out.push(substitute(ch));
+            if (!opts.keepLength && JITTERABLE.test(ch) && rand() < 0.2) out.push(substitute(ch));
         }
         // Length jitter down: remove up to 2 letters or digits once past six characters. Never
         // whitespace (word count), never a separator, never a mark.
-        if (out.length > 6) {
+        if (!opts.keepLength && out.length > 6) {
             const numToRemove = Math.floor(rand() * Math.min(3, out.length - 6));
             for (let i = 0; i < numToRemove; i++) {
                 for (let attempts = 0; attempts < 5; attempts++) {
