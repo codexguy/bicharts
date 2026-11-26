@@ -26,6 +26,10 @@ import {
     rebindCode,
     serializeKey,
     parseKey,
+    TARGET_NAME_WORDS,
+    REP_NAME_WORDS,
+    SURVIVAL_ROLE_NAME_WORDS,
+    isServerNameWord,
 } from "../src/index";
 
 describe("@bicharts/shape-core public API", () => {
@@ -35,9 +39,17 @@ describe("@bicharts/shape-core public API", () => {
             hostAggHint, isIdentifierName, detectOrdinalDomain, detectFormatSignature,
             detectGeo, toGeoIso, buildGeoIsoColumn, monthLookupFor, normalizeMonthKey,
             STR, SIMPLE_STRING_HASH, GET_RANDOM,
-            obfuscate, restoreRows, rebindRows, rebindCode, serializeKey, parseKey]) {
+            obfuscate, restoreRows, rebindRows, rebindCode, serializeKey, parseKey, isServerNameWord]) {
             expect(typeof fn).toBe("function");
         }
+    });
+
+    it("re-exports the server's name-word sets", () => {
+        expect(TARGET_NAME_WORDS.has("budget")).toBe(true);
+        expect(REP_NAME_WORDS.has("salesperson")).toBe(true);
+        expect(SURVIVAL_ROLE_NAME_WORDS.has("tenure")).toBe(true);
+        expect(isServerNameWord("Quota")).toBe(true);
+        expect(isServerNameWord("Revenue")).toBe(false);
     });
 
     it("the classifier is functional through the barrel (AnnualIncome → Continuous)", () => {

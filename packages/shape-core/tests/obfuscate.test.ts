@@ -255,6 +255,19 @@ describe("check 1: the stand-in is read the same", () => {
         expect(key.columns.map(c => c.standInName)).toEqual(standIn.header);
         expect(readings(standIn).map(({ ...r }) => r)).toEqual(readings(real));
     });
+    it("masked names keep the words the server reads: a target, a rep, a retention role", () => {
+        const header = ["Revenue Target", "Sales Rep", "Last Activity Date", "Customer Name", "Verkäufer"];
+        const rows = Array.from({ length: 12 }, (_, i) => [1000 + i * 37, `Person ${i % 3}`, `2024-0${1 + (i % 9)}-15`, `Client ${i}`, `V ${i % 4}`]);
+        const real: ObfuscateTable = { header, rows };
+        const { standIn } = obfuscate(real, { seed: SEED, names: "mask" });
+        const at = (h: string) => standIn.header[header.indexOf(h)];
+        expect(at("Revenue Target")).toMatch(/ Target$/);
+        expect(at("Revenue Target")).not.toMatch(/^Revenue/);
+        expect(at("Sales Rep")).toBe("Sales Rep");
+        expect(at("Last Activity Date")).toMatch(/^Last Activity /);
+        expect(at("Customer Name")).not.toMatch(/^Customer/);
+        expect(at("Verkäufer")).toBe("Verkäufer");
+    });
 });
 
 describe("check 2: counts, blanks, frequencies and hierarchies", () => {

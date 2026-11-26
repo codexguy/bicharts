@@ -264,6 +264,9 @@ export type {
     ObfuscateCell, ObfuscateTable, ObfuscateOptions, ObfuscateResult, StandInKey, StandInColumnKey, StandInTransform,
     RebindFlag, RebindResult, RebindAllResult,
 } from "./obfuscate";
+// The words the server reads from a column name for a target pair, a territory's rep and a retention role. A stand-in
+// with masked names keeps them. The server's tests compare each set with its own lists word for word.
+export { TARGET_NAME_WORDS, REP_NAME_WORDS, SURVIVAL_ROLE_NAME_WORDS, isServerNameWord } from "./vocab/serverNameWords";
 
 // WHAT A HOST WOULD SEND, minus the reader's own credentials - the shared redactor behind
 // "See what's sent" in the Power BI visual and the Excel task pane. Pure: object in, object

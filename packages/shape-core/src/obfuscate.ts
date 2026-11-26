@@ -25,7 +25,8 @@
 //   starts stay put (the calendar repeats every 28 years between 1901 and 2099). Time of day is kept.
 // - Latitude and longitude: one offset for the whole table (clusters, distances and the extent class hold), or, as
 //   the reader's option, rounded to a half-degree grid. One known point undoes a shift.
-// - Column names: kept by default; masked as the reader's option, keeping the words shape-core's own detectors read.
+// - Column names: kept by default; masked as the reader's option, keeping the words shape-core's own detectors read
+//   and the words the server reads for the shapes shape-core does not (a target, a rep, a retention role).
 //
 // THE KEY is a plain object the caller holds: it never leaves this module except as the caller's own file
 // (serializeKey). It carries the real values, so it is as private as the table. The same seed on the same table
@@ -42,6 +43,7 @@ import { isIdentifierName, hasYearName, isOutcomeNameWord, LATITUDE_NAME_WORDS, 
 import { isAttributeNameWord } from "./seriesCompleteness";
 import { coordinateAxisOfWords } from "./vocab/coordinates";
 import { dateLevelPart } from "./vocab/dateLevels";
+import { isServerNameWord } from "./vocab/serverNameWords";
 import {
     nameLooksIntensiveRate, nameLooksLevelNotSum, nameLooksPositional, stripHostAggPrefix,
 } from "./aggregation";
@@ -225,6 +227,8 @@ function isDetectorWord(word: string): boolean {
     // The outcome words the binary-flag reading takes from a name (Churned, IsActive) and the attribute words the
     // series reading takes from its last word (Status, Segment).
     if (isOutcomeNameWord(w) || isAttributeNameWord(w)) return true;
+    // The words the server reads for a shape shape-core does not: a target pair, a territory's rep, a retention role.
+    if (isServerNameWord(w)) return true;
     return nameLooksIntensiveRate(w) || nameLooksLevelNotSum(w) || nameLooksPositional(w);
 }
 const WORD_RUN = /[\p{L}\p{M}\p{Nd}]+/gu;
