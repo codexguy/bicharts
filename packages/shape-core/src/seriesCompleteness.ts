@@ -166,6 +166,12 @@ const IDENTIFIER_FORMATS: ReadonlySet<string> = new Set([
     "DATE_STR", "BOOLEAN",
 ]);
 
+/** One word of a name (lower case) that isAttributeName reads as the name's last word. */
+export function isAttributeNameWord(word: string): boolean {
+    const w = word.toLowerCase();
+    return ATTRIBUTE_NAME_TOKENS.has(w) || ATTRIBUTE_NAME_SUFFIXES.some(t => w.length > t.length && w.endsWith(t));
+}
+
 function isAttributeName(name: string): boolean {
     const words = nameWords(name);
     if (words.length === 0) return false;

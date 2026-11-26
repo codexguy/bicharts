@@ -2609,6 +2609,12 @@ const OUTCOME_WORDS = new Set([
 ]);
 const OUTCOME_STEM = /^(?:default|churn|fraud|approv|convert|cancel|delinquen)/u;
 
+/** One word of a name (lower case) that nameReadsAsOutcome reads: an outcome word or stem, or the `is`/`has` lead. */
+export function isOutcomeNameWord(word: string): boolean {
+    const w = word.toLowerCase();
+    return w === "is" || w === "has" || OUTCOME_WORDS.has(w) || OUTCOME_STEM.test(w);
+}
+
 export function nameReadsAsOutcome(name: string | null | undefined): boolean {
     const n = String(name ?? "");
     if (/^(is|has)[_\p{L}\p{N}]/iu.test(n)) return true;

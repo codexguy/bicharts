@@ -38,14 +38,15 @@ import { isOrdinalFriendlyName, detectOrdinalDomain } from "./ordinalDetector";
 import {
     COUNTRY_NAME_TOKENS, STATE_NAME_TOKENS, ZIP_NAME_TOKENS, COUNTY_NAME_TOKENS, CITY_NAME_TOKENS,
 } from "./geoDetector";
-import { isIdentifierName, hasYearName, LATITUDE_NAME_WORDS, LONGITUDE_NAME_WORDS } from "./indexedText";
+import { isIdentifierName, hasYearName, isOutcomeNameWord, LATITUDE_NAME_WORDS, LONGITUDE_NAME_WORDS } from "./indexedText";
+import { isAttributeNameWord } from "./seriesCompleteness";
 import { coordinateAxisOfWords } from "./vocab/coordinates";
 import { dateLevelPart } from "./vocab/dateLevels";
 import {
     nameLooksIntensiveRate, nameLooksLevelNotSum, nameLooksPositional, stripHostAggPrefix,
 } from "./aggregation";
 import { nameLetterRuns } from "./nameReader";
-import { countryRegion, summarizeGeoExtent } from "./geoExtent";
+import { countryRegion, inMiddleEast, summarizeGeoExtent } from "./geoExtent";
 
 /** One cell, as a CSV or a grid holds it. */
 export type ObfuscateCell = string | number | boolean | null | undefined;
@@ -146,6 +147,30 @@ const isBlank = (v: ObfuscateCell) => v === null || v === undefined || (typeof v
 const cellId = (v: ObfuscateCell) => (typeof v) + ":" + String(v);
 const PLAIN_NUMBER = /^\s*[+-]?\d+(\.\d+)?\s*$/;
 const decimalsOf = (s: string) => (s.trim().split(".")[1] ?? "").length;
+// Loops, never a spread: `Math.min(...xs)` over a row-sized array overflows the call stack (about 120,000 rows).
+function minMax(xs: readonly number[]): [number, number] {
+    let lo = Infinity, hi = -Infinity;
+    for (const x of xs) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    return [lo, hi];
+}
+/** A column's precision: the most decimals any of its cells is written with. */
+function maxDecimals(vs: readonly ObfuscateCell[]): number {
+    let p = 0;
+    for (const v of vs) if (!isBlank(v)) { const d = decimalsOf(String(v)); if (d > p) p = d; }
+    return p;
+}
+/** True/false written as text, as ingest's binary-flag reading takes it: the values are one boolean pair. */
+const BOOLEAN_PAIRS = [["false", "true"], ["no", "yes"], ["n", "y"], ["f", "t"]];
+function isBooleanText(vs: readonly ObfuscateCell[]): boolean {
+    const seen = new Set<string>();
+    for (const v of vs) {
+        if (isBlank(v)) continue;
+        if (typeof v !== "string") return false;
+        seen.add(v.trim().toLowerCase());
+        if (seen.size > 2) return false;
+    }
+    return seen.size > 0 && BOOLEAN_PAIRS.some(p => [...seen].every(s => p.includes(s)));
+}
 
 /** A number written at `prec` decimals, then trimmed of trailing zeros down to `keep` decimals. */
 function formatAt(v: number, prec: number, keep: number): string {
@@ -197,6 +222,9 @@ function isDetectorWord(word: string): boolean {
     if (GEO_NAME_SETS.some(s => s.has(w))) return true;
     if (LATITUDE_NAME_WORDS.has(w) || LONGITUDE_NAME_WORDS.has(w) || coordinateAxisOfWords([w]) !== null) return true;
     if (isOrdinalFriendlyName(w) || isIdentifierName(w) || dateLevelPart(w, "en") !== null) return true;
+    // The outcome words the binary-flag reading takes from a name (Churned, IsActive) and the attribute words the
+    // series reading takes from its last word (Status, Segment).
+    if (isOutcomeNameWord(w) || isAttributeNameWord(w)) return true;
     return nameLooksIntensiveRate(w) || nameLooksLevelNotSum(w) || nameLooksPositional(w);
 }
 const WORD_RUN = /[\p{L}\p{M}\p{Nd}]+/gu;
@@ -209,7 +237,7 @@ function nameParts(name: string): string[] {
     for (const m of name.matchAll(WORD_RUN)) {
         if (m.index! > last) parts.push(name.slice(last, m.index));
         // camelCase: `OrderMonth` -> `Order`, `Month`.
-        parts.push(...m[0].split(/(?<=[\p{Ll}\p{Nd}])(?=\p{Lu})/u));
+        for (const w of m[0].split(/(?<=[\p{Ll}\p{Nd}])(?=\p{Lu})/u)) parts.push(w);
         last = m.index! + m[0].length;
     }
     if (last < name.length) parts.push(name.slice(last));
@@ -224,6 +252,41 @@ function readingOf(c: LLMColumnWithValue): string {
     for (const k of READING_KEYS) o[k] = (c as any)[k];
     for (const k of Object.keys(c).sort()) if (/geo/i.test(k)) o[k] = (c as any)[k];
     return JSON.stringify(o);
+}
+
+// ---- measures that share one factor -----------------------------------------------------------------------------
+interface MeasureGroup { columns: number[]; fixedTotal: boolean }
+/** The words of a name after any host prefix (`Sum of`), lower case. */
+function nameWordsOf(name: string): string[] {
+    return nameParts(stripHostAggPrefix(name)).filter(p => IS_WORD.test(p)).map(p => p.toLowerCase());
+}
+/** Two names that are the same word for word but at ONE place, with at least one word in common. */
+function namesPair(a: string[], b: string[]): boolean {
+    if (a.length < 2 || a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length && diff < 2; i++) if (a[i] !== b[i]) diff++;
+    return diff === 1;
+}
+/** Each scaled measure's group (singletons included), its columns in table order. */
+function groupMeasures(scaled: boolean[], header: string[], profile: LLMColumnWithValue[]): MeasureGroup[] {
+    const up = scaled.map((_, j) => j);
+    const find = (j: number): number => { while (up[j] !== j) { up[j] = up[up[j]]; j = up[j]; } return j; };
+    const join = (a: number, b: number) => { const x = find(a), y = find(b); if (x !== y) up[Math.max(x, y)] = Math.min(x, y); };
+    const fixed = new Set<number>();
+    const byName = new Map(header.map((h, j) => [h, j] as const));
+    const js = scaled.map((s, j) => s ? j : -1).filter(j => j >= 0);
+    for (const j of js) {
+        const g = (profile[j] as any)?.constantSumGroup as { columns: string[]; total: number } | undefined;
+        if (!g) continue;
+        const members = g.columns.map(n => byName.get(n)).filter((m): m is number => m !== undefined && scaled[m]);
+        for (const m of members) join(j, m);
+        if (Math.abs(g.total - 100) <= 0.5 || Math.abs(g.total - 1) <= 0.005) for (const m of members) fixed.add(m);
+    }
+    const words = new Map(js.map(j => [j, nameWordsOf(header[j])] as const));
+    for (const a of js) for (const b of js) if (a < b && namesPair(words.get(a)!, words.get(b)!)) join(a, b);
+    const groups = new Map<number, number[]>();
+    for (const j of js) { const r = find(j); if (!groups.has(r)) groups.set(r, []); groups.get(r)!.push(j); }
+    return [...groups.values()].map(columns => ({ columns, fixedTotal: columns.some(j => fixed.has(j)) }));
 }
 
 // ---- dates ------------------------------------------------------------------------------------------------------
@@ -244,7 +307,7 @@ function shiftCell(v: ObfuscateCell, years: number): ObfuscateCell {
 /** The one shift: a multiple of 28 years that keeps every year inside 1901-2099, past the real span when it can. */
 function chooseDateShift(years: number[], seed: string): number {
     if (years.length === 0) return 0;
-    const lo = Math.min(...years), hi = Math.max(...years);
+    const [lo, hi] = minMax(years);
     if (lo < CAL_MIN || hi > CAL_MAX) return 0;
     const fits = [-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6].map(k => 28 * k).filter(s => lo + s >= CAL_MIN && hi + s <= CAL_MAX);
     if (fits.length === 0) return 0;
@@ -291,6 +354,10 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
         const vs = cells(j);
         if (vs.every(isBlank)) return { transform: "keep", reason: "blank" };
         if (vs.every(v => isBlank(v) || typeof v === "boolean")) return { transform: "keep", reason: "true/false" };
+        // True/false as text (True/False, TRUE/FALSE, yes/no): a mask would turn the flag into two words.
+        if (c?.formatSignature === "BOOLEAN" || (c?.dataType === "String" && isBooleanText(vs))) {
+            return { transform: "keep", reason: "true/false" };
+        }
         if (c?.ordinalPattern) return { transform: "keep", reason: "ordered labels" };
         const distinctText = [...new Set(vs.filter(v => !isBlank(v)).map(v => String(v)))];
         if (c?.dataType === "String" && distinctText.length <= 64 && detectOrdinalDomain(distinctText, locale)) {
@@ -315,7 +382,7 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
 
     // ---- the one date shift ----
     const allYears: number[] = [];
-    plans.forEach((p, j) => { if (p.transform === "date") for (const v of cells(j)) allYears.push(...yearsIn(v)); });
+    plans.forEach((p, j) => { if (p.transform === "date") for (const v of cells(j)) for (const y of yearsIn(v)) allYears.push(y); });
     const dateShiftYears = chooseDateShift(allYears, seed);
     plans.forEach(p => { if (p.transform === "date" && dateShiftYears === 0) { p.transform = "keep"; p.reason = "dates outside 1901-2099"; } });
 
@@ -391,10 +458,13 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
     };
     const rangeOf = (j: number): [number, number] | undefined => {
         const nums = out.map(r => r[j]).filter(v => !isBlank(v)).map(Number).filter(Number.isFinite);
-        return nums.length ? [Math.min(...nums), Math.max(...nums)] : undefined;
+        return nums.length ? minMax(nums) : undefined;
     };
 
-    // Coordinates: one offset per axis for the table, drawn until the extent class holds.
+    // Coordinates: one offset per axis for the table, drawn until every share the engine reads from where the points
+    // fall holds EXACTLY: each continent frame's share (so the dominant frame and its percent, which the latitude
+    // column carries as dominantGeoRegionPct and admin1RollupPct), and the US and North America shares. A cloud near a
+    // frame's edge takes a smaller offset; the draws shrink until one fits.
     const coordCols = plans.map((p, j) => ({ p, j })).filter(x => x.p.transform === "coordShift");
     let latOff = 0, lonOff = 0;
     if (coordCols.length) {
@@ -405,21 +475,65 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
         }));
         const cls = (p: ReturnType<typeof pts>) => {
             const e = summarizeGeoExtent(p);
-            return e ? JSON.stringify([e.dominantFrame, e.pctUsa >= 50, e.pctNa >= 50]) : "none";
+            return e ? JSON.stringify([e.dominantFrame, e.dominantFramePct, e.regionPct, e.pctUsa, e.pctNa, e.n]) : "none";
         };
         const inRange = (p: ReturnType<typeof pts>) => p.every(x => (x.lat === null || Math.abs(x.lat) <= 90) && (x.lon === null || Math.abs(x.lon) <= 180));
         const target = cls(pts(0, 0));
         const rand = streamFor(seed, "coordinates");
-        const decimals = (j: number | undefined) => j === undefined ? 0 : Math.max(0, ...cells(j).filter(v => !isBlank(v)).map(v => decimalsOf(String(v))));
+        const decimals = (j: number | undefined) => j === undefined ? 0 : maxDecimals(cells(j));
         const pLat = decimals(latJ), pLon = decimals(lonJ);
         for (let k = 0; k < 64; k++) {
-            const scale = k < 32 ? 1 : 0.5;
+            const scale = k < 16 ? 1 : k < 32 ? 0.5 : k < 48 ? 0.25 : 0.1;
             const dLat = Number(((rand() < 0.5 ? -1 : 1) * (1 + rand() * 3) * scale).toFixed(pLat));
             const dLon = Number(((rand() < 0.5 ? -1 : 1) * (1 + rand() * 7) * scale).toFixed(pLon));
             const p = pts(dLat, dLon);
             if (inRange(p) && cls(p) === target && (dLat !== 0 || dLon !== 0)) { latOff = dLat; lonOff = dLon; break; }
         }
     }
+
+    // Measures that belong together share ONE factor (Joel: "Per column, but groups share one"), so what the engine
+    // reads across them holds: the parts of a constant total (shape-core's constantSumGroup), and a same-unit pair named
+    // as one (Revenue Budget / Revenue Actual, Sales 2024 / Sales 2025, Score Before / Score After: two names that are
+    // the same word for word but at one place, the shape of the engine's own paired-measure reading). A split of a
+    // fixed total (percents summing to 100, shares to 1) is left as it is: its total is a bound, not a magnitude, and a
+    // shared factor followed by renormalising back onto that total is the identity, so there is nothing to scale.
+    const scaleGroups = groupMeasures(plans.map(p => p.transform === "scale"), header, profile);
+    const scaleFactor = new Map<number, number | { keep: string }>();
+    for (const members of scaleGroups) {
+        if (members.fixedTotal) { for (const j of members.columns) scaleFactor.set(j, { keep: "parts of a fixed total" }); continue; }
+        let f = 1.1 + 0.4 * streamFor(seed, "scale", members.columns[0])();
+        for (const j of members.columns) {
+            const live = plans[j].nums!.filter((x): x is number => x !== null);
+            const [lo, hi] = minMax(live);
+            const pct = /%/.test(String((profile[j] as any)?.modelFormat ?? "")) || /pct|percent/i.test(header[j]);
+            const bound = lo >= 0 && hi <= 1 ? 1 : (lo >= 0 && hi <= 100 && pct ? 100 : Infinity);
+            if (hi * f > bound) f = bound / hi;
+        }
+        const keep = !(f > 1 + 1e-12);
+        for (const j of members.columns) scaleFactor.set(j, keep ? { keep: "on its bound" } : Number(f.toFixed(6)));
+    }
+
+    // A place column's parents: the other place columns it determines (each of its values sits with one value there)
+    // and that hold fewer values. Each map takes a place's cell id to its parent's cell.
+    const placeParents = (j: number): Array<Map<string, ObfuscateCell>> => {
+        const own = new Set(cells(j).filter(v => !isBlank(v)).map(cellId)).size;
+        const found: Array<Map<string, ObfuscateCell>> = [];
+        header.forEach((_, q) => {
+            const c = profile[q];
+            if (q === j || !c?.geoKind || c.isMeasure) return;
+            const m = new Map<string, ObfuscateCell>();
+            const values = new Set<string>();
+            for (const r of table.rows) {
+                if (isBlank(r[j])) continue;
+                const id = cellId(r[j]), pv = isBlank(r[q]) ? "" : r[q];
+                values.add(cellId(pv));
+                if (!m.has(id)) m.set(id, pv);
+                else if (cellId(m.get(id)) !== cellId(pv)) return;
+            }
+            if (values.size < own) found.push(m);
+        });
+        return found;
+    };
 
     plans.forEach((p, j) => {
         const k: StandInColumnKey = { name: header[j], standInName: header[j], transform: p.transform };
@@ -445,9 +559,15 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
                 const seen = new Set<string>();
                 for (const v of vs) if (!isBlank(v) && !seen.has(cellId(v))) { seen.add(cellId(v)); distinct.push(v); }
                 const kind = String(profile[j]?.geoKind ?? "");
+                // Each place moves only among places of its own group, so every share the engine reads by region holds:
+                // a country within its continent and in or out of the Middle East frame (an overlapping frame, read
+                // as its own share); any place within its parent places (a city within its state, a state within its
+                // country: the place columns this one determines, cell for cell).
+                const parents = placeParents(j);
                 const groups = new Map<string, ObfuscateCell[]>();
                 for (const v of distinct) {
-                    const g = kind.indexOf("country") === 0 ? (countryRegion(String(v)) ?? "?") : "all";
+                    const own = kind.indexOf("country") === 0 ? (countryRegion(String(v)) ?? "?") + (inMiddleEast(String(v)) ? "+me" : "") : "all";
+                    const g = own + (parents.length ? "\u0001" + parents.map(p => cellId(p.get(cellId(v)))).join("\u0001") : "");
                     if (!groups.has(g)) groups.set(g, []);
                     groups.get(g)!.push(v);
                 }
@@ -462,21 +582,13 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
             case "date": {
                 k.pairs = pairsOf(j, v => shiftCell(v, dateShiftYears));
                 const yrs = out.flatMap(r => yearsIn(r[j]));
-                if (yrs.length && vs.every(v => isBlank(v) || typeof v === "number")) k.rangeEnds = [Math.min(...yrs), Math.max(...yrs)];
+                if (yrs.length && vs.every(v => isBlank(v) || typeof v === "number")) k.rangeEnds = minMax(yrs);
                 break;
             }
             case "scale": {
-                const nums = p.nums!;
-                const prec = Math.max(0, ...vs.filter(v => !isBlank(v)).map(v => decimalsOf(String(v))));
-                const live = nums.filter((x): x is number => x !== null);
-                const lo = Math.min(...live), hi = Math.max(...live);
-                const name = header[j];
-                const pct = /%/.test(String((profile[j] as any)?.modelFormat ?? "")) || /pct|percent/i.test(name);
-                const bound = lo >= 0 && hi <= 1 ? 1 : (lo >= 0 && hi <= 100 && pct ? 100 : Infinity);
-                let f = 1.1 + 0.4 * streamFor(seed, "scale", j)();
-                if (hi * f > bound) f = bound / hi;
-                if (!(f > 1 + 1e-12)) { k.transform = "keep"; k.reason = "on its bound"; break; }
-                f = Number(f.toFixed(6));
+                const prec = maxDecimals(vs);
+                const f = scaleFactor.get(j)!;
+                if (typeof f !== "number") { k.transform = "keep"; k.reason = f.keep; break; }
                 k.pairs = pairsOf(j, v => mapNumberCell(v, x => x * f, prec));
                 k.factor = f;
                 k.rangeEnds = rangeOf(j);
@@ -493,7 +605,7 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
             case "coordShift": {
                 const off = p.axis === "lat" ? latOff : lonOff;
                 if (off === 0) { k.transform = "keep"; k.reason = "no offset keeps the extent"; break; }
-                const prec = Math.max(0, ...vs.filter(v => !isBlank(v)).map(v => decimalsOf(String(v))));
+                const prec = maxDecimals(vs);
                 k.pairs = pairsOf(j, v => mapNumberCell(v, x => x + off, prec));
                 k.offset = off;
                 k.rangeEnds = rangeOf(j);
@@ -511,12 +623,18 @@ export function obfuscate(table: ObfuscateTable, options: ObfuscateOptions): Obf
     // ---- the guard: a measure whose reading scaling changed is left as it was ----
     const realReadings = profile.map(readingOf);
     const standInReadings = ingest({ kind: "grid", header, rows: out }, { dedup: false, locale }).columns.map(readingOf);
+    // A group goes back whole, so its members never end up on different factors.
+    const revert = new Set<number>();
     keys.forEach((k, j) => {
-        if (k.transform === "scale" && standInReadings[j] !== realReadings[j]) {
-            table.rows.forEach((r, i) => { out[i][j] = r[j]; });
-            keys[j] = { name: k.name, standInName: k.standInName, transform: "keep", reason: "scaling changes its reading" };
-        }
+        if (k.transform !== "scale" || standInReadings[j] === realReadings[j]) return;
+        const g = scaleGroups.find(x => x.columns.includes(j));
+        for (const m of g ? g.columns : [j]) if (keys[m].transform === "scale") revert.add(m);
     });
+    for (const j of revert) {
+        const k = keys[j];
+        table.rows.forEach((r, i) => { out[i][j] = r[j]; });
+        keys[j] = { name: k.name, standInName: k.standInName, transform: "keep", reason: "scaling changes its reading" };
+    }
 
     // ---- names ----
     const standInHeader = header.slice();
@@ -572,7 +690,8 @@ export function restoreRows(standIn: ObfuscateTable, key: StandInKey): Obfuscate
 
 /**
  * The real rows as objects keyed by the STAND-IN's column names: code written for the stand-in runs over them with no
- * edit. (Its titles show the stand-in's names; rebindCode swaps those back, for real rows keyed by the real names.)
+ * edit. Its titles show the stand-in's names. The ALTERNATIVE to rebindCode, never paired with it (rebindCode's code
+ * reads the real names): rebind picks one and returns code and rows that agree.
  */
 export function rebindRows(real: ObfuscateTable, key: StandInKey): Record<string, ObfuscateCell>[] {
     checkKey(key);
@@ -679,8 +798,9 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * Turn code written for a stand-in back onto the real table. Inside string literals and template text only, each
  * stand-in column NAME (a whole token, never part of a longer word) becomes the real name, so the code runs over the
  * real rows keyed by their real names and its titles read right. Identifiers, comments and expressions are never
- * touched. A literal equal to a stand-in label, or a number equal to a transformed column's range end, is FLAGGED:
- * the chart hard-codes the stand-in and does not carry over.
+ * touched. Draw it over the real rows, never over rebindRows' (see rebind). A literal equal to a masked label or a
+ * shifted date, or a data-like number equal to a transformed column's range end (see dataLikeLiteral), is FLAGGED: the
+ * chart hard-codes the stand-in and does not carry over.
  */
 export function rebindCode(code: string, key: StandInKey): RebindResult {
     checkKey(key);
@@ -689,9 +809,11 @@ export function rebindCode(code: string, key: StandInKey): RebindResult {
         ? new RegExp(`(?<![\\p{L}\\p{N}_$])(${renames.map(c => escapeRe(c.standInName)).join("|")})(?![\\p{L}\\p{N}_$])`, "gu")
         : null;
     const realOf = new Map(renames.map(c => [c.standInName, c.name]));
+    // A shuffled place is a real place on both sides (a map's code may name one), so only masked labels and shifted
+    // dates are stand-in labels.
     const labels = new Map<string, string>();
     for (const c of key.columns) {
-        if (!c.pairs || !(c.transform === "mask" || c.transform === "place" || c.transform === "date")) continue;
+        if (!c.pairs || !(c.transform === "mask" || c.transform === "date")) continue;
         for (const [s, r] of c.pairs) if (typeof s === "string" && s !== r && !labels.has(s)) labels.set(s, c.name);
     }
     const ends = new Map<number, string>();
@@ -704,7 +826,7 @@ export function rebindCode(code: string, key: StandInKey): RebindResult {
         if (s.kind === "number") {
             const text = code.slice(s.start, s.end);
             const v = Number(text.replace(/_/g, "").replace(/n$/, ""));
-            if (ends.has(v)) flagged.push({ literal: text, at: s.start, column: ends.get(v)!, reason: "rangeEnd" });
+            if (ends.has(v) && dataLikeLiteral(code, s, v)) flagged.push({ literal: text, at: s.start, column: ends.get(v)!, reason: "rangeEnd" });
             continue;
         }
         if (s.kind !== "string" && s.kind !== "template") continue;
@@ -720,6 +842,80 @@ export function rebindCode(code: string, key: StandInKey): RebindResult {
     out += code.slice(last);
     flagged.sort((a, b) => a.at - b.at);
     return { code: out, flagged };
+}
+
+export interface RebindAllResult {
+    /** The code to draw. */
+    code: string;
+    /** The real rows to draw it over, keyed by the names the code reads. */
+    rows: Record<string, ObfuscateCell>[];
+    /** Which names the rows are keyed by: `real` (the code's string literals were swapped back) or `standIn`. */
+    names: "real" | "standIn";
+    flagged: RebindFlag[];
+}
+
+/**
+ * Code written for a stand-in, and the real rows to draw it over, in ONE call, so the two always agree.
+ *
+ * rebindCode and rebindRows are ALTERNATIVES, never a pair: rebindCode's code reads the REAL names (draw it over the
+ * real rows as they are), and rebindRows' rows carry the STAND-IN's names (draw the unedited code over them). Their
+ * combination reads names neither side has once names are masked. This picks one:
+ * - `names: "real"` (the default, so titles read right): rebindCode's code over the real rows under their real names.
+ *   When the code reads a renamed column through an identifier (`d.Name`), which a swap inside string literals cannot
+ *   reach, it falls back to the stand-in's names, and `names` says so.
+ * - `names: "standIn"`: the code unedited, over rebindRows' rows.
+ * With names kept (the default), both are the same: the code is not edited and the rows are the real ones.
+ */
+export function rebind(code: string, real: ObfuscateTable, key: StandInKey, options?: { names?: "real" | "standIn" }): RebindAllResult {
+    checkKey(key);
+    const swapped = rebindCode(code, key);
+    const renamed = key.columns.filter(c => c.standInName !== c.name).map(c => c.standInName);
+    let names: "real" | "standIn" = options?.names === "standIn" && renamed.length ? "standIn" : "real";
+    if (names === "real" && renamed.length) {
+        const ids = new Set<string>();
+        for (const s of segments(code)) {
+            if (s.kind !== "code") continue;
+            for (const m of code.slice(s.start, s.end).matchAll(/[\p{L}\p{N}_$]+/gu)) ids.add(m[0]);
+        }
+        if (renamed.some(n => ids.has(n))) names = "standIn";
+    }
+    if (names === "standIn") return { code, rows: rebindRows(real, key), names, flagged: swapped.flagged };
+    const rows = real.rows.map(r => {
+        const o: Record<string, ObfuscateCell> = {};
+        key.columns.forEach((c, j) => { o[c.name] = r[j]; });
+        return o;
+    });
+    return { code: swapped.code, rows, names, flagged: swapped.flagged };
+}
+
+/**
+ * Is a number literal equal to a range end there because of the data? Layout numbers (a padding of 12, three columns,
+ * an opacity of 0.4) equal a small range end by chance, so: never a small integer (a whole number up to 100); always a
+ * number with three or more significant digits; and a shorter one only where it bounds the data, inside a `domain(`
+ * call or beside a comparison.
+ */
+function dataLikeLiteral(code: string, s: Seg, v: number): boolean {
+    if (Number.isInteger(v) && Math.abs(v) <= 100) return false;
+    const digits = code.slice(s.start, s.end).replace(/_/g, "").replace(/n$/, "").replace(/[eE][+-]?\d+$/, "");
+    let sig = digits.replace(".", "").replace(/^0+/, "");
+    if (!digits.includes(".")) sig = sig.replace(/0+$/, "");
+    if (sig.length >= 3) return true;
+    const before = code.slice(Math.max(0, s.start - 4), s.start).replace(/[\s-]+$/, "");
+    const after = code.slice(s.end, s.end + 4).replace(/^\s+/, "");
+    const COMPARE_END = /(?:[<>]=?|[=!]==?)$/, COMPARE_START = /^(?:[<>]=?|[=!]==?)/;
+    if ((COMPARE_END.test(before) && !/=>$/.test(before)) || (COMPARE_START.test(after) && !/^=>/.test(after))) return true;
+    // Inside an open `domain(`: the nearest one before the literal whose parenthesis is still open.
+    const from = code.lastIndexOf("domain(", s.start);
+    if (from >= 0 && s.start - from < 400) {
+        // Open until its own parenthesis closes (`y.domain()[0]; if (...` closed at once).
+        let depth = 0, open = true;
+        for (let i = from + "domain".length; i < s.start && open; i++) {
+            if (code[i] === "(") depth++;
+            else if (code[i] === ")" && --depth === 0) open = false;
+        }
+        if (open) return true;
+    }
+    return false;
 }
 
 function escapeFor(s: string, quote: string): string {

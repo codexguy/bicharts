@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    obfuscate, restoreRows, rebindRows, rebindCode, serializeKey, parseKey,
+    obfuscate, restoreRows, rebindRows, rebindCode, rebind, serializeKey, parseKey,
     ingest, detectOrdinalDomain, detectGeo, summarizeGeoExtent,
 } from "../src/index";
 import type { ObfuscateTable, StandInKey } from "../src/index";
@@ -497,13 +497,236 @@ describe("rebinding", () => {
         const real = salesTable();
         const { standIn, key } = obfuscate(real, { seed: SEED });
         const label = String(standIn.rows[0][idx(real, "Region")]);
-        const qty = col(standIn, idx(real, "Quantity")).map(Number);
-        const top = Math.max(...qty);
-        const code = `const keep = d => d.Region === "${label}";\nconst y = d3.scaleLinear().domain([0, ${top}]);\nconst ok = "Region";`;
+        // A data-like range end (Revenue's top, several significant digits) is flagged; Quantity's top is a small
+        // integer, which a layout number equals by chance, so it is not.
+        const top = keyCol(key, "Revenue").rangeEnds![1];
+        const qtyTop = keyCol(key, "Quantity").rangeEnds![1];
+        expect(String(top).replace(/[^0-9]/g, "").replace(/^0+/, "").length).toBeGreaterThanOrEqual(3);
+        expect(Number.isInteger(qtyTop) && qtyTop <= 100).toBe(true);
+        const code = `const keep = d => d.Region === "${label}";\nconst y = d3.scaleLinear().domain([0, ${top}]);\nconst pad = ${qtyTop};\nconst ok = "Region";`;
         const out = rebindCode(code, key);
         expect(out.code).toBe(code);
         expect(out.flagged.map(f => f.literal)).toEqual([`"${label}"`, String(top)]);
         expect(out.flagged[0].column).toBe("Region");
-        expect(out.flagged[1].column).toBe("Quantity");
+        expect(out.flagged[1].column).toBe("Revenue");
+    });
+});
+
+// ---- the equivalence run's findings: each a synthesized table showing the case -----------------------------
+const profileOf = (t: ObfuscateTable) => ingest({ kind: "grid", header: t.header, rows: t.rows }).columns as any[];
+
+describe("finding 1: true/false text is kept", () => {
+    it("True/False, TRUE/FALSE and yes/no columns keep their flag reading", () => {
+        const r = prng(41);
+        const rows: (string | number)[][] = [];
+        for (let i = 0; i < 150; i++) {
+            rows.push(["T-" + (20000 + i * 7), r() < 0.6 ? "True" : "False", r() < 0.3 ? "TRUE" : "FALSE", r() < 0.5 ? "yes" : "no",
+                pick(r, REGIONS), String(1 + Math.floor(r() * 30))]);
+        }
+        const real: ObfuscateTable = { header: ["Ticket", "ResolvedSameWeek", "Locked", "Answered", "Region", "Days"], rows };
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        for (const n of ["ResolvedSameWeek", "Locked", "Answered"]) expect(keyCol(key, n).transform, n).toBe("keep");
+        const a = profileOf(real), b = profileOf(standIn);
+        for (const k of ["isBinaryFlag", "safeDistinctValues", "formatSignature", "isFreeText", "twoSetPairing"]) {
+            expect(b.map(c => c[k]), k).toEqual(a.map(c => c[k]));
+        }
+        expect(readings(standIn)).toEqual(readings(real));
+    });
+});
+
+describe("finding 2: the coordinate shift stays inside the frames", () => {
+    it("points near the North America frame's edges keep every frame share and the latitude's region reading", () => {
+        const r = prng(43);
+        const rows: string[][] = [];
+        const at = (lat: number, lon: number) => rows.push([(lat + r() * 0.2).toFixed(4), (lon + r() * 0.2).toFixed(4), String(5 + Math.floor(r() * 90))]);
+        for (let i = 0; i < 40; i++) at(36 + r() * 6, -105 + r() * 20);       // the middle
+        for (let i = 0; i < 4; i++) at(47 + r(), -53.6);                      // 1.4 degrees inside the east edge
+        for (let i = 0; i < 4; i++) at(60 + r(), -166.6);                     // 1.4 degrees inside the west edge
+        for (let i = 0; i < 3; i++) at(70.6, -120 + r() * 10);                // 1.2 degrees inside the north edge
+        for (let i = 0; i < 3; i++) at(8.4, -100 + r() * 3);                  // 1.4 degrees inside the south edge
+        const real: ObfuscateTable = { header: ["Latitude", "Longitude", "Visits"], rows };
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        expect(keyCol(key, "Latitude").transform).toBe("coordShift");
+        const ext = (t: ObfuscateTable) => summarizeGeoExtent(t.rows.map(x => ({ lat: Number(x[0]), lon: Number(x[1]) })));
+        expect({ ...ext(standIn), latP5: 0, latP95: 0, lonP5: 0, lonP95: 0 }).toEqual({ ...ext(real), latP5: 0, latP95: 0, lonP5: 0, lonP95: 0 });
+        const geo = (t: ObfuscateTable) => profileOf(t).map(c => [c.dominantGeoRegion, c.dominantGeoRegionPct, c.admin1RollupPct]);
+        expect(geo(standIn)).toEqual(geo(real));
+        expect(geo(real)[0][1]).toBe(100);
+    });
+});
+
+describe("finding 3: grouped measures share one factor", () => {
+    function mixTable(): ObfuscateTable {
+        const r = prng(47);
+        const rows: string[][] = [];
+        for (let i = 0; i < 120; i++) {
+            const a = 200 + Math.floor(r() * 500), b = 100 + Math.floor(r() * (900 - a));
+            const won = 100 + Math.floor(r() * 2000), lost = 100 + Math.floor(r() * (4000 - won));
+            const actual = 1000 + r() * 9000;
+            rows.push(["ACC" + (1000 + i), (a / 10).toFixed(1), (b / 10).toFixed(1), ((1000 - a - b) / 10).toFixed(1),
+                String(won), String(lost), String(5000 - won - lost),
+                (actual * (0.8 + r() * 0.4)).toFixed(2), actual.toFixed(2), String(10 + Math.floor(r() * 400))]);
+        }
+        return { header: ["Account", "DirectPct", "PartnerPct", "SelfServePct", "Seats Won", "Seats Lost", "Seats Open",
+            "Revenue Budget", "Revenue Actual", "Headcount"], rows };
+    }
+    it("a percent split keeps its total of 100 exactly (left unscaled); a split of a count shares one factor", () => {
+        const real = mixTable();
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        const a = profileOf(real), b = profileOf(standIn);
+        expect(a[1].constantSumGroup?.columns.length).toBe(3);
+        expect(b[1].constantSumGroup).toEqual(a[1].constantSumGroup);
+        for (const n of ["DirectPct", "PartnerPct", "SelfServePct"]) expect(keyCol(key, n).transform, n).toBe("keep");
+        // The engine reports one group per table, so the split of a count stands in a table of its own.
+        const cut = (t: ObfuscateTable, js: number[]): ObfuscateTable => ({ header: js.map(j => t.header[j]), rows: t.rows.map(r => js.map(j => r[j])) });
+        const realSeats = cut(real, [0, 4, 5, 6, 9]);
+        const seatsOut = obfuscate(realSeats, { seed: SEED });
+        const seats = ["Seats Won", "Seats Lost", "Seats Open"].map(n => keyCol(seatsOut.key, n));
+        const sa = profileOf(realSeats), sb = profileOf(seatsOut.standIn);
+        expect(sa[1].constantSumGroup?.columns).toEqual(["Seats Won", "Seats Lost", "Seats Open"]);
+        expect(sb[1].constantSumGroup?.columns).toEqual(sa[1].constantSumGroup?.columns);
+        expect(sb[1].constantSumGroup?.matchedPct).toBe(sa[1].constantSumGroup?.matchedPct);
+        expect(seats.every(c => c.transform === "scale")).toBe(true);
+        expect(new Set(seats.map(c => c.factor)).size).toBe(1);
+    });
+    it("a same-unit pair the engine pairs by name shares one factor; an unrelated measure keeps its own", () => {
+        const real = mixTable();
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        const bud = keyCol(key, "Revenue Budget"), act = keyCol(key, "Revenue Actual"), hc = keyCol(key, "Headcount");
+        expect(bud.transform).toBe("scale");
+        expect(bud.factor).toBe(act.factor);
+        expect(hc.factor).not.toBe(bud.factor);
+        const jb = idx(real, "Revenue Budget"), ja = idx(real, "Revenue Actual");
+        real.rows.forEach((row, i) => {
+            const rr = Number(row[jb]) / Number(row[ja]), sr = Number(standIn.rows[i][jb]) / Number(standIn.rows[i][ja]);
+            expect(Math.abs(sr - rr)).toBeLessThan(1e-5);
+        });
+    });
+});
+
+describe("finding 4: a large table", () => {
+    it("200,000 rows make a stand-in (no spread over a row-sized array)", () => {
+        const r = prng(53);
+        const rows: string[][] = [];
+        const t0 = Date.UTC(2018, 0, 1);
+        for (let i = 0; i < 200000; i++) {
+            rows.push([isoDay(new Date(t0 + (i % 2000) * 86400000)), pick(r, WORDS), (r() * 900).toFixed(2), String(Math.floor(r() * 50)),
+                (30 + r() * 15).toFixed(3), (-120 + r() * 40).toFixed(3)]);
+        }
+        const real: ObfuscateTable = { header: ["Day", "Segment", "Amount", "Units", "Latitude", "Longitude"], rows };
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        expect(standIn.rows.length).toBe(200000);
+        expect(keyCol(key, "Day").transform).toBe("date");
+        expect(keyCol(key, "Amount").transform).toBe("scale");
+        expect(keyCol(key, "Amount").rangeEnds![1]).toBeGreaterThan(0);
+    }, 180000);
+});
+
+describe("finding 5: rebind is one call, and its code and rows always agree", () => {
+    const sumOf = (code: string, rows: Record<string, unknown>[]) => new Function("rows", code)(rows) as number;
+    it("names masked: the rebound code and rows draw the real values, with the real names or the stand-in's", () => {
+        const real = salesTable();
+        const { key } = obfuscate(real, { seed: SEED, names: "mask" });
+        const s = keyCol(key, "Revenue").standInName;
+        const j = idx(real, "Revenue");
+        const expected = real.rows.reduce((a, row) => a + (Number(row[j]) || 0), 0);
+        const bracket = `const title = "${s} by month"; return rows.reduce((a, d) => a + (+d["${s}"] || 0), 0);`;
+        const real1 = rebind(bracket, real, key);
+        expect(real1.names).toBe("real");
+        expect(real1.code).toContain(`"Revenue by month"`);
+        expect(sumOf(real1.code, real1.rows)).toBeCloseTo(expected, 6);
+        // Code that reads a column through an identifier cannot have its names swapped: rows keep the stand-in's names.
+        const dotted = `return rows.reduce((a, d) => a + (+d.${s} || 0), 0);`;
+        const real2 = rebind(dotted, real, key);
+        expect(real2.names).toBe("standIn");
+        expect(real2.code).toBe(dotted);
+        expect(sumOf(real2.code, real2.rows)).toBeCloseTo(expected, 6);
+        // Asked for the stand-in's names, the code is not edited.
+        const real3 = rebind(bracket, real, key, { names: "standIn" });
+        expect(real3.code).toBe(bracket);
+        expect(sumOf(real3.code, real3.rows)).toBeCloseTo(expected, 6);
+    });
+    it("rebindCode's code is for the real rows under their real names, and rebindRows' rows are for unedited code", () => {
+        const real = salesTable();
+        const { key } = obfuscate(real, { seed: SEED, names: "mask" });
+        const s = keyCol(key, "Revenue").standInName;
+        const code = `return rows.reduce((a, d) => a + (+d["${s}"] || 0), 0);`;
+        const asObjects = real.rows.map(row => Object.fromEntries(real.header.map((h, k) => [h, row[k]])));
+        expect(sumOf(rebindCode(code, key).code, asObjects)).toBe(sumOf(code, rebindRows(real, key)));
+        expect(sumOf(code, rebindRows(real, key))).toBeGreaterThan(0);
+    });
+});
+
+describe("finding 6: rebindCode flags only data-like literals", () => {
+    const key: StandInKey = {
+        format: "bicharts-stand-in-key", version: 1, seed: "x", options: { names: "keep", measures: "scale", latLon: "shift" }, dateShiftYears: 0,
+        columns: [
+            { name: "Amount", standInName: "Amount", transform: "scale", factor: 1.2, rangeEnds: [0.4, 812.25] },
+            { name: "Units", standInName: "Units", transform: "scale", factor: 1.3, rangeEnds: [3, 12] },
+            { name: "Share", standInName: "Share", transform: "scale", factor: 1.1, rangeEnds: [0.07, 1] },
+            { name: "State", standInName: "State", transform: "place", pairs: [["CA", "TX"], ["TX", "CA"]] },
+            { name: "Team", standInName: "Team", transform: "mask", pairs: [["Qzvrel", "Harbor"]] },
+        ],
+    };
+    it("a small integer, a short decimal outside a domain or comparison, and a place are not flagged", () => {
+        const code = [
+            "const pad = 12, cols = 3, lineW = 1;",
+            "const opacity = 0.4;",
+            "const y = d3.scaleLinear().domain([0, 12]);",
+            "const keepCA = rows.filter(d => d.State === \"CA\");",
+            // A domain read and closed, then a layout number inside a later open parenthesis.
+            "const y0 = y.domain()[0]; if (y0 >= 0) line.attr('stroke-opacity', 0.4);",
+        ].join("\n");
+        expect(rebindCode(code, key).flagged).toEqual([]);
+    });
+    it("a data-like range end, a short one in a domain or a comparison, and a masked label are flagged", () => {
+        const code = [
+            "const top = 812.25;",
+            "const y = d3.scaleLinear().domain([0.4, 1]);",
+            "const low = rows.filter(d => d.Share < 0.07);",
+            "const t = rows.filter(d => d.Team === \"Qzvrel\");",
+        ].join("\n");
+        expect(rebindCode(code, key).flagged.map(f => f.literal)).toEqual(["812.25", "0.4", "0.07", "\"Qzvrel\""]);
+    });
+});
+
+describe("finding 7: places shuffle within their region and their parent", () => {
+    it("countries keep every region share and the Middle East share", () => {
+        const names = ["Israel", "United Arab Emirates", "Saudi Arabia", "Qatar", "Japan", "South Korea", "China", "Thailand",
+            "Vietnam", "Egypt", "Kenya", "Nigeria", "Ghana", "France", "Spain"];
+        const rows: string[][] = [];
+        names.forEach((n, i) => { for (let k = 0; k < 1 + ((i * 7) % 11); k++) rows.push([n, String(10 + k * i)]); });
+        const real: ObfuscateTable = { header: ["Country", "Sales"], rows };
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        expect(keyCol(key, "Country").transform).toBe("place");
+        const geo = (t: ObfuscateTable) => profileOf(t).map(c => [c.geoKind, c.dominantGeoRegion, c.dominantGeoRegionPct, c.geoRegionCount, c.middleEastPct]);
+        expect(geo(standIn)).toEqual(geo(real));
+        expect(geo(real)[0][4]).toBeGreaterThan(0);
+        expect(col(standIn, 0).some((v, i) => v !== real.rows[i][0])).toBe(true);
+    });
+    it("cities move only among the cities of their own state", () => {
+        const C: Record<string, string[]> = { TX: ["Austin", "Dallas", "Houston", "El Paso"], FL: ["Miami", "Tampa", "Orlando"],
+            WA: ["Seattle", "Spokane", "Tacoma"], CA: ["Fresno", "Oakland", "San Diego", "Sacramento"] };
+        const rows: string[][] = [];
+        let k = 0;
+        for (const [st, cs] of Object.entries(C)) for (const c of cs) for (let i = 0; i < 3 + (k++ % 4); i++) rows.push([c, st, String(10 + i * k)]);
+        const real: ObfuscateTable = { header: ["City", "State", "Sales"], rows };
+        const { standIn, key } = obfuscate(real, { seed: SEED });
+        expect(keyCol(key, "City").transform).toBe("place");
+        standIn.rows.forEach((row, i) => expect(C[String(real.rows[i][1])], `row ${i}`).toContain(row[0]));
+        expect(col(standIn, 0).some((v, i) => v !== real.rows[i][0])).toBe(true);
+    });
+});
+
+describe("finding 8: masked names keep the words the engine reads", () => {
+    it("outcome words (Churned) and attribute words (Status) are kept, and the flag reading holds", () => {
+        const rows: string[][] = [];
+        for (let i = 0; i < 60; i++) rows.push(["C" + (500 + i), i % 3 ? "Open" : "Closed", i % 4 ? "Stayed" : "Left", String(i * 1.5)]);
+        const real: ObfuscateTable = { header: ["CustomerRef", "CustomerStatus", "Churned", "Score"], rows };
+        const { standIn } = obfuscate(real, { seed: SEED, names: "mask" });
+        expect(standIn.header[1]).toMatch(/Status$/);
+        expect(standIn.header[2]).toBe("Churned");
+        const flags = (t: ObfuscateTable) => profileOf(t).map(c => c.isBinaryFlag);
+        expect(flags(standIn)).toEqual(flags(real));
     });
 });
